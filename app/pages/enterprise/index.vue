@@ -13,10 +13,12 @@ const windows = ref<Array<{
   groupTitle: string
   itemTitle: string
   fullTitle: string
+  itemId: string
+  groupId: string
   zIndex: number
   isMinimized: boolean
   position: { x: number; y: number }
-  size: { width: number; height: number }
+  size: { width: number; height: number; isMaximized?: boolean }
 }>>([])
 
 let zIndexCounter = 100
@@ -61,20 +63,6 @@ function deleteUser() {
   router.push('/')
 }
 
-const resizeWindow = (id: string, newSize: { width: number; height: number }) => {
-  const window = windows.value.find(w => w.id === id)
-  if (window) {
-    // Ограничиваем минимальный и максимальный размер
-    const minWidth = window.size.minWidth || 300
-    const minHeight = window.size.minHeight || 200
-    const maxWidth = window.size.maxWidth || 1200
-    const maxHeight = window.size.maxHeight || 800
-
-    window.size.width = Math.max(minWidth, Math.min(maxWidth, newSize.width))
-    window.size.height = Math.max(minHeight, Math.min(maxHeight, newSize.height))
-  }
-}
-
 const openWindow = (groupId: string, itemId: string, groupTitle: string, itemTitle: string) => {
   console.log('✅ Открываем окно:', { groupId, itemId, groupTitle, itemTitle })
 
@@ -103,17 +91,32 @@ const openWindow = (groupId: string, itemId: string, groupTitle: string, itemTit
       y: 50 + (windows.value.length * 30)
     },
     size: {
-      width: 400, // Начальная ширина
-      height: 300, // Начальная высота
+      width: 400,
+      height: 300,
       minWidth: 300,
       minHeight: 200,
       maxWidth: 1200,
-      maxHeight: 800
+      maxHeight: 800,
+      isMaximized: false
     }
   }
 
   console.log('✅ Создано окно:', newWindow)
   windows.value.push(newWindow)
+}
+
+const resizeWindow = (id: string, newSize: { width: number; height: number }) => {
+  const window = windows.value.find(w => w.id === id)
+  if (window) {
+    // Ограничиваем минимальный и максимальный размер
+    const minWidth = window.size.minWidth || 300
+    const minHeight = window.size.minHeight || 200
+    const maxWidth = window.size.maxWidth || 1200
+    const maxHeight = window.size.maxHeight || 800
+
+    window.size.width = Math.max(minWidth, Math.min(maxWidth, newSize.width))
+    window.size.height = Math.max(minHeight, Math.min(maxHeight, newSize.height))
+  }
 }
 
 const closeWindow = (id: string) => {
@@ -149,7 +152,42 @@ const moveWindow = (id: string, newPosition: { x: number; y: number }) => {
   }
 }
 
+const maximizeWindow = (id: string) => {
+  const window = windows.value.find(w => w.id === id)
+  if (window) {
+    // Переключаем состояние максимизации
+    window.size.isMaximized = !window.size.isMaximized
 
+    if (window.size.isMaximized) {
+      // Сохраняем предыдущий размер и позицию
+      window.previousSize = {
+        width: window.size.width,
+        height: window.size.height
+      }
+      window.previousPosition = { ...window.position }
+
+      // Устанавливаем максимальный z-index
+      window.zIndex = 9999
+    } else {
+      // Восстанавливаем предыдущий размер и позицию
+      if (window.previousSize) {
+        window.size.width = window.previousSize.width
+        window.size.height = window.previousSize.height
+      }
+      if (window.previousPosition) {
+        window.position = window.previousPosition
+      }
+      // Возвращаем нормальный z-index
+      window.zIndex = ++zIndexCounter
+    }
+  }
+}
+
+// Добавьте интерфейс для временного хранения предыдущих значений
+interface PreviousData {
+  previousSize?: { width: number; height: number }
+  previousPosition?: { x: number; y: number }
+}
 </script>
 
 <template>
@@ -198,6 +236,7 @@ const moveWindow = (id: string, newPosition: { x: number; y: number }) => {
                 @minimize="minimizeWindow"
                 @move="moveWindow"
                 @resize="resizeWindow"
+                @maximize="maximizeWindow"
             />
           </div>
         </div>

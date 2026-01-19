@@ -15,6 +15,7 @@ export interface WindowItem {
         minHeight?: number;
         maxWidth?: number;
         maxHeight?: number;
+        isMaximized?: boolean
     }
     isResizing?: boolean
     resizeEdge?: string | null

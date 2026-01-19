@@ -172,7 +172,7 @@ onMounted(() => {
 }
 
 .main-list:hover {
-  border-color: #38ef7d;
+  border-color: var(--half_opacity_border_hover);
 }
 
 .main-list.locked:hover {
@@ -218,7 +218,7 @@ onMounted(() => {
 }
 
 .group-header:hover .group-title {
-  color: #38ef7d;
+  color: var(--half_opacity_border_hover);
 }
 
 .group-indicator {
@@ -227,7 +227,7 @@ onMounted(() => {
 }
 
 .menu-group:hover .group-indicator {
-  color: #38ef7d;
+  color: var(--half_opacity_border_hover);
   transform: rotate(180deg);
 }
 
@@ -267,7 +267,7 @@ onMounted(() => {
 }
 
 .link:hover {
-  color: #38ef7d;
+  color: var(--half_opacity_border_hover);
 }
 
 .empty-menu {

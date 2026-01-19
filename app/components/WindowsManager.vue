@@ -2,18 +2,11 @@
 import MoloWindow from './MoloWindow.vue'
 import WindowContentFactory from '../components/WindowsContent.vue'
 import type { WindowItem } from '~/types/window'
+import { ref } from 'vue'
 
 const props = defineProps<{
   windows: WindowItem[]
 }>()
-
-// Добавьте отладку
-watch(() => props.windows, (newWindows) => {
-  console.log('WindowsManager получил окна:', newWindows)
-  newWindows.forEach(w => {
-    console.log(`Окно: ${w.fullTitle}, itemId: ${w.itemId}`)
-  })
-}, { immediate: true })
 
 const emit = defineEmits<{
   close: [id: string]
@@ -21,6 +14,7 @@ const emit = defineEmits<{
   minimize: [id: string]
   move: [id: string, newPosition: { x: number; y: number }]
   resize: [id: string, newSize: { width: number; height: number }]
+  maximize: [id: string]
 }>()
 
 const closeWindow = (id: string) => {
@@ -39,18 +33,24 @@ const moveWindow = (id: string, newPosition: { x: number; y: number }) => {
   emit('move', id, newPosition)
 }
 
-const getWindowStyle = (window: WindowItem) => {
-  return {
-    left: `${window.position.x}px`,
-    top: `${window.position.y}px`,
-    width: `${window.size.width}px`,
-    height: `${window.size.height}px`,
-    zIndex: window.zIndex
-  }
+const maximizeWindow = (id: string) => {
+  emit('maximize', id)
 }
 
 const resizeWindow = (id: string, newSize: { width: number; height: number }) => {
   emit('resize', id, newSize)
+}
+
+// Функция для восстановления окна с анимацией
+const restoreWindowWithAnimation = (id: string) => {
+  const window = props.windows.find(w => w.id === id)
+  if (window && window.isMinimized) {
+    // Восстанавливаем окно
+    emit('focus', id)
+
+    // Здесь могла бы быть дополнительная анимация,
+    // но основная анимация уже в MoloWindow через slideIn
+  }
 }
 </script>
 
@@ -66,12 +66,12 @@ const resizeWindow = (id: string, newSize: { width: number; height: number }) =>
         @minimize="minimizeWindow(window.id)"
         @move="(pos) => moveWindow(window.id, pos)"
         @resize="(size) => resizeWindow(window.id, size)"
+        @maximize="() => maximizeWindow(window.id)"
         @mousedown="focusWindow(window.id)"
         class="draggable-window"
     >
       <WindowContentFactory
           :window-id="window.itemId"
-          @content-size-changed="(size) => resizeWindow(window.id, size)"
       />
     </MoloWindow>
 
@@ -83,7 +83,7 @@ const resizeWindow = (id: string, newSize: { width: number; height: number }) =>
             v-for="window in windows.filter(w => w.isMinimized)"
             :key="window.id"
             class="minimized-tab"
-            @click="focusWindow(window.id)"
+            @click="restoreWindowWithAnimation(window.id)"
         >
           {{ window.fullTitle }}
         </button>
@@ -108,7 +108,7 @@ const resizeWindow = (id: string, newSize: { width: number; height: number }) =>
 @keyframes windowAppear {
   from {
     opacity: 0;
-    transform: translateY(20px) scale(0.95);
+    transform: translateY(250px) scale(0.95);
   }
   to {
     opacity: 1;

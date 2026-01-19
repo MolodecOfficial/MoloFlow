@@ -14,7 +14,8 @@ let isCheckingNotifications = false
 
 export function useNotifications() {
     const addNotification = (key: string) => {
-        const data = config.notifications[key]
+        // @ts-ignore
+        const data: any = config.notifications[key]
         if (!data) return false
 
         if (data.single) {
@@ -40,9 +41,6 @@ export function useNotifications() {
             title: data.title,
             text: data.text
         }
-
-
-
         
         globalNotifications.notifications.value.unshift(newNotification)
         return true

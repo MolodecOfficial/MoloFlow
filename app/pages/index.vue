@@ -314,7 +314,7 @@ onMounted(() => {
 
 .selected-module {
   font-size: 18px;
-  color: #38ef7d;
+  color: var(--half_opacity_border_hover);
   font-weight: 500;
 }
 
@@ -341,11 +341,11 @@ onMounted(() => {
 
 .dropdown-trigger:hover {
   background-color: rgba(255, 255, 255, 0.15);
-  border-color: #38ef7d;
+  border-color: var(--half_opacity_border_hover);
 }
 
 .dropdown-trigger.dropdown-open {
-  border-color: #38ef7d;
+  border-color: var(--half_opacity_border_hover);
   box-shadow: 0 0 0 2px rgba(56, 239, 125, 0.2);
 }
 
@@ -391,12 +391,12 @@ onMounted(() => {
 
 .dropdown-item:hover:not(.disabled) {
   background-color: rgba(56, 239, 125, 0.1);
-  color: #38ef7d;
+  color: var(--half_opacity_border_hover);
 }
 
 .dropdown-item.selected {
   background-color: rgba(56, 239, 125, 0.15);
-  color: #38ef7d;
+  color: var(--half_opacity_border_hover);
 }
 
 .dropdown-item.disabled {
@@ -525,7 +525,7 @@ option {
   display: block;
   transition: 0.3s ease;
   font-size: 12px;
-  color: #38ef7d;
+  color: var(--half_opacity_border_hover);
 }
 
 .form__field:required, .form__field:invalid {
@@ -582,7 +582,7 @@ option {
 }
 
 .login-btn:hover:not(:disabled) {
-  border-color: #38ef7d;
+  border-color: var(--half_opacity_border_hover);
 }
 
 .login-btn:disabled {

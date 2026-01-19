@@ -2,6 +2,7 @@
 import type { WindowItem } from '~/types/window'
 import { useWindowDrag } from '~/composables/useWindowDrag'
 import { useWindowResize } from '~/composables/useWindowResize'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 
 const props = defineProps<{
   window: WindowItem
@@ -13,11 +14,49 @@ const emit = defineEmits<{
   'minimize': []
   'move': [position: { x: number; y: number }]
   'resize': [size: { width: number; height: number }]
+  'maximize': []
 }>()
 
-// Рефы для контента и контейнера
-const contentRef = ref()
+// Рефы для контейнера
 const containerRef = ref<HTMLElement>()
+const windowRef = ref<HTMLElement>()
+
+// Состояние для анимации
+const isMinimizing = ref(false)
+const isClosing = ref(false)
+const isMaximizing = ref(false)
+
+// Определяем, включен ли полный размер
+const isMaximized = computed(() => props.window.size.isMaximized === true)
+
+// Функция для минимизации с анимацией
+const minimizeWithAnimation = () => {
+  isMinimizing.value = true
+  // Ждем завершения анимации и эмитим событие
+  setTimeout(() => {
+    emit('minimize')
+    isMinimizing.value = false
+  }, 300) // Длительность анимации
+}
+
+// Функция для закрытия с анимацией
+const closeWithAnimation = () => {
+  isClosing.value = true
+  // Ждем завершения анимации и эмитим событие
+  setTimeout(() => {
+    emit('close')
+  }, 300) // Длительность анимации
+}
+
+// Функция для минимизации с анимацией
+const maximizeWithAnimation = () => {
+  isMaximizing.value = true
+  // Ждем завершения анимации и эмитим событие
+  setTimeout(() => {
+    emit('maximize')
+    isMaximizing.value = false
+  }, 300) // Длительность анимации
+}
 
 // Используем композаблы для перетаскивания и ресайза
 const {
@@ -44,7 +83,9 @@ const {
 } = useWindowResize({
   initialSize: props.window.size,
   position: dragPosition,
-  onResize: (size) => emit('resize', size),
+  onResize: (size) => {
+    emit('resize', size)
+  },
   onMove: (position) => {
     windowPosition.value = position
     emit('move', position)
@@ -65,6 +106,42 @@ const handleMouseUp = () => {
   if (isResizing.value) handleResizeEnd()
 }
 
+// Стили для контейнера
+const containerStyle = computed(() => {
+  if (isMaximized.value) {
+    return {
+      left: '20px',
+      top: '20px',
+      width: 'calc(100vw - 40px)',
+      height: 'calc(100vh - 40px)',
+      zIndex: props.window.zIndex
+    }
+  }
+
+  return {
+    left: windowPosition.value.x + 'px',
+    top: windowPosition.value.y + 'px',
+    width: props.window.size.width + 'px',
+    height: props.window.size.height + 'px',
+    zIndex: props.window.zIndex,
+    minWidth: (props.window.size.minWidth || 300) + 'px',
+    minHeight: (props.window.size.minHeight || 200) + 'px'
+  }
+})
+
+// Получаем курсор для края ресайза
+const getResizeCursor = (edge: string) => {
+  if (isMaximized.value) return 'default'
+
+  const cursors: Record<string, string> = {
+    'n': 'ns-resize', 's': 'ns-resize',
+    'w': 'ew-resize', 'e': 'ew-resize',
+    'nw': 'nwse-resize', 'se': 'nwse-resize',
+    'ne': 'nesw-resize', 'sw': 'nesw-resize'
+  }
+  return cursors[edge] || 'default'
+}
+
 // Инициализация
 onMounted(() => {
   document.addEventListener('mousemove', handleMouseMove)
@@ -75,17 +152,6 @@ onUnmounted(() => {
   document.removeEventListener('mousemove', handleMouseMove)
   document.removeEventListener('mouseup', handleMouseUp)
 })
-
-// Получаем курсор для края ресайза
-const getResizeCursor = (edge: string) => {
-  const cursors: Record<string, string> = {
-    'n': 'ns-resize', 's': 'ns-resize',
-    'w': 'ew-resize', 'e': 'ew-resize',
-    'nw': 'nwse-resize', 'se': 'nwse-resize',
-    'ne': 'nesw-resize', 'sw': 'nesw-resize'
-  }
-  return cursors[edge] || 'default'
-}
 </script>
 
 <template>
@@ -93,29 +159,49 @@ const getResizeCursor = (edge: string) => {
       v-if="isVisible"
       ref="containerRef"
       class="window-container"
-      :style="{
-      left: windowPosition.x + 'px',
-      top: windowPosition.y + 'px',
-      width: window.size.width + 'px',
-      height: window.size.height + 'px',
-      zIndex: window.zIndex,
-      minWidth: (window.size.minWidth || 300) + 'px',
-      minHeight: (window.size.minHeight || 200) + 'px'
-    }"
+      :class="{
+        'maximized': isMaximized,
+        'maximizing': isMaximizing,
+        'minimizing': isMinimizing,
+        'closing': isClosing
+      }"
+      :style="containerStyle"
   >
     <div
+        ref="windowRef"
         class="window"
-        :class="{ dragging: isDragging, resizing: isResizing }"
-        :style="{ cursor: isDragging ? 'grabbing' : 'default' }"
+        :class="{
+        dragging: isDragging,
+        resizing: isResizing,
+        'maximized': isMaximized
+      }"
+        :style="{
+        cursor: isDragging ? 'grabbing' : 'default',
+      }"
     >
       <!-- Заголовок окна -->
       <div class="window-header" @mousedown="handleDragStart">
         <div class="window-title">{{ window.fullTitle }}</div>
         <div class="window-controls">
-          <button class="control-btn minimize" @click="$emit('minimize')" title="Свернуть">
+          <button
+              class="control-btn maximize"
+              @click="maximizeWithAnimation"
+              :title="isMaximized ? 'Восстановить' : 'На весь экран'"
+          >
+            {{ isMaximized ? '⛶' : '⛶' }}
+          </button>
+          <button
+              class="control-btn minimize"
+              @click="minimizeWithAnimation"
+              title="Свернуть"
+          >
             _
           </button>
-          <button class="control-btn close" @click="$emit('close')" title="Закрыть">
+          <button
+              class="control-btn close"
+              @click="closeWithAnimation"
+              title="Закрыть"
+          >
             ×
           </button>
         </div>
@@ -123,11 +209,12 @@ const getResizeCursor = (edge: string) => {
 
       <!-- Контент окна -->
       <div class="window-content">
-        <slot :ref="contentRef" />
+        <slot />
       </div>
 
-      <!-- Ручки для изменения размера -->
+      <!-- Ручки для изменения размера (скрываем при максимизации) -->
       <div
+          v-if="!isMaximized"
           v-for="edge in ['n', 's', 'w', 'e', 'nw', 'ne', 'sw', 'se']"
           :key="edge"
           class="resize-handle"
@@ -145,28 +232,95 @@ const getResizeCursor = (edge: string) => {
   animation: slideIn 0.3s ease-out;
 }
 
+.window-container.maximized {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: fixed !important;
+  left: 20px !important;
+  top: 20px !important;
+  width: calc(100vw - 40px) !important;
+  height: calc(100vh - 40px) !important;
+  z-index: 9998 !important;
+}
+
+/* Анимация минимизации - обратная slideIn */
+.window-container.minimizing {
+  animation: slideOut 0.2s ease-in-out forwards;
+  pointer-events: none;
+}
+
+.window-container.maximizing {
+  animation: slideOn 0.2s ease-in-out forwards;
+  pointer-events: none;
+}
+
+/* Анимация закрытия - исчезновение */
+.window-container.closing {
+  animation: fadeOut 0.2s ease-in forwards;
+  pointer-events: none;
+}
+
 .window {
   background: var(--half_opacity_bg);
   border: 1px solid var(--half_opacity_border);
   border-radius: 12px;
   display: flex;
   flex-direction: column;
-  overflow: visible;
-  width: 100%;
-  height: 100%;
+  overflow: hidden;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
   backdrop-filter: blur(10px);
   position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.window.maximized {
+  border-radius: 0;
+  box-shadow: none;
 }
 
 @keyframes slideIn {
   from {
     opacity: 0;
-    transform: translateX(20px);
+    transform: translateY(250px) scale(0.95);
   }
   to {
     opacity: 1;
-    transform: translateX(0);
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes slideOn {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(250px) scale(0.95);
+  }
+}
+
+@keyframes slideOut {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(250px) scale(0.95);
+  }
+}
+
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.95);
   }
 }
 
@@ -221,6 +375,12 @@ const getResizeCursor = (edge: string) => {
   background: rgba(255, 255, 255, 0.1);
 }
 
+.control-btn.maximize:hover {
+  background: rgba(33, 150, 243, 0.2);
+  border-color: #0c92ff;
+  color: #0c92ff;
+}
+
 .control-btn.close:hover {
   background: rgba(220, 53, 69, 0.2);
   border-color: #ff0a21;
@@ -236,18 +396,10 @@ const getResizeCursor = (edge: string) => {
 .window-content {
   padding: 24px;
   color: rgba(255, 255, 255, 0.9);
-  flex: 1;
-  overflow: visible !important;
-  min-height: 0;
-  width: 100%;
-  height: calc(100% - 57px);
+  overflow: auto;
   box-sizing: border-box;
-  display: flex;
-}
-
-.window-content > * {
-  width: 100%;
-  overflow: visible !important;
+  flex: 1;
+  min-height: 0;
 }
 
 /* Ручки изменения размера */

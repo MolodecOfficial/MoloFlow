@@ -299,7 +299,7 @@ async function registerUser() {
   display: block;
   transition: 0.3s ease;
   font-size: 12px;
-  color: #38ef7d;
+  color: var(--half_opacity_border_hover);
 }
 
 .form__field:required, .form__field:invalid {
@@ -357,7 +357,7 @@ async function registerUser() {
 }
 
 .login:hover:not(:disabled) {
-  border-color: #38ef7d;
+  border-color: var(--half_opacity_border_hover);
 }
 
 
@@ -377,7 +377,7 @@ async function registerUser() {
 }
 
 .back:hover {
-  color: #38ef7d;
+  color: var(--half_opacity_border_hover);
 }
 
 body {
