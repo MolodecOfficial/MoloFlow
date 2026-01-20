@@ -63,13 +63,33 @@ function deleteUser() {
   router.push('/')
 }
 
-const openWindow = (groupId: string, itemId: string, groupTitle: string, itemTitle: string) => {
-  console.log('✅ Открываем окно:', { groupId, itemId, groupTitle, itemTitle })
+const openWindow = (
+    groupId: string,
+    itemId: string,
+    groupTitle: string,
+    itemTitle: string,
+    subGroupId?: string,
+    subGroupTitle?: string
+) => {
+  console.log('✅ Открываем окно:', {
+    groupId,
+    itemId,
+    groupTitle,
+    itemTitle,
+    subGroupId,
+    subGroupTitle,
+  })
 
-  const fullTitle = `${groupTitle} → ${itemTitle}`
+  // Формируем уникальный ключ с учетом подгруппы
+  const windowKey = subGroupId
+      ? `${groupId}_${subGroupId}_${itemId}`
+      : `${groupId}_${itemId}`
 
   const existingWindow = windows.value.find(w =>
-      w.itemId === itemId && !w.isMinimized
+      w.itemId === itemId &&
+      w.groupId === groupId &&
+      w.subGroupId === subGroupId &&
+      !w.isMinimized
   )
 
   if (existingWindow) {
@@ -77,13 +97,22 @@ const openWindow = (groupId: string, itemId: string, groupTitle: string, itemTit
     return
   }
 
-  const newWindow = {
+  // Формируем полный заголовок
+  let fullTitle = groupTitle
+  if (subGroupTitle) {
+    fullTitle += ` → ${subGroupTitle}`
+  }
+  fullTitle += ` → ${itemTitle}`
+
+  const newWindow: WindowItem = {
     id: `window_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
     groupTitle,
     itemTitle,
     fullTitle,
     itemId,
     groupId,
+    subGroupId,      // сохраняем
+    subGroupTitle,   // сохраняем
     zIndex: ++zIndexCounter,
     isMinimized: false,
     position: {
@@ -91,10 +120,10 @@ const openWindow = (groupId: string, itemId: string, groupTitle: string, itemTit
       y: 50 + (windows.value.length * 30)
     },
     size: {
-      width: 400,
-      height: 300,
-      minWidth: 300,
-      minHeight: 200,
+      width: 600,
+      height: 400,
+      minWidth: 400,
+      minHeight: 300,
       maxWidth: 1200,
       maxHeight: 800,
       isMaximized: false

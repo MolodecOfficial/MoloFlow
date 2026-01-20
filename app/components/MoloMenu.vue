@@ -64,18 +64,36 @@ const handleGroupLeave = () => {
   activeGroup.value = null
 }
 
-const handleLinkClick = (groupId: string, itemId: string, groupTitle: string, itemTitle: string, event: Event) => {
-  event.preventDefault()
-
+const handleLinkClick = (
+    groupId: string,
+    itemId: string,
+    groupTitle: string,
+    itemTitle: string,
+    subGroupId?: string,
+    subGroupTitle?: string
+) => {
   if (props.role === 'Пользователь') {
     addNotification('LOCKED')
-    return
   }
 
-  // Передаем ВСЕ параметры
-  emit('open-window', groupId, itemId, groupTitle, itemTitle)
+  // Передаем все параметры включая подгруппу
+  emit('open-window',
+      groupId,
+      itemId,
+      groupTitle,
+      itemTitle,
+      subGroupId,
+      subGroupTitle
+  )
 }
 
+onMounted(() => {
+  menuGroups.value = getMenuByRole(props.role)
+
+  if (menuGroups.value.length === 0) {
+    addNotification('GET_MENU_ERROR')
+  }
+})
 onMounted(() => {
   menuGroups.value = getMenuByRole(props.role)
 
@@ -118,15 +136,14 @@ onMounted(() => {
         <transition name="expand">
           <div v-show="activeGroup === group.id" class="group-content">
             <div class="links">
-              <a
+              <MoloMenuItem
                   v-for="item in group.items"
                   :key="item.id"
-                  href="#"
-                  class="link"
-                  @click="handleLinkClick(group.id, item.id, group.title, item.title, $event)"
-              >
-                {{ item.title }}
-              </a>
+                  :item="item"
+                  :groupId="group.id"
+                  :groupTitle="group.title"
+                  @open-window="handleLinkClick"
+              />
             </div>
           </div>
         </transition>
@@ -251,7 +268,7 @@ onMounted(() => {
 .links {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 5px;
   padding: 10px 0 0 15px;
   position: relative;
 }

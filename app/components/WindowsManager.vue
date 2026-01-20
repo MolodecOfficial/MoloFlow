@@ -1,8 +1,6 @@
 <script setup lang="ts">
 import MoloWindow from './MoloWindow.vue'
-import WindowContentFactory from '../components/WindowsContent.vue'
 import type { WindowItem } from '~/types/window'
-import { ref } from 'vue'
 
 const props = defineProps<{
   windows: WindowItem[]
@@ -45,18 +43,14 @@ const resizeWindow = (id: string, newSize: { width: number; height: number }) =>
 const restoreWindowWithAnimation = (id: string) => {
   const window = props.windows.find(w => w.id === id)
   if (window && window.isMinimized) {
-    // Восстанавливаем окно
     emit('focus', id)
 
-    // Здесь могла бы быть дополнительная анимация,
-    // но основная анимация уже в MoloWindow через slideIn
   }
 }
 </script>
 
 <template>
   <div class="window-manager">
-    <!-- Активные окна -->
     <MoloWindow
         v-for="window in windows.filter(w => !w.isMinimized)"
         :key="window.id"
@@ -70,12 +64,13 @@ const restoreWindowWithAnimation = (id: string) => {
         @mousedown="focusWindow(window.id)"
         class="draggable-window"
     >
-      <WindowContentFactory
+      <WindowsContent
           :window-id="window.itemId"
+          :group-id="window.groupId"
+          :sub-group-id="window.subGroupId"
       />
     </MoloWindow>
 
-    <!-- Панель свернутых окон -->
     <div v-if="windows.some(w => w.isMinimized)" class="minimized-windows">
       <div class="minimized-title">Свернутые окна:</div>
       <div class="minimized-list">

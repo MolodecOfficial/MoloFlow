@@ -1,31 +1,91 @@
 <script setup lang="ts">
-import { defineAsyncComponent, ref, onMounted, watch, nextTick } from 'vue'
-
-interface Props {
-  windowId: string
-}
+import { useMenuConfig } from '~/composables/useMenuConfig'
 
 const props = defineProps<{
   windowId?: string
+  groupId?: string
+  subGroupId?: string
 }>()
 
-// Карта компонентов
-const componentMap: Record<string, () => Promise<any>> = {
-  'employee_tasks': () => import('../layouts/test.vue'),
-  'employee_documents': () => import('../layouts/test.vue'),
-  'employee_schedule': () => import('../layouts/test.vue'),
-  'employee_reports': () => import('../layouts/test.vue'),
-  'sfd1': () => import('../layouts/test.vue'),
-  'sfd2': () => import('../layouts/test.vue'),
-  'enterprise': () => import('../layouts/test.vue'),
-  'test': () => import('../layouts/test2.vue')
+const { getComponentPath } = useMenuConfig()
+const layoutsContext = import.meta.glob('../layouts/*.vue', { eager: false })
+
+const getComponentLoader = () => {
+  if (!props.windowId || !props.groupId) {
+    console.log('Не хватает параметров')
+    return () => import('../layouts/NotFound.vue')
+  }
+
+  // Пробуем разные варианты поиска файла
+  const searchPatterns = []
+
+  // 1. Полный путь: settings_enterprise_control
+  if (props.subGroupId) {
+    const fullPath = `${props.groupId}_${props.subGroupId}_${props.windowId}`
+        .split('_')
+        .map((word, index) =>
+            index === 0 ? word.toLowerCase() :
+                word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+        )
+        .join('')
+    searchPatterns.push(fullPath)  // settingsEnterpriseControl
+  }
+
+  // 2. Без подгруппы: settings_control
+  const withoutSubGroup = `${props.groupId}_${props.windowId}`
+      .split('_')
+      .map((word, index) =>
+          index === 0 ? word.toLowerCase() :
+              word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+      )
+      .join('')
+  searchPatterns.push(withoutSubGroup)  // settingsControl
+
+  // 3. Только по windowId
+  searchPatterns.push(props.windowId)  // control
+
+  // 4. Ищем в конфиге
+  const componentPath = getComponentPath(props.windowId, props.groupId)
+  if (componentPath) {
+    searchPatterns.push(componentPath)
+  }
+
+  console.log('Паттерны поиска:', searchPatterns)
+
+  // Перебираем все паттерны
+  for (const pattern of searchPatterns) {
+    const fullPath = `../layouts/${pattern}.vue`
+    if (layoutsContext[fullPath]) {
+      console.log(`Нашли по паттерну: ${pattern}`)
+      return layoutsContext[fullPath]
+    }
+  }
+
+  // Поиск без учета регистра
+  const availableFiles = Object.keys(layoutsContext)
+  for (const pattern of searchPatterns) {
+    const foundFile = availableFiles.find(path => {
+      const fileName = path
+          .replace('../layouts/', '')
+          .replace('.vue', '')
+          .toLowerCase()
+      return fileName === pattern.toLowerCase()
+    })
+
+    if (foundFile) {
+      console.log(`Нашли (без регистра): ${foundFile}`)
+      return layoutsContext[foundFile]
+    }
+  }
+
+  console.warn('Файл не найден ни по одному паттерну')
+  return () => import('../layouts/NotFound.vue')
 }
 
-const getComponent = (windowId: string) => {
-  return componentMap[windowId]?.() ?? import('../layouts/NotFound.vue')
-}
-
-const Component = defineAsyncComponent(() => getComponent(props.windowId))
+const Component = defineAsyncComponent(() => {
+  const loader = getComponentLoader()
+  return loader()
+})
 </script>
 
 <template>
@@ -35,6 +95,8 @@ const Component = defineAsyncComponent(() => getComponent(props.windowId))
         <component
             :is="Component"
             :window-id="windowId"
+            :sub-group-id="subGroupId"
+            :group-id="groupId"
         />
       </div>
     </template>

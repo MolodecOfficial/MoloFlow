@@ -1,10 +1,12 @@
 export interface WindowItem {
+    itemId: string        // 'control'
+    groupId: string       // 'settings'
+    subGroupId?: string   // 'enterprise'
+    groupTitle: string    // 'Общие настройки'
+    subGroupTitle?: string // 'Предприятие'
+    itemTitle: string     // 'Управление предприятием'
+    fullTitle: string     // 'Общие настройки → Предприятие → Управление предприятием'
     id: string
-    groupTitle: string
-    itemTitle: string
-    fullTitle: string
-    itemId: string
-    groupId: string
     zIndex: number
     isMinimized: boolean
     position: { x: number; y: number }

@@ -4,6 +4,9 @@ export interface MenuItem {
     requiredRole: 'Пользователь' | 'Сотрудник' | 'Управляющий';
     isActive: boolean;
     order: number;
+    componentName?  : string
+    items?: MenuItem[];
+    parentId?: string
 }
 
 export interface MenuGroup {
@@ -28,14 +31,16 @@ export const menuConfig: MenuGroup[] = [
                 title: 'Мои задачи',
                 requiredRole: 'Сотрудник',
                 isActive: true,
-                order: 1
+                order: 1,
+                componentName: 'dashboardEmployeeTasks'
             },
             {
                 id: 'employee_documents',
                 title: 'Документы',
                 requiredRole: 'Сотрудник',
                 isActive: true,
-                order: 2
+                order: 2,
+                componentName: 'dashboardEmployeeDocuments'
             },
             {
                 id: 'employee_schedule',
@@ -85,23 +90,34 @@ export const menuConfig: MenuGroup[] = [
         items: [
             {
                 id: 'enterprise',
-                title: 'Настройка предприятия',
+                title: 'Предприятие',
                 requiredRole: 'Управляющий',
                 isActive: true,
-                order: 1
+                order: 1,
+                items: [
+                    {
+                        id: 'control',
+                        title: 'Управление предприятием',
+                        requiredRole: 'Управляющий',
+                        isActive: true,
+                        order: 1,
+                        componentName: 'settingsEnterpriseControl',
+                        parentId: 'enterprise'
+                    },
+                ]
             },
             {
                 id: 'test',
                 title: 'test предприятия',
                 requiredRole: 'Управляющий',
                 isActive: true,
-                order: 2
+                order: 2,
+                componentName: 'settingsTest'
             },
         ]
     }
 ];
 
-// Функция для получения меню по роли с сохранением структуры групп
 export function getMenuByRole(role: string): MenuGroup[] {
     return menuConfig
         .filter(group =>

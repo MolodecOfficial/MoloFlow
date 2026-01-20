@@ -276,7 +276,7 @@ onUnmounted(() => {
 }
 
 .window.maximized {
-  border-radius: 0;
+  border-radius: 10px;
   box-shadow: none;
 }
 

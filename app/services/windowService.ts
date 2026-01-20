@@ -18,16 +18,24 @@ export class WindowService {
         return WindowService.instance
     }
 
-    createWindow(options: WindowOptions): WindowItem {
+    createWindow(options: WindowOptions & { subGroupId?: string; subGroupTitle?: string }): WindowItem {
         this.windowCounter++
+
+        let fullTitle = options.groupTitle
+        if (options.subGroupTitle) {
+            fullTitle += ` → ${options.subGroupTitle}`
+        }
+        fullTitle += ` → ${options.itemTitle}`
 
         return {
             id: `window_${this.windowCounter}_${options.itemId}`,
             itemId: options.itemId,
             groupId: options.groupId,
+            subGroupId: options.subGroupId,  // добавляем
+            subGroupTitle: options.subGroupTitle,  // добавляем
             groupTitle: options.groupTitle,
             itemTitle: options.itemTitle,
-            fullTitle: `${options.groupTitle} - ${options.itemTitle}`,
+            fullTitle,
             zIndex: 1000 + this.windowCounter,
             isMinimized: false,
             position: this.calculatePosition(this.windowCounter),
