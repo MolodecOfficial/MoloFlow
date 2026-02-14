@@ -1,12 +1,15 @@
 <script setup lang="ts">
-import type { WindowItem } from '~/types/window'
-import { useWindowDrag } from '~/composables/useWindowDrag'
-import { useWindowResize } from '~/composables/useWindowResize'
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import type {WindowItem} from '~/types/window'
+import {useWindowDrag} from '~/composables/useWindowDrag'
+import {useWindowResize} from '~/composables/useWindowResize'
+import {ref, computed, onMounted, onUnmounted} from 'vue'
 
 const props = defineProps<{
   window: WindowItem
   isVisible: boolean
+  windowId: string,
+  groupId: string,
+  subGroupId: string,
 }>()
 
 const emit = defineEmits<{
@@ -15,7 +18,12 @@ const emit = defineEmits<{
   'move': [position: { x: number; y: number }]
   'resize': [size: { width: number; height: number }]
   'maximize': []
+  'open-window': [groupId: string, itemId: string, groupTitle: string, itemTitle: string]
 }>()
+
+provide('openWindow', (groupId: string, itemId: string, groupTitle: string, itemTitle: string) => {
+  emit('open-window', groupId, itemId, groupTitle, itemTitle)
+})
 
 // Рефы для контейнера
 const containerRef = ref<HTMLElement>()
@@ -160,42 +168,45 @@ onUnmounted(() => {
       ref="containerRef"
       class="window-container"
       :class="{
-        'maximized': isMaximized,
-        'maximizing': isMaximizing,
-        'minimizing': isMinimizing,
-        'closing': isClosing
-      }"
+          'maximized': isMaximized,
+          'maximizing': isMaximizing,
+          'minimizing': isMinimizing,
+          'closing': isClosing
+        }"
       :style="containerStyle"
   >
     <div
         ref="windowRef"
         class="window"
         :class="{
-        dragging: isDragging,
-        resizing: isResizing,
-        'maximized': isMaximized
-      }"
+          dragging: isDragging,
+          resizing: isResizing,
+          'maximized': isMaximized
+        }"
         :style="{
-        cursor: isDragging ? 'grabbing' : 'default',
-      }"
+          cursor: isDragging ? 'grabbing' : 'default',
+        }"
     >
       <!-- Заголовок окна -->
       <div class="window-header" @mousedown="handleDragStart">
         <div class="window-title">{{ window.fullTitle }}</div>
+        <div class="header-logger">
+          <span>{{ groupId }}</span><span>{{ subGroupId }}</span><span>{{ windowId }}</span>
+        </div>
         <div class="window-controls">
-          <button
-              class="control-btn maximize"
-              @click="maximizeWithAnimation"
-              :title="isMaximized ? 'Восстановить' : 'На весь экран'"
-          >
-            {{ isMaximized ? '⛶' : '⛶' }}
-          </button>
           <button
               class="control-btn minimize"
               @click="minimizeWithAnimation"
               title="Свернуть"
           >
             _
+          </button>
+          <button
+              class="control-btn maximize"
+              @click="maximizeWithAnimation"
+              :title="isMaximized ? 'Восстановить' : 'На весь экран'"
+          >
+            {{ isMaximized ? '⛶' : '⛶' }}
           </button>
           <button
               class="control-btn close"
@@ -209,7 +220,7 @@ onUnmounted(() => {
 
       <!-- Контент окна -->
       <div class="window-content">
-        <slot />
+        <slot/>
       </div>
 
       <!-- Ручки для изменения размера (скрываем при максимизации) -->
@@ -227,6 +238,30 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+/* Ширина самого скроллбара (вертикального) */
+::-webkit-scrollbar {
+  width: 7px; /* для вертикального скролла */
+  height: 4px; /* для горизонтального скролла */
+}
+
+/* Трек (фон) */
+::-webkit-scrollbar-track {
+  background: transparent; /* цвет фона трека */
+  border-radius: 10px; /* скругление (опционально) */
+}
+
+/* Ползунок */
+::-webkit-scrollbar-thumb {
+  margin: 20px;
+  background: var(--half_opacity_border); /* цвет ползунка */
+  border-radius: 20px; /* скругление */
+}
+
+/* При наведении на ползунок можно добавить эффект */
+::-webkit-scrollbar-thumb:hover {
+  background: #38ef7d;
+}
+
 .window-container {
   position: absolute;
   animation: slideIn 0.3s ease-out;
@@ -236,12 +271,12 @@ onUnmounted(() => {
   display: flex;
   justify-content: center;
   align-items: center;
-  position: fixed !important;
-  left: 20px !important;
-  top: 20px !important;
-  width: calc(100vw - 40px) !important;
-  height: calc(100vh - 40px) !important;
-  z-index: 9998 !important;
+  position: fixed;
+  left: 20px ;
+  top: 20px;
+  width: calc(100vw - 40px);
+  height: calc(100vh - 40px) ;
+  z-index: 1  ;
 }
 
 /* Анимация минимизации - обратная slideIn */
@@ -348,6 +383,28 @@ onUnmounted(() => {
   min-width: 0;
 }
 
+.header-logger {
+  display: flex;
+  font-size: 10px;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 4px 10px;
+  border-radius: 12px;
+  color: rgba(255, 255, 255, 0.7);
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+  margin: 0 8px;
+  backdrop-filter: blur(2px);
+  border: 1px solid var(--half_opacity_border);
+}
+
+.header-logger span {
+  text-transform: capitalize;
+}
+
+.header-logger span::first-letter {
+  text-transform: uppercase;
+}
+
 .window-controls {
   display: flex;
   gap: 8px;
@@ -409,19 +466,83 @@ onUnmounted(() => {
   z-index: 10;
 }
 
-.resize-n { top: 0; left: 10px; right: 10px; height: 6px; }
-.resize-s { bottom: 0; left: 10px; right: 10px; height: 6px; }
-.resize-w { top: 10px; left: 0; width: 6px; bottom: 10px; }
-.resize-e { top: 10px; right: 0; width: 6px; bottom: 10px; }
-.resize-nw { top: 0; left: 0; width: 15px; height: 15px; }
-.resize-ne { top: 0; right: 0; width: 15px; height: 15px; }
-.resize-sw { bottom: 0; left: 0; width: 15px; height: 15px; }
-.resize-se { bottom: 0; right: 0; width: 15px; height: 15px; }
+.resize-n {
+  top: 0;
+  left: 10px;
+  right: 10px;
+  height: 6px;
+}
+
+.resize-s {
+  bottom: 0;
+  left: 10px;
+  right: 10px;
+  height: 6px;
+}
+
+.resize-w {
+  top: 10px;
+  left: 0;
+  width: 6px;
+  bottom: 10px;
+}
+
+.resize-e {
+  top: 10px;
+  right: 0;
+  width: 6px;
+  bottom: 10px;
+}
+
+.resize-nw {
+  top: 0;
+  left: 0;
+  width: 15px;
+  height: 15px;
+}
+
+.resize-ne {
+  top: 0;
+  right: 0;
+  width: 15px;
+  height: 15px;
+}
+
+.resize-sw {
+  bottom: 0;
+  left: 0;
+  width: 15px;
+  height: 15px;
+}
+
+.resize-se {
+  bottom: 0;
+  right: 0;
+  width: 15px;
+  height: 15px;
+}
 
 .window.dragging,
 .window.resizing {
   opacity: 0.95;
   box-shadow: 0 15px 40px rgba(0, 0, 0, 0.4);
+}
+
+.logger {
+  position: absolute;
+  right: 10px;
+
+}
+
+.logger span {
+  display: inline-block;
+  text-transform: capitalize;
+  font-size: 10px;
+}
+
+
+.logger span::first-letter {
+  text-transform: uppercase;
 }
 
 @media (max-width: 768px) {

@@ -14,11 +14,7 @@ const userSchema = new mongoose.Schema({
         enum: ['Пользователь', 'Бухгалтер', 'Комплектовщик', 'Сотрудник', 'Управляющий'],
         default: 'Пользователь',
     },
-    access: {
-        type: String,
-        enum: ['Предприятие', 'Склад', 'Бухгалтерия'],
-        default: 'Нет доступа.'
-    }
+
 })
 
 export const User = mongoose.models.User || mongoose.model('User', userSchema);

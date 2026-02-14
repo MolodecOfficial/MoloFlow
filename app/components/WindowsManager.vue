@@ -54,6 +54,9 @@ const restoreWindowWithAnimation = (id: string) => {
     <MoloWindow
         v-for="window in windows.filter(w => !w.isMinimized)"
         :key="window.id"
+        :window-id="window.itemId"
+        :group-id="window.groupId"
+        :sub-group-id="window.subGroupId"
         :window="window"
         :isVisible="true"
         @close="closeWindow(window.id)"
@@ -116,12 +119,12 @@ const restoreWindowWithAnimation = (id: string) => {
   bottom: 20px;
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(20, 30, 48, 0.9);
-  border: 1px solid rgba(56, 239, 125, 0.2);
+  background: rgb(26, 26, 26);
+  border: 1px solid var(--half_opacity_border);
   border-radius: 8px;
   padding: 10px 15px;
   backdrop-filter: blur(10px);
-  z-index: 1000;
+  z-index: 999;
 }
 
 .minimized-title {

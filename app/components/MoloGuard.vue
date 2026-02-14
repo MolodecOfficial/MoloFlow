@@ -98,7 +98,7 @@ onMounted(() => {
 
 <style scoped>
 .loading-overlay {
-  background-color: #020b18;
+  background-color: #111111;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -110,7 +110,7 @@ onMounted(() => {
 .loading-spinner {
   width: 40px;
   height: 40px;
-  border: 3px solid #e9ecef;
+  border: 3px solid transparent;
   border-top: 3px solid #38ef7d;
   border-radius: 50%;
   animation: spin 1s linear infinite;

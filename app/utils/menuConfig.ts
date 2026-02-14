@@ -96,6 +96,15 @@ export const menuConfig: MenuGroup[] = [
                 order: 1,
                 items: [
                     {
+                        id: 'creature',
+                        title: 'Создание предприятия',
+                        requiredRole: 'Управляющий',
+                        isActive: true,
+                        order: 1,
+                        componentName: 'settingsEnterpriseCreature',
+                        parentId: 'enterprise'
+                    },
+                    {
                         id: 'control',
                         title: 'Управление предприятием',
                         requiredRole: 'Управляющий',
@@ -107,12 +116,12 @@ export const menuConfig: MenuGroup[] = [
                 ]
             },
             {
-                id: 'test',
-                title: 'test предприятия',
+                id: 'termsOfUse',
+                title: 'Условия пользования',
                 requiredRole: 'Управляющий',
-                isActive: true,
+                isActive: false,
                 order: 2,
-                componentName: 'settingsTest'
+                componentName: 'settingsTermsOfUse'
             },
         ]
     }
@@ -130,6 +139,5 @@ export function getMenuByRole(role: string): MenuGroup[] {
                 .filter(item => item.requiredRole === role && item.isActive)
                 .sort((a, b) => a.order - b.order)
         }))
-        .filter(group => group.items.length > 0) // Убираем пустые группы
         .sort((a, b) => a.order - b.order); // Сортируем группы
 }

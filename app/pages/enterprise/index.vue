@@ -1,27 +1,23 @@
 <script setup lang="ts">
 import { useUserStore } from "~~/stores/userStore"
 import { useNotifications } from "~/composables/useNotifications"
+import { useWindowManager } from "~/composables/useWindowManager"
 
 const name = ref('')
 const role = ref('')
 const isLoading = ref(true)
 const hasShownNotifications = ref(false)
 
-// Состояние для окон
-const windows = ref<Array<{
-  id: string
-  groupTitle: string
-  itemTitle: string
-  fullTitle: string
-  itemId: string
-  groupId: string
-  zIndex: number
-  isMinimized: boolean
-  position: { x: number; y: number }
-  size: { width: number; height: number; isMaximized?: boolean }
-}>>([])
-
-let zIndexCounter = 100
+const {
+  windows,
+  openWindow,
+  closeWindow,
+  focusWindow,
+  minimizeWindow,
+  moveWindow,
+  resizeWindow,
+  maximizeWindow
+} = useWindowManager()
 
 const userStore = useUserStore()
 const router = useRouter()
@@ -61,161 +57,6 @@ const loadUserData = () => {
 function deleteUser() {
   localStorage.removeItem('user')
   router.push('/')
-}
-
-const openWindow = (
-    groupId: string,
-    itemId: string,
-    groupTitle: string,
-    itemTitle: string,
-    subGroupId?: string,
-    subGroupTitle?: string
-) => {
-  console.log('✅ Открываем окно:', {
-    groupId,
-    itemId,
-    groupTitle,
-    itemTitle,
-    subGroupId,
-    subGroupTitle,
-  })
-
-  // Формируем уникальный ключ с учетом подгруппы
-  const windowKey = subGroupId
-      ? `${groupId}_${subGroupId}_${itemId}`
-      : `${groupId}_${itemId}`
-
-  const existingWindow = windows.value.find(w =>
-      w.itemId === itemId &&
-      w.groupId === groupId &&
-      w.subGroupId === subGroupId &&
-      !w.isMinimized
-  )
-
-  if (existingWindow) {
-    focusWindow(existingWindow.id)
-    return
-  }
-
-  // Формируем полный заголовок
-  let fullTitle = groupTitle
-  if (subGroupTitle) {
-    fullTitle += ` → ${subGroupTitle}`
-  }
-  fullTitle += ` → ${itemTitle}`
-
-  const newWindow: WindowItem = {
-    id: `window_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-    groupTitle,
-    itemTitle,
-    fullTitle,
-    itemId,
-    groupId,
-    subGroupId,      // сохраняем
-    subGroupTitle,   // сохраняем
-    zIndex: ++zIndexCounter,
-    isMinimized: false,
-    position: {
-      x: 50 + (windows.value.length * 30),
-      y: 50 + (windows.value.length * 30)
-    },
-    size: {
-      width: 600,
-      height: 400,
-      minWidth: 400,
-      minHeight: 300,
-      maxWidth: 1200,
-      maxHeight: 800,
-      isMaximized: false
-    }
-  }
-
-  console.log('✅ Создано окно:', newWindow)
-  windows.value.push(newWindow)
-}
-
-const resizeWindow = (id: string, newSize: { width: number; height: number }) => {
-  const window = windows.value.find(w => w.id === id)
-  if (window) {
-    // Ограничиваем минимальный и максимальный размер
-    const minWidth = window.size.minWidth || 300
-    const minHeight = window.size.minHeight || 200
-    const maxWidth = window.size.maxWidth || 1200
-    const maxHeight = window.size.maxHeight || 800
-
-    window.size.width = Math.max(minWidth, Math.min(maxWidth, newSize.width))
-    window.size.height = Math.max(minHeight, Math.min(maxHeight, newSize.height))
-  }
-}
-
-const closeWindow = (id: string) => {
-  const index = windows.value.findIndex(w => w.id === id)
-  if (index !== -1) {
-    windows.value.splice(index, 1)
-  }
-}
-
-const focusWindow = (id: string) => {
-  const window = windows.value.find(w => w.id === id)
-  if (window) {
-    // Восстанавливаем окно, если оно было свернуто
-    if (window.isMinimized) {
-      window.isMinimized = false
-    }
-    // Поднимаем z-index
-    window.zIndex = ++zIndexCounter
-  }
-}
-
-const minimizeWindow = (id: string) => {
-  const window = windows.value.find(w => w.id === id)
-  if (window) {
-    window.isMinimized = true
-  }
-}
-
-const moveWindow = (id: string, newPosition: { x: number; y: number }) => {
-  const window = windows.value.find(w => w.id === id)
-  if (window) {
-    window.position = newPosition
-  }
-}
-
-const maximizeWindow = (id: string) => {
-  const window = windows.value.find(w => w.id === id)
-  if (window) {
-    // Переключаем состояние максимизации
-    window.size.isMaximized = !window.size.isMaximized
-
-    if (window.size.isMaximized) {
-      // Сохраняем предыдущий размер и позицию
-      window.previousSize = {
-        width: window.size.width,
-        height: window.size.height
-      }
-      window.previousPosition = { ...window.position }
-
-      // Устанавливаем максимальный z-index
-      window.zIndex = 9999
-    } else {
-      // Восстанавливаем предыдущий размер и позицию
-      if (window.previousSize) {
-        window.size.width = window.previousSize.width
-        window.size.height = window.previousSize.height
-      }
-      if (window.previousPosition) {
-        window.position = window.previousPosition
-      }
-      // Возвращаем нормальный z-index
-      window.zIndex = ++zIndexCounter
-    }
-  }
-}
-
-// Добавьте интерфейс для временного хранения предыдущих значений
-interface PreviousData {
-  previousSize?: { width: number; height: number }
-  previousPosition?: { x: number; y: number }
 }
 </script>
 
@@ -266,6 +107,7 @@ interface PreviousData {
                 @move="moveWindow"
                 @resize="resizeWindow"
                 @maximize="maximizeWindow"
+                @open-window="openWindow"
             />
           </div>
         </div>
@@ -275,6 +117,7 @@ interface PreviousData {
 </template>
 
 <style scoped>
+/* Стили остаются без изменений */
 .notifications-wrapper {
   position: fixed;
   top: 0;
@@ -283,7 +126,7 @@ interface PreviousData {
 }
 
 .enterprise-container {
-  background-color: #020b18;
+  background-color: #111111;
   min-height: 100vh;
 }
 
@@ -397,7 +240,7 @@ interface PreviousData {
   position: relative;
   width: fit-content;
   min-width: 100%;
-  z-index: 0;
+  z-index: 1;
   border-radius: 12px;
   min-height: 500px;
   overflow: hidden;

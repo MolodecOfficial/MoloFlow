@@ -19,7 +19,7 @@ async function registerUser() {
     loading.value = true;
     statusMessage.value = 'Создаю пользователя...';
 
-    const response = await fetch('/api/user', {
+    const response = await fetch('/api/users', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
