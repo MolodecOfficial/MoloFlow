@@ -3,7 +3,6 @@ export interface MenuItem {
     title: string;
     requiredRole: 'Пользователь' | 'Сотрудник' | 'Управляющий';
     isActive: boolean;
-    order: number;
     componentName?  : string
     items?: MenuItem[];
     parentId?: string
@@ -22,7 +21,6 @@ export const menuConfig: MenuGroup[] = [
     {
         id: 'dashboard',
         title: 'Панель',
-        order: 1,
         isActive: true,
         requiredRole: 'Сотрудник',
         items: [
@@ -31,7 +29,6 @@ export const menuConfig: MenuGroup[] = [
                 title: 'Мои задачи',
                 requiredRole: 'Сотрудник',
                 isActive: true,
-                order: 1,
                 componentName: 'dashboardEmployeeTasks'
             },
             {
@@ -39,7 +36,6 @@ export const menuConfig: MenuGroup[] = [
                 title: 'Документы',
                 requiredRole: 'Сотрудник',
                 isActive: true,
-                order: 2,
                 componentName: 'dashboardEmployeeDocuments'
             },
             {
@@ -47,21 +43,18 @@ export const menuConfig: MenuGroup[] = [
                 title: 'График работы',
                 requiredRole: 'Сотрудник',
                 isActive: true,
-                order: 3
             },
             {
                 id: 'employee_reports',
                 title: 'Отчеты',
                 requiredRole: 'Сотрудник',
                 isActive: true,
-                order: 4
             },
         ]
     },
     {
         id: 'sfd',
         title: 'СФД',
-        order: 2,
         isActive: true,
         requiredRole: 'Сотрудник',
         items: [
@@ -70,21 +63,18 @@ export const menuConfig: MenuGroup[] = [
                 title: 'Движение Денежных Средств',
                 requiredRole: 'Сотрудник',
                 isActive: true,
-                order: 1
             },
             {
                 id: 'sfd2',
                 title: 'Инкассация',
                 requiredRole: 'Сотрудник',
                 isActive: true,
-                order: 2
             }
         ]
     },
     {
         id: 'settings',
         title: 'Общие настройки',
-        order: 3,
         isActive: true,
         requiredRole: 'Управляющий',
         items: [
@@ -93,14 +83,12 @@ export const menuConfig: MenuGroup[] = [
                 title: 'Предприятие',
                 requiredRole: 'Управляющий',
                 isActive: true,
-                order: 1,
                 items: [
                     {
                         id: 'creature',
                         title: 'Создание предприятия',
                         requiredRole: 'Управляющий',
                         isActive: true,
-                        order: 1,
                         componentName: 'settingsEnterpriseCreature',
                         parentId: 'enterprise'
                     },
@@ -109,7 +97,6 @@ export const menuConfig: MenuGroup[] = [
                         title: 'Управление предприятием',
                         requiredRole: 'Управляющий',
                         isActive: true,
-                        order: 1,
                         componentName: 'settingsEnterpriseControl',
                         parentId: 'enterprise'
                     },
@@ -120,7 +107,6 @@ export const menuConfig: MenuGroup[] = [
                 title: 'Условия пользования',
                 requiredRole: 'Управляющий',
                 isActive: false,
-                order: 2,
                 componentName: 'settingsTermsOfUse'
             },
         ]

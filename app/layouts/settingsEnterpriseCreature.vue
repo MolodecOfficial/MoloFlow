@@ -1,8 +1,13 @@
 <script setup lang="ts">
-import {ref} from 'vue'
-import {useWindowManager} from '~/composables/useWindowManager'
+import { ref } from 'vue'
+import { useWindowManager } from '~/composables/useWindowManager'
+import { useNotifications } from '~/composables/useNotifications'
 
-const {openWindow} = useWindowManager()
+const { openWindow } = useWindowManager()
+const { addNotification } = useNotifications()
+
+// Состояние загрузки
+const loading = ref(false)
 
 // Данные формы
 const enterpriseName = ref('')
@@ -16,7 +21,8 @@ const phone = ref('')
 const email = ref('')
 const director = ref('')
 const okved = ref('')
-const ownershipForm = ref('')
+const keypass = ref('')
+const ownershipForm = ref('ООО')
 
 const ownershipOptions = ['ООО', 'АО', 'ПАО', 'ИП', 'НКО']
 
@@ -25,21 +31,73 @@ const openTermsOfUse = () => {
   openWindow('settings', 'termsOfUse', 'Общие настройки', 'Условия пользования')
 }
 
-const createEnterprise = () => {
-  console.log('Создание предприятия:', {
-    enterpriseName: enterpriseName.value,
-    inn: inn.value,
-    kpp: kpp.value,
-    ogrn: ogrn.value,
-    legalAddress: legalAddress.value,
-    actualAddress: sameAddress.value ? legalAddress.value : actualAddress.value,
-    phone: phone.value,
-    email: email.value,
-    director: director.value,
-    okved: okved.value,
-    ownershipForm: ownershipForm.value
-  })
-  // ...надо будет создать логику
+const createEnterprise = async () => {
+  loading.value = true
+
+  try {
+    // Подготовка данных
+    const enterpriseData = {
+      enterpriseName: enterpriseName.value,
+      inn: Number(inn.value),
+      kpp: Number(kpp.value),
+      ogrn: Number(ogrn.value),
+      legalAddress: legalAddress.value,
+      actualAddress: sameAddress.value ? legalAddress.value : actualAddress.value,
+      phone: Number(phone.value.replace(/\D/g, '')), // Убираем все нецифровые символы
+      email: email.value,
+      director: director.value,
+      okved: Number(okved.value),
+      keypass: keypass.value,
+      ownershipForm: ownershipForm.value
+    }
+
+    console.log('📤 Отправка данных:', enterpriseData)
+
+    // Отправка запроса
+    const response = await $fetch('/api/enterprises/enterprises', {
+      method: 'POST',
+      body: enterpriseData
+    })
+
+    console.log('✅ Ответ сервера:', response)
+
+    // Показываем уведомление об успехе
+    addNotification('ENTERPRISE_ADD_SUCCESS')
+
+    // Очищаем форму
+    resetForm()
+
+  } catch (error: any) {
+    console.error('❌ Ошибка при создании:', error)
+
+    // Показываем уведомление об ошибке
+    addNotification('ENTERPRISE_ADD_ERROR')
+
+    // Если есть конкретное сообщение об ошибке от сервера
+    if (error.data?.message) {
+      // Можно добавить дополнительное уведомление с текстом ошибки
+      console.error('Сообщение сервера:', error.data.message)
+    }
+  } finally {
+    loading.value = false
+  }
+}
+
+// Сброс формы после успешного создания
+const resetForm = () => {
+  enterpriseName.value = ''
+  inn.value = ''
+  kpp.value = ''
+  ogrn.value = ''
+  legalAddress.value = ''
+  actualAddress.value = ''
+  sameAddress.value = false
+  phone.value = ''
+  email.value = ''
+  director.value = ''
+  okved.value = ''
+  keypass.value = ''
+  ownershipForm.value = 'ООО'
 }
 
 const copyAddress = () => {
@@ -48,6 +106,23 @@ const copyAddress = () => {
   } else {
     actualAddress.value = ''
   }
+}
+
+// Валидация полей
+const validateForm = () => {
+  if (inn.value.length !== 10 && inn.value.length !== 12) {
+    addNotification('ENTERPRISE_ADD_ERROR')
+    return false
+  }
+  if (kpp.value.length !== 9 && kpp.value.length > 0) {
+    addNotification('ENTERPRISE_ADD_ERROR')
+    return false
+  }
+  if (ogrn.value.length !== 13 && ogrn.value.length !== 15) {
+    addNotification('ENTERPRISE_ADD_ERROR')
+    return false
+  }
+  return true
 }
 </script>
 
@@ -72,8 +147,7 @@ const copyAddress = () => {
               type="text"
               id="enterpriseName"
               iRequired
-              placeholder='ООО "Ромашка"'
-              max-length="9"
+              placeholder='"Ромашка"'
               v-model="enterpriseName"
           />
         </div>
@@ -94,10 +168,8 @@ const copyAddress = () => {
         <MoloForm
             label="kpp"
             tLabel="КПП"
-            lRequired
             type="text"
             id="kpp"
-            iRequired
             placeholder="123456789"
             max-length="9"
             v-model="kpp"
@@ -111,7 +183,7 @@ const copyAddress = () => {
             id="ogrn"
             iRequired
             placeholder="1234567890123"
-            max-length="13"
+            max-length="15"
             v-model="ogrn"
         />
 
@@ -139,13 +211,13 @@ const copyAddress = () => {
 
         <!-- Фактический адрес -->
         <div class="form-group full-width" v-if="!sameAddress">
-          <MoloForm v-if="!sameAddress"
-                    label="actualAddress"
-                    tLabel="Фактический адрес"
-                    type="text"
-                    id="actualAddress"
-                    v-model="actualAddress"
-                    placeholder="г. Ишимбай, ул. Пушкина, д. 1, оф. 2"
+          <MoloForm
+              label="actualAddress"
+              tLabel="Фактический адрес"
+              type="text"
+              id="actualAddress"
+              v-model="actualAddress"
+              placeholder="г. Ишимбай, ул. Пушкина, д. 1, оф. 2"
           />
         </div>
 
@@ -195,10 +267,22 @@ const copyAddress = () => {
             placeholder="62.01"
             v-model="okved"
         />
+
+        <MoloForm
+            label="keypass"
+            tLabel="Ключ доступа к предприятию"
+            lRequired
+            type="password"
+            id="keypass"
+            iRequired
+            placeholder="Разработайте надёжный ключ, избегая простых комбинаций"
+            v-model="keypass"
+        />
+
         <!-- Форма собственности -->
         <div class="form-group">
-          <label for="ownershipForm">Форма собственности</label>
-          <select id="ownershipForm" v-model="ownershipForm">
+          <label for="ownershipForm">Форма собственности <span class="required">*</span></label>
+          <select id="ownershipForm" v-model="ownershipForm" required>
             <option v-for="option in ownershipOptions" :key="option" :value="option">
               {{ option }}
             </option>
@@ -208,16 +292,15 @@ const copyAddress = () => {
 
       <hr>
 
-      <div class="form-actions">
-        <button type="submit" class="btn primary">Создать предприятие</button>
-      </div>
+      <button type="submit" class="login" :disabled="loading">
+        <div v-if="loading" class="modern-loader"></div>
+        <span v-else>Создать предприятие</span>
+      </button>
     </form>
   </div>
 </template>
 
 <style scoped>
-
-
 .enterprise-creature {
   display: flex;
   flex-direction: column;
@@ -346,41 +429,47 @@ input[type="checkbox"] {
   cursor: pointer;
 }
 
-.form-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 1rem;
-  margin-top: 1rem;
-  padding-top: 1rem;
-}
-
-.btn {
-  padding: 10px 24px;
+button.login {
+  padding: 12px 24px;
   border-radius: 8px;
   font-size: 1rem;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
-  border: 1px solid transparent;
+  border: 1px solid #1eef6f;
   transition: all 0.2s;
-  background: transparent;
-  color: white;
-
-}
-
-.btn.primary {
   background: #1eef6f;
   color: #020b18;
-  border-color: #1eef6f;
-  &:hover {
-    border: 1px solid black;
-    background: #138f43;
+  width: 100%;
+  margin-top: 1rem;
+}
 
-  }
+button.login:hover:not(:disabled) {
+  background: #138f43;
+  border-color: #138f43;
+}
+
+button.login:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 hr {
   width: 100%;
   border: 1px solid var(--half_opacity_border);
+}
+
+.modern-loader {
+  width: 24px;
+  height: 24px;
+  border: 3px solid rgba(0, 0, 0, 0.1);
+  border-radius: 50%;
+  border-top-color: #020b18;
+  animation: spin 0.8s linear infinite;
+  margin: 0 auto;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 /* Медиа-запросы для мобильных */

@@ -133,4 +133,8 @@
 hr {
   border-color: var(--half_opacity_border);
 }
+
+.terms_section:last-child {
+  padding-bottom: 20px;
+}
 </style>

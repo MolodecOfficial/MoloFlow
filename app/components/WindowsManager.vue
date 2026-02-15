@@ -92,10 +92,12 @@ const restoreWindowWithAnimation = (id: string) => {
 
 <style scoped>
 .window-manager {
-  position: relative;
+  position: absolute;
   width: 100%;
   min-height: 500px;
   overflow: visible;
+  border: 1px solid red;
+  z-index: 0;
 }
 
 .draggable-window {

@@ -12,6 +12,24 @@ const emit = defineEmits<{
   'open-window': [groupId: string, itemId: string, groupTitle: string, itemTitle: string]
 }>()
 
+const enterprises = ref([])
+const loadingEnterprises = ref(false)
+
+const getEnterprises = async () => {
+  loadingEnterprises.value = true
+  try {
+    const response = await $fetch('/api/enterprises/enterprises')
+    enterprises.value = response.enterprises
+    console.log('Все предприятия:', enterprises.value)
+    return enterprises.value
+  } catch (error) {
+    console.error('Ошибка при получении предприятий:', error)
+    return []
+  } finally {
+    loadingEnterprises.value = false
+  }
+}
+
 const { addNotification } = useNotifications()
 
 const isLockedHover = ref(false)
@@ -76,7 +94,6 @@ const handleLinkClick = (
     addNotification('LOCKED')
   }
 
-  // Передаем все параметры включая подгруппу
   emit('open-window',
       groupId,
       itemId,
@@ -88,15 +105,8 @@ const handleLinkClick = (
 }
 
 onMounted(() => {
+  getEnterprises()
   menuGroups.value = getMenuByRole(props.role)
-
-  if (menuGroups.value.length === 0) {
-    addNotification('GET_MENU_ERROR')
-  }
-})
-onMounted(() => {
-  menuGroups.value = getMenuByRole(props.role)
-
   if (menuGroups.value.length === 0) {
     addNotification('GET_MENU_ERROR')
   }
@@ -106,7 +116,7 @@ onMounted(() => {
 <template>
   <section
       ref="menuRef"
-      class="main-list"
+      class="action-list"
       :class="{ 'locked': isLockedHover }"
       @mousemove="handleMouseMove"
       @mouseenter="handleMouseEnter"
@@ -163,16 +173,40 @@ onMounted(() => {
       </div>
     </div>
   </section>
+
+  <!-- Список предприятий в том же стиле, что и меню -->
+  <section class="enterprises-list">
+    <h3 class="list-title">Доступные предприятия</h3>
+    <div v-if="loadingEnterprises" class="loading-state">
+      <div class="loading-spinner"></div>
+    </div>
+    <div v-else-if="enterprises.length === 0" class="empty-list">
+      Нет предприятий
+    </div>
+    <div v-else class="enterprises-container">
+      <div
+          v-for="enterprise in enterprises"
+          :key="enterprise._id"
+          class="enterprise-item"
+      >
+        <span class="enterprise-name">
+          {{ enterprise.ownershipForm }} {{ enterprise.enterpriseName }}
+        </span>
+        <span class="enterprise-inn">{{ enterprise.director }}</span>
+      </div>
+    </div>
+  </section>
 </template>
 
 <style scoped>
-.main-list {
+.action-list {
   position: absolute;
   border: 1px solid var(--half_opacity_border);
   background-color: var(--half_opacity_bg);
   border-radius: 20px;
   display: flex;
   top: 50%;
+  left: 20px;
   transform: translateY(-50%);
   height: fit-content;
   flex-direction: column;
@@ -182,17 +216,20 @@ onMounted(() => {
   transition: all 0.3s ease;
   cursor: default;
   min-width: 250px;
+  backdrop-filter: blur(10px);
+  z-index: 1;
+
 }
 
-.main-list.locked {
-  background-color: rgba(255, 255, 255, 0.05);
-}
-
-.main-list:hover {
+.action-list:hover {
   border-color: var(--half_opacity_border_hover);
 }
 
-.main-list.locked:hover {
+.action-list.locked {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.action-list.locked:hover {
   border-color: #FA5252;
 }
 
@@ -273,7 +310,6 @@ onMounted(() => {
   position: relative;
 }
 
-
 .link {
   color: rgba(255, 255, 255, 0.8);
   text-decoration: none;
@@ -326,26 +362,122 @@ onMounted(() => {
   white-space: nowrap;
 }
 
+.enterprises-list {
+  position: absolute;
+  border: 1px solid var(--half_opacity_border);
+  background-color: var(--half_opacity_bg);
+  border-radius: 20px;
+  display: flex;
+  top: 50%;
+  right: 20px;
+  transform: translateY(-50%);
+  height: fit-content;
+  flex-direction: column;
+  width: fit-content;
+  min-width: 280px;
+  max-width: 400px;
+  max-height: 80vh;
+  padding: 25px;
+  backdrop-filter: blur(10px);
+  transition: all 0.3s ease;
+  overflow-y: auto;
+  z-index: 2;
+}
+
+.enterprises-list:hover {
+  border-color: var(--half_opacity_border_hover);
+}
+
+.list-title {
+  color: white;
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0 0 20px 0;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--half_opacity_border);
+}
+
+.enterprises-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.enterprise-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-radius: 12px;
+  background-color: rgba(255, 255, 255, 0.03);
+  transition: all 0.2s ease;
+  border: 1px solid transparent;
+}
+
+.enterprise-item:hover {
+  background-color: rgba(56, 239, 125, 0.1);
+  border-color: rgba(56, 239, 125, 0.3);
+}
+
+.enterprise-name {
+  color: white;
+  font-size: 15px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.enterprise-inn {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 13px;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 4px 8px;
+  border-radius: 6px;
+  margin-left: 10px;
+}
+
+.loading-state {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 30px;
+}
+
+.loading-spinner {
+  width: 30px;
+  height: 30px;
+  border: 3px solid transparent;
+  border-top: 3px solid #38ef7d;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+.empty-list {
+  color: rgba(255, 255, 255, 0.6);
+  text-align: center;
+  padding: 30px;
+  font-style: italic;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
 @media (max-width: 767px) {
-  .main-list {
-    margin-left: 20px;
+  .action-list {
+    left: 10px;
     padding: 20px;
     min-width: auto;
-    width: 100%;
+    width: calc(100% - 40px);
   }
 
-  .menu-groups {
-    gap: 10px;
-  }
-
-  .links {
-    padding-left: 10px;
-    gap: 8px;
-  }
-
-  .link {
-    padding-left: 10px;
-    font-size: 13px;
+  .enterprises-list {
+    right: 10px;
+    padding: 20px;
+    min-width: auto;
+    width: calc(100% - 40px);
   }
 }
 </style>

@@ -9,7 +9,7 @@ export default defineNuxtConfig({
   },
 
   nitro: {
-    plugins: ['~/server/plugins/mongoose.ts', ],
+    plugins: ['~/server/plugins/mongoose.ts'],
     experimental: {
       websocket: true
     },

@@ -3,6 +3,7 @@ import type {WindowItem} from '~/types/window'
 import {useWindowDrag} from '~/composables/useWindowDrag'
 import {useWindowResize} from '~/composables/useWindowResize'
 import {ref, computed, onMounted, onUnmounted} from 'vue'
+import RestoreIcon from '~~/app/assets/icons/min.svg'
 
 const props = defineProps<{
   window: WindowItem
@@ -206,7 +207,12 @@ onUnmounted(() => {
               @click="maximizeWithAnimation"
               :title="isMaximized ? 'Восстановить' : 'На весь экран'"
           >
-            {{ isMaximized ? '⛶' : '⛶' }}
+            <img
+                v-if="isMaximized"
+                class="control-icon restore-icon"
+                :src="RestoreIcon"
+            />
+            <span v-else class="control-icon">⛶</span>
           </button>
           <button
               class="control-btn close"
@@ -272,11 +278,14 @@ onUnmounted(() => {
   justify-content: center;
   align-items: center;
   position: fixed;
-  left: 20px ;
+  left: 20px;
   top: 20px;
   width: calc(100vw - 40px);
-  height: calc(100vh - 40px) ;
-  z-index: 1  ;
+  height: calc(100vh - 40px);
+  z-index: 1;
+  & .window-header {
+    cursor: auto;
+  }
 }
 
 /* Анимация минимизации - обратная slideIn */
@@ -303,8 +312,7 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(20px);
   position: relative;
   width: 100%;
   height: 100%;
@@ -313,6 +321,10 @@ onUnmounted(() => {
 .window.maximized {
   border-radius: 10px;
   box-shadow: none;
+  display: flex;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
 }
 
 @keyframes slideIn {
@@ -457,6 +469,20 @@ onUnmounted(() => {
   box-sizing: border-box;
   flex: 1;
   min-height: 0;
+}
+
+.restore-icon {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+  filter: brightness(0) invert(1); /* Делает SVG белым */
+  transition: filter 0.2s ease;
+}
+
+/* При наведении на кнопку максимизации меняем цвет SVG */
+.control-btn.maximize:hover .restore-icon {
+  /* Для синего цвета (#0c92ff) */
+  filter: brightness(0) invert(0.5) sepia(1) saturate(30) hue-rotate(200deg);
 }
 
 /* Ручки изменения размера */

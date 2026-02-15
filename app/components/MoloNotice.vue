@@ -49,12 +49,15 @@ const handleClose = () => {
 </template>
 
 <style scoped>
+
 .main-notice {
+  z-index: 1000;
   position: fixed;
   display: flex;
   right: 25px;
   width: 400px;
   min-width: 400px;
+  background: rgba(45, 45, 45, 0.39);
   transition: transform 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55),
   opacity 0.5s ease-out,
   bottom 0.3s ease-out;

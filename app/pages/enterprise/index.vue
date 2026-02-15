@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { useUserStore } from "~~/stores/userStore"
-import { useNotifications } from "~/composables/useNotifications"
-import { useWindowManager } from "~/composables/useWindowManager"
+import {useUserStore} from "~~/stores/userStore"
+import {useNotifications} from "~/composables/useNotifications"
+import {useWindowManager} from "~/composables/useWindowManager"
 
 const name = ref('')
 const role = ref('')
@@ -21,7 +21,7 @@ const {
 
 const userStore = useUserStore()
 const router = useRouter()
-const { notifications, removeNotification, checkAndShowNotifications } = useNotifications()
+const {notifications, removeNotification, checkAndShowNotifications} = useNotifications()
 
 onMounted(() => {
   loadUserData()
@@ -64,16 +64,18 @@ function deleteUser() {
   <MoloGuard :allowedRoles="['Управляющий', 'Сотрудник', 'Пользователь']">
     <div class="enterprise-container">
       <div class="notifications-wrapper">
-        <MoloNotice
-            v-for="(notification, index) in notifications"
-            :key="notification.id"
-            :notice_type="notification.type"
-            :notice_title="notification.title"
-            :notice_text="notification.text"
-            :index="index"
-            :total="notifications.length"
-            @close="removeNotification(notification.id)"
-        />
+        <Teleport to="#notice-root">
+          <MoloNotice
+              v-for="(notification, index) in notifications"
+              :key="notification.id"
+              :notice_type="notification.type"
+              :notice_title="notification.title"
+              :notice_text="notification.text"
+              :index="index"
+              :total="notifications.length"
+              @close="removeNotification(notification.id)"
+          />
+        </Teleport>
       </div>
 
       <div v-if="isLoading" class="loading-state">
@@ -149,7 +151,9 @@ function deleteUser() {
 }
 
 @keyframes spin {
-  100% { transform: rotate(360deg); }
+  100% {
+    transform: rotate(360deg);
+  }
 }
 
 .content {
@@ -238,12 +242,12 @@ function deleteUser() {
 
 .windows-section {
   position: relative;
-  width: fit-content;
-  min-width: 100%;
+  width: 100%; /* Было fit-content */
+  min-width: 0; /* Убираем min-width: 100% */
   z-index: 1;
   border-radius: 12px;
   min-height: 500px;
-  overflow: hidden;
+  overflow: visible; /* МЕНЯЕМ hidden НА visible */
 }
 
 @media (max-width: 1024px) {
