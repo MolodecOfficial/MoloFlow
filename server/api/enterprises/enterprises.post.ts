@@ -22,7 +22,7 @@ export default defineEventHandler(async (event) => {
         await newEnterprise.save()
         return {
             statusCode: 200,
-            message: "Предприятие успешно добавлено в базу",
+            message: "Предприятие успешно добавлено в базу. Можете приступать к работе!",
             enterprise: {
                 _id: newEnterprise._id,
                 enterpriseName: newEnterprise.enterpriseName,

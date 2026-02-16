@@ -11,26 +11,26 @@ const emit = defineEmits<{
   'lock-hover': [value: boolean]
   'open-window': [groupId: string, itemId: string, groupTitle: string, itemTitle: string]
 }>()
+const { addNotification } = useNotifications()
 
 const enterprises = ref([])
 const loadingEnterprises = ref(false)
+const notificationText = ref('')
 
 const getEnterprises = async () => {
   loadingEnterprises.value = true
   try {
     const response = await $fetch('/api/enterprises/enterprises')
     enterprises.value = response.enterprises
-    console.log('Все предприятия:', enterprises.value)
     return enterprises.value
   } catch (error) {
-    console.error('Ошибка при получении предприятий:', error)
+    addNotification('ERROR_DEFAULT', error)
     return []
   } finally {
     loadingEnterprises.value = false
   }
 }
 
-const { addNotification } = useNotifications()
 
 const isLockedHover = ref(false)
 const tooltipPosition = ref({ x: 0, y: 0 })
@@ -105,7 +105,11 @@ const handleLinkClick = (
 }
 
 onMounted(() => {
-  getEnterprises()
+  // Загружаем предприятия только для управляющего
+  if (props.role === 'Управляющий') {
+    getEnterprises()
+  }
+
   menuGroups.value = getMenuByRole(props.role)
   if (menuGroups.value.length === 0) {
     addNotification('GET_MENU_ERROR')
@@ -174,8 +178,7 @@ onMounted(() => {
     </div>
   </section>
 
-  <!-- Список предприятий в том же стиле, что и меню -->
-  <section class="enterprises-list">
+  <section v-if="role === 'Управляющий'" class="enterprises-list">
     <h3 class="list-title">Доступные предприятия</h3>
     <div v-if="loadingEnterprises" class="loading-state">
       <div class="loading-spinner"></div>
@@ -218,7 +221,6 @@ onMounted(() => {
   min-width: 250px;
   backdrop-filter: blur(10px);
   z-index: 1;
-
 }
 
 .action-list:hover {
@@ -381,7 +383,7 @@ onMounted(() => {
   backdrop-filter: blur(10px);
   transition: all 0.3s ease;
   overflow-y: auto;
-  z-index: 2;
+  z-index: 1;
 }
 
 .enterprises-list:hover {

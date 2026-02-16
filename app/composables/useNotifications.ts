@@ -13,8 +13,7 @@ const globalNotifications = {
 let isCheckingNotifications = false
 
 export function useNotifications() {
-    const addNotification = (key: string) => {
-        // @ts-ignore
+    const addNotification = (key: string, dynamicText?: string) => {
         const data: any = config.notifications[key]
         if (!data) return false
 
@@ -26,7 +25,8 @@ export function useNotifications() {
             localStorage.setItem(shownKey, 'true')
         }
 
-        // Проверяем, нет ли уже такого уведомления
+        const notificationText = dynamicText || data.text
+
         const existing = globalNotifications.notifications.value.find(n =>
             n.title === data.title && n.text === data.text
         )
@@ -39,7 +39,7 @@ export function useNotifications() {
             id: globalNotifications.nextId.value++,
             type: data.type,
             title: data.title,
-            text: data.text
+            text: notificationText
         }
         
         globalNotifications.notifications.value.unshift(newNotification)

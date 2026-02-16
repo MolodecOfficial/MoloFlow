@@ -64,7 +64,6 @@ function deleteUser() {
   <MoloGuard :allowedRoles="['Управляющий', 'Сотрудник', 'Пользователь']">
     <div class="enterprise-container">
       <div class="notifications-wrapper">
-        <Teleport to="#notice-root">
           <MoloNotice
               v-for="(notification, index) in notifications"
               :key="notification.id"
@@ -75,7 +74,6 @@ function deleteUser() {
               :total="notifications.length"
               @close="removeNotification(notification.id)"
           />
-        </Teleport>
       </div>
 
       <div v-if="isLoading" class="loading-state">
@@ -93,14 +91,11 @@ function deleteUser() {
         </div>
 
         <div class="main-content">
-          <div class="menu-section">
             <MoloMenu
                 :role="role"
                 @open-window="openWindow"
             />
-          </div>
 
-          <div class="windows-section">
             <WindowsManager
                 :windows="windows"
                 @close="closeWindow"
@@ -111,7 +106,6 @@ function deleteUser() {
                 @maximize="maximizeWindow"
                 @open-window="openWindow"
             />
-          </div>
         </div>
       </div>
     </div>
@@ -122,9 +116,17 @@ function deleteUser() {
 /* Стили остаются без изменений */
 .notifications-wrapper {
   position: fixed;
-  top: 0;
-  right: 0;
-  z-index: 9999;
+  right: 15px;
+  bottom: 10px;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 10px;
+  z-index: 1000;
+  pointer-events: none;
+}
+
+.notifications-wrapper > * {
+  pointer-events: auto;
 }
 
 .enterprise-container {
@@ -160,10 +162,10 @@ function deleteUser() {
   display: flex;
   flex-direction: column;
   gap: 15px;
-  padding: 20px;
 }
 
 .header-content {
+  padding: 20px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -229,25 +231,14 @@ function deleteUser() {
 }
 
 .main-content {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 20px;
-  margin-top: 20px;
-  min-height: calc(100vh - 150px);
-}
-
-.menu-section {
-  min-width: 280px;
-}
-
-.windows-section {
+  overflow: hidden;
+  margin: 0;
+  padding: 20px;
   position: relative;
-  width: 100%; /* Было fit-content */
-  min-width: 0; /* Убираем min-width: 100% */
-  z-index: 1;
-  border-radius: 12px;
-  min-height: 500px;
-  overflow: visible; /* МЕНЯЕМ hidden НА visible */
+  width: 100%;
+  display: flex;
+  min-height: calc(100vh - 150px);
+  box-sizing: border-box;
 }
 
 @media (max-width: 1024px) {

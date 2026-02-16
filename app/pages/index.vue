@@ -65,7 +65,7 @@ async function loginUser() {
     loading.value = true;
     statusMessage.value = 'Произвожу вход...';
 
-    const response = await fetch('/api/login', {
+    const response = await fetch('/api/users/login', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

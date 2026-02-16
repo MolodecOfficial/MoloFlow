@@ -43,7 +43,7 @@ const createEnterprise = async () => {
       ogrn: Number(ogrn.value),
       legalAddress: legalAddress.value,
       actualAddress: sameAddress.value ? legalAddress.value : actualAddress.value,
-      phone: Number(phone.value.replace(/\D/g, '')), // Убираем все нецифровые символы
+      phone: Number(phone.value.replace(/\D/g, '')),
       email: email.value,
       director: director.value,
       okved: Number(okved.value),
@@ -51,33 +51,19 @@ const createEnterprise = async () => {
       ownershipForm: ownershipForm.value
     }
 
-    console.log('📤 Отправка данных:', enterpriseData)
-
-    // Отправка запроса
     const response = await $fetch('/api/enterprises/enterprises', {
       method: 'POST',
       body: enterpriseData
     })
 
-    console.log('✅ Ответ сервера:', response)
+    addNotification('NOTICE_DEFAULT', response.message)
 
-    // Показываем уведомление об успехе
-    addNotification('ENTERPRISE_ADD_SUCCESS')
-
-    // Очищаем форму
     resetForm()
 
   } catch (error: any) {
-    console.error('❌ Ошибка при создании:', error)
 
-    // Показываем уведомление об ошибке
-    addNotification('ENTERPRISE_ADD_ERROR')
+    addNotification('ERROR_DEFAULT', error.data?.message || error.message)
 
-    // Если есть конкретное сообщение об ошибке от сервера
-    if (error.data?.message) {
-      // Можно добавить дополнительное уведомление с текстом ошибки
-      console.error('Сообщение сервера:', error.data.message)
-    }
   } finally {
     loading.value = false
   }
@@ -168,6 +154,7 @@ const validateForm = () => {
         <MoloForm
             label="kpp"
             tLabel="КПП"
+            lRequired
             type="text"
             id="kpp"
             placeholder="123456789"

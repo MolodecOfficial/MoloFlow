@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
-
 const props = defineProps({
   notice_type: String,
   notice_title: String,
@@ -12,68 +10,102 @@ const props = defineProps({
 const emit = defineEmits(['close']);
 const isClosing = ref(false);
 
-const bottomOffset = computed(() => {
-  const baseBottom = 30;
-  const noticeHeight = 120;
-  return baseBottom + (props.total - props.index - 1) * noticeHeight;
-});
-
 const handleClose = () => {
   isClosing.value = true;
   setTimeout(() => {
     emit('close');
   }, 300);
 };
+
+
+// Остальные computed
+const getIcon = computed(() => {
+  switch(props.notice_type) {
+    case 'error':
+      return '/error.svg';
+    case 'danger':
+      return '/danger.svg';
+    case 'notice':
+      return '/notice.svg';
+    default:
+      return '/notice.svg';
+  }
+});
+
+const getAccentColor = computed(() => {
+  switch(props.notice_type) {
+    case 'error':
+      return '#F44336';
+    case 'danger':
+      return '#FF9800';
+    case 'notice':
+      return '#2196F3';
+    default:
+      return '#2196F3';
+  }
+});
+
+
 </script>
 
 <template>
   <section
+      ref="noticeRef"
       class="main-notice"
-      :style="{ bottom: `${bottomOffset}px` }"
-      :data-type="notice_type"
+      :data-type="props.notice_type"
       :class="{ closing: isClosing }"
   >
-    <section class="notice">
-      <img
-          :src="notice_type === 'error' ? '/error.svg' : notice_type === 'danger' ? '/danger.svg' : '/notice.svg'"
-          alt=""
-          class="notice-img"
-      >
+    <section
+        class="notice"
+        :style="{
+        borderLeftColor: getAccentColor,
+      }"
+    >
+      <!-- Декоративная полоска слева -->
+      <div class="accent-bar" :style="{ backgroundColor: getAccentColor }"></div>
+
+      <!-- Иконка -->
+      <div class="icon-wrapper" :style="{ backgroundColor: `${getAccentColor}20` }">
+        <img :src="getIcon" alt="" class="notice-img" />
+      </div>
+
+      <!-- Контент -->
       <section class="notice-block">
-        <span class="notice-title"> {{ notice_title }} </span>
-        <span class="notice-text"> {{ notice_text }} </span>
+        <span class="notice-title" :style="{ color: getAccentColor }">{{ props.notice_title }}</span>
+        <span class="notice-text">{{ props.notice_text }}</span>
       </section>
-      <button class="close" @click="handleClose" aria-label="Закрыть уведомление">×</button>
+
+      <!-- Кнопка закрытия -->
+      <button class="close" @click="handleClose" aria-label="Закрыть уведомление">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
     </section>
   </section>
 </template>
 
-<style scoped>
 
+<style scoped>
 .main-notice {
   z-index: 1000;
-  position: fixed;
-  display: flex;
-  right: 25px;
-  width: 400px;
-  min-width: 400px;
-  background: rgba(45, 45, 45, 0.39);
-  transition: transform 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55),
-  opacity 0.5s ease-out,
-  bottom 0.3s ease-out;
-  animation: slideInRight 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55) forwards;
+  gap: 20px;
+  width: 380px;
+  min-width: 380px;
+  transition: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  animation: slideInRight 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55) forwards;
   transform: translateX(100%);
   opacity: 0;
+  filter: drop-shadow(0 10px 20px rgba(0, 0, 0, 0.2));
 }
 
 @keyframes slideInRight {
   0% {
-    transform: translateX(10%);
+    transform: translateX(100%) scale(0.9);
     opacity: 0;
   }
-
   100% {
-    transform: translateX(0);
+    transform: translateX(0) scale(1);
     opacity: 1;
   }
 }
@@ -84,138 +116,170 @@ const handleClose = () => {
 
 @keyframes slideOutRight {
   0% {
-    transform: translateX(0);
+    transform: translateX(0) scale(1);
     opacity: 1;
   }
   100% {
-    transform: translateX(100%);
+    transform: translateX(100%) scale(0.9);
     opacity: 0;
   }
 }
 
 .notice {
   display: flex;
-  border: 1px solid transparent;
-  border-left-color: var(--half_opacity_right-border);
-  border-bottom-color: var(--half_opacity_right-border);
   align-items: center;
-  border-bottom-left-radius: 10px;
-  background-color: var(--half_opacity_bg);
-  padding: 8px 12px;
-  gap: 15px;
-  flex-shrink: 0;
-  width: 100%;
+  background: rgb(28, 28, 28);
   backdrop-filter: blur(10px);
+  border-radius: 16px;
+  padding: 16px;
+  gap: 16px;
   position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: 0.1s all ease-in-out;
+}
 
-  & .notice-img {
-    width: 80px;
-    min-width: 80px;
-  }
+.accent-bar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  border-radius: 4px 0 0 4px;
+}
 
-  & .notice-block {
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
-    min-width: 0;
-    width: 100%;
-    flex: 1;
-  }
+.icon-wrapper {
+  width: 48px;
+  height: 48px;
+  min-width: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
 
-  & .notice-title {
-    color: white;
-    font-size: 18px;
-    white-space: nowrap;
-  }
+.notice-img {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+  filter: brightness(0) invert(1);
+}
 
-  & .notice-text {
-    color: white;
-    font-size: 14px;
-    word-wrap: break-word;
-    overflow-wrap: break-word;
-  }
+.notice-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.notice-title {
+  font-size: 16px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: 0.3px;
+}
+
+.notice-text {
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 13px;
+  line-height: 1.5;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  max-height: 60px;
+  overflow-y: auto;
+}
+
+.notice-text::-webkit-scrollbar {
+  width: 4px;
+}
+
+.notice-text::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.notice-text::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+}
+
+.notice-text::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
 }
 
 .close {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  width: 24px;
-  height: 24px;
-  border: none;
-  background: rgba(255, 255, 255, 0.1);
-  color: white;
-  font-size: 18px;
-  font-weight: bold;
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  border: 1px solid var(--half_opacity_border);
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.6);
   cursor: pointer;
-  border-radius: 50%;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: all 0.2s ease;
-  opacity: 0.7;
   padding: 0;
-  line-height: 1;
+  margin-left: 4px;
+  flex-shrink: 0;
 }
 
 .close:hover {
-  background: rgba(255, 255, 255, 0.2);
-  opacity: 1;
-  transform: scale(1.1);
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
 }
 
 .close:active {
   transform: scale(0.95);
 }
 
-.main-notice:hover .close {
-  opacity: 0.7;
+.notice:hover {
+  transform: translateX(-2px);
+  border-color: rgba(255, 255, 255, 0.15);
 }
 
-/* Стили для разных типов уведомлений */
-.main-notice[data-type="notice"] .notice {
-  border-left-color: #2196F3;
-  border-bottom-color: #2196F3;
-}
 
-.main-notice[data-type="danger"] .notice {
-  border-left-color: #FF9800;
-  border-bottom-color: #FF9800;
-
-}
-
-.main-notice[data-type="error"] .notice {
-  border-left-color: #F44336;
-  border-bottom-color: #F44336;
-
-}
-
-.main-notice[data-type="notice"] .close:hover {
-  background: rgba(33, 150, 243, 0.5);
-}
-
-.main-notice[data-type="danger"] .close:hover {
-  background: rgba(255, 234, 0, 0.5);
-}
-
-.main-notice[data-type="error"] .close:hover {
-  background: rgba(244, 67, 54, 0.5);
-}
 
 /* Адаптивность */
 @media (max-width: 500px) {
   .main-notice {
-    width: 95%;
+    width: calc(100% - 40px);
     min-width: unset;
-    right: 2.5%;
+    right: 20px;
+    left: 20px;
+  }
+
+  .notice {
+    padding: 14px;
+  }
+
+  .icon-wrapper {
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+  }
+
+  .notice-img {
+    width: 24px;
+    height: 24px;
+  }
+
+  .notice-title {
+    font-size: 15px;
+  }
+
+  .notice-text {
+    font-size: 12px;
   }
 
   .close {
-    top: 6px;
-    right: 6px;
-    width: 22px;
-    height: 22px;
-    font-size: 16px;
+    width: 24px;
+    height: 24px;
+    min-width: 24px;
   }
 }
 </style>

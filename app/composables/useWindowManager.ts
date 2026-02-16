@@ -53,7 +53,7 @@ export function useWindowManager() {
                 height: 400,
                 minWidth: 400,
                 minHeight: 300,
-                maxWidth: 1200,
+                maxWidth: 1600,
                 maxHeight: 800,
                 isMaximized: false
             }
