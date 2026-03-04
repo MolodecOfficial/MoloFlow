@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { getMenuByRole, type MenuGroup } from '~/utils/menuConfig'
+import { getMenuByRole, type MenuGroup, type MenuItem } from '~/utils/menuConfig'
 import { useNotifications } from '~/composables/useNotifications'
 import lock from "~~/public/lock.svg"
 
@@ -7,37 +7,50 @@ const props = defineProps<{
   role: string
 }>()
 
-const emit = defineEmits<{
-  'lock-hover': [value: boolean]
-  'open-window': [groupId: string, itemId: string, groupTitle: string, itemTitle: string]
-}>()
-const { addNotification } = useNotifications()
-
-const enterprises = ref([])
-const loadingEnterprises = ref(false)
-const notificationText = ref('')
-
-const getEnterprises = async () => {
-  loadingEnterprises.value = true
-  try {
-    const response = await $fetch('/api/enterprises/enterprises')
-    enterprises.value = response.enterprises
-    return enterprises.value
-  } catch (error) {
-    addNotification('ERROR_DEFAULT', error)
-    return []
-  } finally {
-    loadingEnterprises.value = false
-  }
+// Добавляем тип для размеров окна
+interface WindowSizeOptions {
+  width?: number
+  height?: number
+  minWidth?: number
+  minHeight?: number
 }
 
+const emit = defineEmits<{
+  'lock-hover': [value: boolean]
+  'open-window': [
+    groupId: string,
+    itemId: string,
+    subGroupId?: string,
+    sizeOptions?: WindowSizeOptions
+  ]
+}>()
 
+const { addNotification } = useNotifications()
+
+// Состояния
+const enterprises = ref([])
+const loadingEnterprises = ref(false)
 const isLockedHover = ref(false)
 const tooltipPosition = ref({ x: 0, y: 0 })
 const menuRef = ref<HTMLElement | null>(null)
 const menuGroups = ref<MenuGroup[]>([])
 const activeGroup = ref<string | null>(null)
+const expandedItems = ref<Set<string>>(new Set())
 
+// Загрузка предприятий для управляющего
+const getEnterprises = async () => {
+  loadingEnterprises.value = true
+  try {
+    const response = await $fetch('/api/enterprises/enterprises')
+    enterprises.value = response.enterprises
+  } catch (error) {
+    addNotification('ERROR_DEFAULT', error)
+  } finally {
+    loadingEnterprises.value = false
+  }
+}
+
+// Утилиты
 const getLockMessage = () => {
   switch(props.role) {
     case 'Пользователь':
@@ -51,6 +64,7 @@ const getLockMessage = () => {
   }
 }
 
+// Обработчики событий
 const handleMouseMove = (event: MouseEvent) => {
   if (!menuRef.value) return
   const rect = menuRef.value.getBoundingClientRect()
@@ -82,30 +96,72 @@ const handleGroupLeave = () => {
   activeGroup.value = null
 }
 
+const toggleExpand = (itemId: string) => {
+  if (expandedItems.value.has(itemId)) {
+    expandedItems.value.delete(itemId)
+  } else {
+    expandedItems.value.add(itemId)
+  }
+}
+
+// Определяем размеры для конкретных пунктов меню
+const getWindowSizeOptions = (itemId: string): WindowSizeOptions | undefined => {
+  const sizePresets: Record<string, WindowSizeOptions> = {
+    login: {
+      width: 400,
+      height: 350,
+      minWidth: 350,
+      minHeight: 400
+    },
+    creature: {
+      width: 700,
+      height: 650,
+      minWidth: 500,
+      minHeight: 600
+    },
+  }
+
+  return sizePresets[itemId]
+}
+
 const handleLinkClick = (
     groupId: string,
     itemId: string,
-    groupTitle: string,
-    itemTitle: string,
-    subGroupId?: string,
-    subGroupTitle?: string
+    subGroupId?: string
 ) => {
   if (props.role === 'Пользователь') {
     addNotification('LOCKED')
+    return
   }
 
-  emit('open-window',
-      groupId,
-      itemId,
-      groupTitle,
-      itemTitle,
-      subGroupId,
-      subGroupTitle
-  )
+  const sizeOptions = getWindowSizeOptions(itemId)
+  emit('open-window', groupId, itemId, subGroupId, sizeOptions)
 }
 
+const handleMenuItemClick = (
+    event: Event,
+    groupId: string,
+    item: MenuItem
+) => {
+  event.preventDefault()
+  if (item.items && item.items.length > 0) {
+    toggleExpand(item.id)
+    return
+  }
+  handleLinkClick(groupId, item.id)
+}
+
+const handleChildItemClick = (
+    groupId: string,
+    parentItem: MenuItem,
+    childItem: MenuItem
+) => {
+  handleLinkClick(groupId, childItem.id, parentItem.id)
+}
+
+
+// Инициализация
 onMounted(() => {
-  // Загружаем предприятия только для управляющего
   if (props.role === 'Управляющий') {
     getEnterprises()
   }
@@ -115,6 +171,11 @@ onMounted(() => {
     addNotification('GET_MENU_ERROR')
   }
 })
+
+const getPaddingLeft = (depth: number = 0): string => {
+  const basePadding = 10
+  return `${basePadding + depth * 20}px`
+}
 </script>
 
 <template>
@@ -141,7 +202,7 @@ onMounted(() => {
         <div class="group-header">
           <h3 class="group-title">{{ group.title }}</h3>
           <div class="group-indicator">
-            <svg width="12" height="8" viewBox="0 0 12 8" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <svg width="12" height="8" viewBox="0 0 12 8" fill="none">
               <path d="M1 1.5L6 6.5L11 1.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
           </div>
@@ -150,63 +211,75 @@ onMounted(() => {
         <transition name="expand">
           <div v-show="activeGroup === group.id" class="group-content">
             <div class="links">
-              <MoloMenuItem
-                  v-for="item in group.items"
-                  :key="item.id"
-                  :item="item"
-                  :groupId="group.id"
-                  :groupTitle="group.title"
-                  @open-window="handleLinkClick"
-              />
+              <template v-for="item in group.items" :key="item.id">
+                <div class="menu-item-wrapper">
+                  <a
+                      href="#"
+                      class="link"
+                      :class="{
+                      'has-children': item.items?.length,
+                      'is-parent': item.items?.length,
+                      'is-leaf': !item.items?.length
+                    }"
+                      :style="{ paddingLeft: getPaddingLeft() }"
+                      @click="(e) => handleMenuItemClick(e, group.id, item)"
+                  >
+                    <span class="item-title">{{ item.title }}</span>
+                    <span
+                        v-if="item.items?.length"
+                        class="expand-icon"
+                        :class="{ 'expanded': expandedItems.has(item.id) }"
+                    >
+                      <svg width="12" height="8" viewBox="0 0 12 8" fill="none">
+                        <path d="M1 1.5L6 6.5L11 1.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                      </svg>
+                    </span>
+                  </a>
+
+                  <transition name="expand">
+                    <div v-if="item.items?.length && expandedItems.has(item.id)" class="submenu">
+                      <div
+                          v-for="childItem in item.items"
+                          :key="childItem.id"
+                          class="child-link"
+                          :style="{ paddingLeft: getPaddingLeft(1) }"
+                          @click="handleChildItemClick(group.id, item, childItem)"
+                      >
+                        {{ childItem.title }}
+                      </div>
+                    </div>
+                  </transition>
+                </div>
+              </template>
             </div>
           </div>
         </transition>
       </div>
     </div>
 
+    <!-- Блокировка для пользователя -->
     <div v-if="isLockedHover && role === 'Пользователь'" class="lock-overlay">
       <img class="locked-icon" :src="lock" alt="Заблокировано">
       <div
           class="lock-message"
           :style="{
-            left: tooltipPosition.x + 10 + 'px',
-            top: tooltipPosition.y + 10 + 'px'
-          }"
+          left: tooltipPosition.x + 10 + 'px',
+          top: tooltipPosition.y + 10 + 'px'
+        }"
       >
         {{ getLockMessage() }}
-      </div>
-    </div>
-  </section>
-
-  <section v-if="role === 'Управляющий'" class="enterprises-list">
-    <h3 class="list-title">Доступные предприятия</h3>
-    <div v-if="loadingEnterprises" class="loading-state">
-      <div class="loading-spinner"></div>
-    </div>
-    <div v-else-if="enterprises.length === 0" class="empty-list">
-      Нет предприятий
-    </div>
-    <div v-else class="enterprises-container">
-      <div
-          v-for="enterprise in enterprises"
-          :key="enterprise._id"
-          class="enterprise-item"
-      >
-        <span class="enterprise-name">
-          {{ enterprise.ownershipForm }} {{ enterprise.enterpriseName }}
-        </span>
-        <span class="enterprise-inn">{{ enterprise.director }}</span>
       </div>
     </div>
   </section>
 </template>
 
 <style scoped>
+/* Все стили из обоих компонентов */
 .action-list {
   position: absolute;
   border: 1px solid var(--half_opacity_border);
   background-color: var(--half_opacity_bg);
-  border-radius: 20px;
+  border-radius: 10px;
   display: flex;
   top: 50%;
   left: 20px;
@@ -263,6 +336,7 @@ onMounted(() => {
 
 .group-header:hover {
   background-color: rgba(56, 239, 125, 0.1);
+  color: var(--half_opacity_border_hover);
 }
 
 .group-title {
@@ -312,16 +386,82 @@ onMounted(() => {
   position: relative;
 }
 
+/* Стили пунктов меню */
+.menu-item-wrapper {
+  position: relative;
+}
+
 .link {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   color: rgba(255, 255, 255, 0.8);
   text-decoration: none;
   transition: all 0.2s ease;
-  padding: 6px 0 6px 10px;
-  position: relative;
+  padding: 8px 10px 8px 20px;
   font-size: 14px;
+  border-radius: 6px;
+  margin: 2px 0;
 }
 
 .link:hover {
+  background: rgba(56, 239, 125, 0.1);
+}
+
+.link.has-children {
+  cursor: pointer;
+
+}
+
+.link.is-parent {
+  color: rgba(255, 255, 255, 0.9);
+  &:hover {
+    color: var(--half_opacity_border_hover);
+
+  }
+}
+
+.link.is-leaf:hover {
+  color: var(--half_opacity_border_hover);
+}
+
+.item-title {
+  flex: 1;
+}
+
+.expand-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-left: 8px;
+  transition: transform 0.3s ease;
+  opacity: 0.7;
+}
+
+.expand-icon.expanded {
+  transform: rotate(180deg);
+}
+
+.submenu {
+  margin-left: 10px;
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.child-link {
+  color: rgba(255, 255, 255, 0.8);
+  text-decoration: none;
+  transition: all 0.2s ease;
+  padding: 8px 10px 8px 40px;
+  font-size: 14px;
+  border-radius: 6px;
+  margin: 2px 0;
+  cursor: pointer;
+  display: block;
+}
+
+.child-link:hover {
   color: var(--half_opacity_border_hover);
 }
 
@@ -364,11 +504,12 @@ onMounted(() => {
   white-space: nowrap;
 }
 
+/* Стили для списка предприятий */
 .enterprises-list {
   position: absolute;
   border: 1px solid var(--half_opacity_border);
   background-color: var(--half_opacity_bg);
-  border-radius: 20px;
+  border-radius: 10px;
   display: flex;
   top: 50%;
   right: 20px;
@@ -403,6 +544,7 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  height: 100px;
 }
 
 .enterprise-item {
@@ -468,14 +610,9 @@ onMounted(() => {
 }
 
 @media (max-width: 767px) {
-  .action-list {
-    left: 10px;
-    padding: 20px;
-    min-width: auto;
-    width: calc(100% - 40px);
-  }
-
+  .action-list,
   .enterprises-list {
+    left: 10px;
     right: 10px;
     padding: 20px;
     min-width: auto;

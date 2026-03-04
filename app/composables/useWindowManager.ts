@@ -1,19 +1,67 @@
 import { ref } from 'vue'
 import type { WindowItem } from '~/types/window'
+import { menuConfig } from '/utils/menuConfig'
 
 const windows = ref<WindowItem[]>([])
 let zIndexCounter = 100
+
+export interface WindowSizeOptions {
+    width?: number
+    height?: number
+    minWidth?: number
+    minHeight?: number
+}
+
+// Вспомогательная функция для поиска элемента в меню
+function findMenuItem(groupId: string, itemId: string, subGroupId?: string) {
+    const group = menuConfig.find(g => g.id === groupId)
+    if (!group) return null
+
+    // Если есть subGroupId, ищем вложенный элемент
+    if (subGroupId) {
+        const parentItem = group.items.find(item => item.id === subGroupId)
+        if (!parentItem?.items) return null
+
+        const childItem = parentItem.items.find(item => item.id === itemId)
+        if (!childItem) return null
+
+        return {
+            groupTitle: group.title,
+            subGroupTitle: parentItem.title,
+            itemTitle: childItem.title,
+            componentName: childItem.componentName
+        }
+    }
+
+    // Обычный элемент (не вложенный)
+    const item = group.items.find(item => item.id === itemId)
+    if (!item) return null
+
+    return {
+        groupTitle: group.title,
+        itemTitle: item.title,
+        subGroupTitle: undefined,
+        componentName: item.componentName
+    }
+}
 
 export function useWindowManager() {
     const openWindow = (
         groupId: string,
         itemId: string,
-        groupTitle: string,
-        itemTitle: string,
         subGroupId?: string,
-        subGroupTitle?: string
+        sizeOptions?: WindowSizeOptions
     ) => {
-        console.log('✅ Открываем окно:', { groupId, itemId, groupTitle, itemTitle, subGroupId, subGroupTitle })
+        console.log('openWindow:', { groupId, itemId, subGroupId, sizeOptions })
+
+        // Проверяем существование элемента в конфиге
+        const menuItem = findMenuItem(groupId, itemId, subGroupId)
+        if (!menuItem) {
+            console.error(`MenuItem not found: ${groupId}/${itemId}${subGroupId ? `/${subGroupId}` : ''}`)
+            return
+        }
+
+        const { groupTitle, subGroupTitle, itemTitle, componentName } = menuItem
 
         // Проверяем, не открыто ли уже такое окно
         const existingWindow = windows.value.find(w =>
@@ -33,6 +81,13 @@ export function useWindowManager() {
         if (subGroupTitle) fullTitle += ` → ${subGroupTitle}`
         fullTitle += ` → ${itemTitle}`
 
+        const defaultSize = {
+            width: 600,
+            height: 400,
+            minWidth: 400,
+            minHeight: 300
+        }
+
         const newWindow: WindowItem = {
             id: `window_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
             groupTitle,
@@ -42,6 +97,7 @@ export function useWindowManager() {
             groupId,
             subGroupId,
             subGroupTitle,
+            componentName, // добавляем componentName для динамической загрузки
             zIndex: ++zIndexCounter,
             isMinimized: false,
             position: {
@@ -49,17 +105,15 @@ export function useWindowManager() {
                 y: 50 + (windows.value.length * 30)
             },
             size: {
-                width: 600,
-                height: 400,
-                minWidth: 400,
-                minHeight: 300,
-                maxWidth: 1600,
-                maxHeight: 800,
+                width: sizeOptions?.width ?? defaultSize.width,
+                height: sizeOptions?.height ?? defaultSize.height,
+                minWidth: sizeOptions?.minWidth ?? defaultSize.minWidth,
+                minHeight: sizeOptions?.minHeight ?? defaultSize.minHeight,
                 isMaximized: false
             }
         }
 
-        console.log('✅ Создано окно:', newWindow)
+        console.log('created window:', newWindow)
         windows.value.push(newWindow)
     }
 
@@ -91,10 +145,8 @@ export function useWindowManager() {
         if (window) {
             const minWidth = window.size.minWidth || 300
             const minHeight = window.size.minHeight || 200
-            const maxWidth = window.size.maxWidth || 1200
-            const maxHeight = window.size.maxHeight || 800
-            window.size.width = Math.max(minWidth, Math.min(maxWidth, newSize.width))
-            window.size.height = Math.max(minHeight, Math.min(maxHeight, newSize.height))
+            window.size.width = Math.max(minWidth, newSize.width)
+            window.size.height = Math.max(minHeight, newSize.height)
         }
     }
 

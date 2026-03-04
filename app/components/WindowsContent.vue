@@ -101,7 +101,9 @@ const Component = defineAsyncComponent(() => {
       </div>
     </template>
     <template #fallback>
-      <div class="loading">Загрузка...</div>
+      <div class="loading-overlay">
+      <div class="loading-spinner"></div>
+      </div>
     </template>
   </Suspense>
 </template>
@@ -113,13 +115,26 @@ const Component = defineAsyncComponent(() => {
   height: 100%;
 }
 
-.loading {
-  padding: 40px;
-  text-align: center;
-  color: rgba(255, 255, 255, 0.7);
-  min-height: 100px;
+.loading-overlay {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
+.loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid transparent;
+  border-top: 3px solid #38ef7d;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
 </style>

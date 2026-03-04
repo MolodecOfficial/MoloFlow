@@ -67,11 +67,14 @@ const restoreWindowWithAnimation = (id: string) => {
         @mousedown="focusWindow(window.id)"
         class="draggable-window"
     >
+      <template #default="{ refreshKey }">
       <WindowsContent
           :window-id="window.itemId"
           :group-id="window.groupId"
           :sub-group-id="window.subGroupId"
+          :key="refreshKey"
       />
+      </template>
     </MoloWindow>
 
     <div v-if="windows.some(w => w.isMinimized)" class="minimized-windows">

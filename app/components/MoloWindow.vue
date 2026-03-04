@@ -38,6 +38,12 @@ const isMaximizing = ref(false)
 // Определяем, включен ли полный размер
 const isMaximized = computed(() => props.window.size.isMaximized === true)
 
+const refreshKey = ref(0)
+
+function refreshContent() {
+  refreshKey.value++ // увеличение ключа пересоздаст содержимое
+}
+
 // Функция для минимизации с анимацией
 const minimizeWithAnimation = () => {
   isMinimizing.value = true
@@ -195,6 +201,9 @@ onUnmounted(() => {
           <span>{{ groupId }}</span><span>{{ subGroupId }}</span><span>{{ windowId }}</span>
         </div>
         <div class="window-controls">
+          <button class="control-btn refresh" @click="refreshContent">
+            ↻
+          </button>
           <button
               class="control-btn minimize"
               @click="minimizeWithAnimation"
@@ -224,9 +233,9 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <!-- Контент окна -->
+
       <div class="window-content">
-        <slot/>
+        <slot :refreshKey="refreshKey" />
       </div>
 
       <!-- Ручки для изменения размера (скрываем при максимизации) -->
@@ -244,30 +253,6 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-/* Ширина самого скроллбара (вертикального) */
-::-webkit-scrollbar {
-  width: 7px; /* для вертикального скролла */
-  height: 4px; /* для горизонтального скролла */
-}
-
-/* Трек (фон) */
-::-webkit-scrollbar-track {
-  background: transparent; /* цвет фона трека */
-  border-radius: 10px; /* скругление (опционально) */
-}
-
-/* Ползунок */
-::-webkit-scrollbar-thumb {
-  margin: 20px;
-  background: var(--half_opacity_border); /* цвет ползунка */
-  border-radius: 20px; /* скругление */
-}
-
-/* При наведении на ползунок можно добавить эффект */
-::-webkit-scrollbar-thumb:hover {
-  background: #38ef7d;
-}
-
 .window-container {
   position: absolute;
   animation: slideIn 0.3s ease-out;
@@ -308,7 +293,7 @@ onUnmounted(() => {
 .window {
   background: var(--half_opacity_bg);
   border: 1px solid var(--half_opacity_border);
-  border-radius: 12px;
+  border-radius: 10px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -460,6 +445,12 @@ onUnmounted(() => {
   background: rgba(255, 193, 7, 0.2);
   border-color: #ffc107;
   color: #ffc107;
+}
+
+.control-btn.refresh:hover {
+  background: rgba(161, 161, 161, 0.2);
+  border-color: #d3d3d3;
+  color: #d3d3d3;
 }
 
 .window-content {

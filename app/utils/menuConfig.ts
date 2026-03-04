@@ -89,7 +89,15 @@ export const menuConfig: MenuGroup[] = [
                         title: 'Создание предприятия',
                         requiredRole: 'Управляющий',
                         isActive: true,
-                        componentName: 'settingsEnterpriseCreature',
+                        componentName: 'Creature',
+                        parentId: 'enterprise'
+                    },
+                    {
+                        id: 'login',
+                        title: 'Войти в предприятие',
+                        requiredRole: 'Управляющий',
+                        isActive: true,
+                        componentName: 'Login',
                         parentId: 'enterprise'
                     },
                     {
@@ -97,7 +105,7 @@ export const menuConfig: MenuGroup[] = [
                         title: 'Управление предприятием',
                         requiredRole: 'Управляющий',
                         isActive: true,
-                        componentName: 'settingsEnterpriseControl',
+                        componentName: 'Control',
                         parentId: 'enterprise'
                     },
                 ]
@@ -107,7 +115,7 @@ export const menuConfig: MenuGroup[] = [
                 title: 'Условия пользования',
                 requiredRole: 'Управляющий',
                 isActive: false,
-                componentName: 'settingsTermsOfUse'
+                componentName: 'TermsOfUse'
             },
         ]
     }

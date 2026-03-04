@@ -94,6 +94,7 @@ function deleteUser() {
             <MoloMenu
                 :role="role"
                 @open-window="openWindow"
+
             />
 
             <WindowsManager
@@ -120,9 +121,10 @@ function deleteUser() {
   bottom: 10px;
   display: flex;
   flex-direction: column-reverse;
-  gap: 10px;
+  gap: 6px;
   z-index: 1000;
   pointer-events: none;
+  border-radius: 0;
 }
 
 .notifications-wrapper > * {

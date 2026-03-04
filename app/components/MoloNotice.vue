@@ -89,7 +89,7 @@ const getAccentColor = computed(() => {
 <style scoped>
 .main-notice {
   z-index: 1000;
-  gap: 20px;
+  gap: 10px;
   width: 380px;
   min-width: 380px;
   transition: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
@@ -97,6 +97,16 @@ const getAccentColor = computed(() => {
   transform: translateX(100%);
   opacity: 0;
   filter: drop-shadow(0 10px 20px rgba(0, 0, 0, 0.2));
+
+}
+
+.main-notice:first-child .notice {
+  border-radius: 0px 0px 15px 15px;
+}
+
+/* Первое уведомление */
+.main-notice:last-child .notice {
+  border-radius: 15px 15px 0px 0px;
 }
 
 @keyframes slideInRight {
@@ -130,7 +140,7 @@ const getAccentColor = computed(() => {
   align-items: center;
   background: rgb(28, 28, 28);
   backdrop-filter: blur(10px);
-  border-radius: 16px;
+  border-radius: 8px;
   padding: 16px;
   gap: 16px;
   position: relative;
@@ -144,7 +154,7 @@ const getAccentColor = computed(() => {
   left: 0;
   top: 0;
   bottom: 0;
-  width: 4px;
+  width: 3px;
   border-radius: 4px 0 0 4px;
 }
 
@@ -191,23 +201,6 @@ const getAccentColor = computed(() => {
   overflow-wrap: break-word;
   max-height: 60px;
   overflow-y: auto;
-}
-
-.notice-text::-webkit-scrollbar {
-  width: 4px;
-}
-
-.notice-text::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.notice-text::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 4px;
-}
-
-.notice-text::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.3);
 }
 
 .close {

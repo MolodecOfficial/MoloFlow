@@ -27,8 +27,7 @@ const ownershipForm = ref('ООО')
 const ownershipOptions = ['ООО', 'АО', 'ПАО', 'ИП', 'НКО']
 
 const openTermsOfUse = () => {
-  console.log('🖱️ Opening termsOfUse directly')
-  openWindow('settings', 'termsOfUse', 'Общие настройки', 'Условия пользования')
+  openWindow('settings', 'termsOfUse')
 }
 
 const createEnterprise = async () => {
@@ -57,13 +56,10 @@ const createEnterprise = async () => {
     })
 
     addNotification('NOTICE_DEFAULT', response.message)
-
     resetForm()
 
   } catch (error: any) {
-
     addNotification('ERROR_DEFAULT', error.data?.message || error.message)
-
   } finally {
     loading.value = false
   }
@@ -427,7 +423,6 @@ button.login {
   background: #1eef6f;
   color: #020b18;
   width: 100%;
-  margin-top: 1rem;
 }
 
 button.login:hover:not(:disabled) {
@@ -446,8 +441,8 @@ hr {
 }
 
 .modern-loader {
-  width: 24px;
-  height: 24px;
+  width: 12px;
+  height: 12px;
   border: 3px solid rgba(0, 0, 0, 0.1);
   border-radius: 50%;
   border-top-color: #020b18;
