@@ -108,6 +108,28 @@ export const menuConfig: MenuGroup[] = [
                         componentName: 'Control',
                         parentId: 'enterprise'
                     },
+                    {
+                        id: 'createPoint',
+                        title: 'Создание точки',
+                        requiredRole: 'Управляющий',
+                        isActive: false,
+                        componentName: 'CreatePoint',
+                        parentId: 'enterprise',
+                    },{
+                        id: 'createEmployee',
+                        title: 'Создание сотрудника',
+                        requiredRole: 'Управляющий',
+                        isActive: false,
+                        componentName: 'CreateEmployee',
+                        parentId: 'enterprise',
+                    },{
+                        id: 'createPlan',
+                        title: 'Создание плана',
+                        requiredRole: 'Управляющий',
+                        isActive: false,
+                        componentName: 'CreatePlan',
+                        parentId: 'enterprise',
+                    },
                 ]
             },
             {
@@ -117,6 +139,7 @@ export const menuConfig: MenuGroup[] = [
                 isActive: false,
                 componentName: 'TermsOfUse'
             },
+
         ]
     }
 ];
@@ -125,13 +148,22 @@ export function getMenuByRole(role: string): MenuGroup[] {
     return menuConfig
         .filter(group =>
             group.isActive !== false &&
-            group.requiredRole === role // Фильтруем группы по роли
+            group.requiredRole === role
         )
         .map(group => ({
             ...group,
             items: group.items
-                .filter(item => item.requiredRole === role && item.isActive)
-                .sort((a, b) => a.order - b.order)
+                .filter(item =>
+                    item.requiredRole === role &&
+                    item.isActive !== false
+                )
+                .map(item => ({
+                    ...item,
+                    items: item.items
+                        ?.filter(child =>
+                            child.requiredRole === role &&
+                            child.isActive !== false
+                        )
+                }))
         }))
-        .sort((a, b) => a.order - b.order); // Сортируем группы
 }

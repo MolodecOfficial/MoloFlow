@@ -82,7 +82,7 @@ async function deleteToken() {
 <template>
   <div class="enterprise-login">
     <h2 class="title">Вход в предприятие</h2>
-
+    <hr>
     <form @submit.prevent="handleLogin" class="login-form">
       <div class="form-group">
         <label for="inn">ИНН предприятия</label>
@@ -137,11 +137,6 @@ async function deleteToken() {
   box-sizing: border-box;
 }
 
-.title {
-  font-weight: 600;
-  margin: 0 0 1.5rem 0;
-  color: white;
-}
 
 .login-form {
   display: flex;

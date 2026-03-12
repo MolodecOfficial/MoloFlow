@@ -9,6 +9,7 @@ defineProps<{
   iRequired?: boolean
   placeholder?: string
   maxLength?: string
+  readonly?: any
 }>()
 
 defineEmits<{
@@ -30,6 +31,7 @@ defineEmits<{
         :required="iRequired"
         :placeholder="placeholder"
         :maxlength="maxLength"
+        :readonly="readonly"
     />
   </div>
 </template>
@@ -56,7 +58,7 @@ label {
 input {
   background-color: var(--half_opacity_bg);
   border: 1px solid var(--half_opacity_border);
-  border-radius: 8px;
+  border-radius: 5px;
   padding: 10px 12px;
   color: white;
   font-size: 0.95rem;
@@ -75,4 +77,16 @@ input::placeholder {
   color: rgba(255, 255, 255, 0.3);
   font-style: italic;
 }
+
+input:read-only {
+  background: rgba(255, 255, 255, 0.02);
+  border-color: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.5);
+  cursor: default;
+}
+input:read-only:focus {
+  border-color: rgba(255, 255, 255, 0.05);
+  box-shadow: none;
+}
+
 </style>

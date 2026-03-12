@@ -109,7 +109,7 @@ const getWindowSizeOptions = (itemId: string): WindowSizeOptions | undefined => 
   const sizePresets: Record<string, WindowSizeOptions> = {
     login: {
       width: 400,
-      height: 350,
+      height: 450,
       minWidth: 350,
       minHeight: 400
     },
@@ -212,7 +212,7 @@ const getPaddingLeft = (depth: number = 0): string => {
           <div v-show="activeGroup === group.id" class="group-content">
             <div class="links">
               <template v-for="item in group.items" :key="item.id">
-                <div class="menu-item-wrapper">
+                <div v-if="item.isActive !== false" class="menu-item-wrapper">
                   <a
                       href="#"
                       class="link"

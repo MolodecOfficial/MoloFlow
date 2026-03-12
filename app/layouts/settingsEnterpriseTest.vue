@@ -8,7 +8,7 @@ const props = defineProps( {
 
 <template>
   <section>
-    <span>Тут тестируют предприятия бля</span>
+    <span>Тут тестируют предприятия</span>
     <span>id группы: {{ props.groupId }} </span>
     <span>sub-id группы: {{ props.subGroupId }} </span>
 

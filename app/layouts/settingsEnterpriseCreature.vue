@@ -109,6 +109,7 @@ const validateForm = () => {
 </script>
 
 <template>
+
   <div class="enterprise-creature">
     <h1 class="title">Создание предприятия</h1>
 
@@ -287,24 +288,18 @@ const validateForm = () => {
 .enterprise-creature {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 10px;
   height: 100%;
   width: 100%;
   color: white;
-  overflow: hidden;
+  overflow-y: initial;
 }
-
 .title {
-  font-size: 1.8rem;
-  font-weight: 600;
-  margin: 0 0 0.5rem 0;
   color: white;
 }
 
 .notice {
-  font-size: 0.95rem;
   color: rgba(255, 255, 255, 0.8);
-  margin-bottom: 1rem;
 }
 
 .tou {
@@ -324,7 +319,7 @@ const validateForm = () => {
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
-  overflow-x: hidden;
+  overflow-x: inherit;
 }
 
 .form-grid {
@@ -423,6 +418,7 @@ button.login {
   background: #1eef6f;
   color: #020b18;
   width: 100%;
+  margin-bottom: 20px;
 }
 
 button.login:hover:not(:disabled) {

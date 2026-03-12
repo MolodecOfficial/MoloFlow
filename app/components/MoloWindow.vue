@@ -4,6 +4,28 @@ import {useWindowDrag} from '~/composables/useWindowDrag'
 import {useWindowResize} from '~/composables/useWindowResize'
 import {ref, computed, onMounted, onUnmounted} from 'vue'
 import RestoreIcon from '~~/app/assets/icons/min.svg'
+import {useUserStore} from "~~/stores/userStore";
+
+const { addNotification } = useNotifications()
+
+const userStore = useUserStore()
+const role = ref('')
+
+const loadUserRole = () => {
+  let userRole = ''
+
+  if (userStore.userRole) {
+    userRole = userStore.userRole
+  } else {
+    const storageUser = localStorage.getItem('user')
+    if (storageUser) {
+      const user = JSON.parse(storageUser)
+      userRole = user.role || 'Пользователь'
+    }
+  }
+  role.value = userRole
+
+}
 
 const props = defineProps<{
   window: WindowItem
@@ -161,6 +183,7 @@ const getResizeCursor = (edge: string) => {
 onMounted(() => {
   document.addEventListener('mousemove', handleMouseMove)
   document.addEventListener('mouseup', handleMouseUp)
+  loadUserRole()
 })
 
 onUnmounted(() => {
@@ -197,7 +220,7 @@ onUnmounted(() => {
       <!-- Заголовок окна -->
       <div class="window-header" @mousedown="handleDragStart">
         <div class="window-title">{{ window.fullTitle }}</div>
-        <div class="header-logger">
+        <div class="header-logger" v-if="role === 'Управляющий'">
           <span>{{ groupId }}</span><span>{{ subGroupId }}</span><span>{{ windowId }}</span>
         </div>
         <div class="window-controls">
@@ -404,13 +427,16 @@ onUnmounted(() => {
 
 .window-controls {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   flex-shrink: 0;
+  border: 1px solid var(--half_opacity_border);
+  border-radius: 6px;
+  padding: 2px;
 }
 
 .control-btn {
+  border: none;
   background: transparent;
-  border: 1px solid var(--half_opacity_border);
   color: white;
   width: 28px;
   height: 28px;
@@ -432,29 +458,25 @@ onUnmounted(() => {
 .control-btn.maximize:hover {
   background: rgba(33, 150, 243, 0.2);
   border-color: #0c92ff;
-  color: #0c92ff;
 }
 
 .control-btn.close:hover {
   background: rgba(220, 53, 69, 0.2);
   border-color: #ff0a21;
-  color: #ff0a21;
 }
 
 .control-btn.minimize:hover {
   background: rgba(255, 193, 7, 0.2);
   border-color: #ffc107;
-  color: #ffc107;
 }
 
 .control-btn.refresh:hover {
   background: rgba(161, 161, 161, 0.2);
   border-color: #d3d3d3;
-  color: #d3d3d3;
 }
 
 .window-content {
-  padding: 24px;
+  padding: 20px;
   color: rgba(255, 255, 255, 0.9);
   overflow: auto;
   box-sizing: border-box;
@@ -541,8 +563,7 @@ onUnmounted(() => {
 
 .window.dragging,
 .window.resizing {
-  opacity: 0.95;
-  box-shadow: 0 15px 40px rgba(0, 0, 0, 0.4);
+  border: 1px solid #888888
 }
 
 .logger {

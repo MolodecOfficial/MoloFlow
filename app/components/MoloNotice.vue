@@ -140,7 +140,6 @@ const getAccentColor = computed(() => {
   align-items: center;
   background: rgb(28, 28, 28);
   backdrop-filter: blur(10px);
-  border-radius: 8px;
   padding: 16px;
   gap: 16px;
   position: relative;
