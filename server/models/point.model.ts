@@ -44,6 +44,9 @@ const pointSchema = new mongoose.Schema({
     metadata: {
         square: Number,
         employeeCount: Number,
+    },
+    employeePlan: {
+        type: Number
     }
 }, {
     timestamps: true

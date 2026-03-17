@@ -1,4 +1,3 @@
-<!-- createPlan.vue -->
 <script setup lang="ts">
 import {ref, onMounted} from 'vue'
 import {useNotifications} from '~/composables/useNotifications'

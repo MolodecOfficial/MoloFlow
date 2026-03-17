@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 
-const enterpriseUserSchema = new mongoose.Schema({
+const employeeSchema = new mongoose.Schema({
     enterpriseId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Enterprise',
@@ -15,7 +15,10 @@ const enterpriseUserSchema = new mongoose.Schema({
         type: String,
         required: [true, 'Должность обязательна'],
     },
-    department: String, // отдел
+    department: {
+        type: String,
+        enum: ['IT-Отдел', 'Отдел продаж', 'Отдел безопасности', 'Юридический отдел'],
+    }, // Отдел
     pointId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Point',
@@ -35,16 +38,15 @@ const enterpriseUserSchema = new mongoose.Schema({
     },
     contacts: {
         phone: String,
-        email: String,
-        emergencyPhone: String, // экстренный телефон
+        emergencyPhone: String,
     }
 }, {
     timestamps: true
 });
 
 // Один пользователь может работать только в одном предприятии
-enterpriseUserSchema.index({ userId: 1 }, { unique: true });
+employeeSchema.index({ userId: 1 }, { unique: true });
 
-export const EnterpriseUser = mongoose.models.EnterpriseUser || mongoose.model('EnterpriseUser', enterpriseUserSchema);
+export const EmployeeUser = mongoose.models.EmployeeUser || mongoose.model('EmployeeUser', employeeSchema);
 
-export default mongoose.model('EnterpriseUser', enterpriseUserSchema);
+export default mongoose.model('EmployeeUser', employeeSchema);

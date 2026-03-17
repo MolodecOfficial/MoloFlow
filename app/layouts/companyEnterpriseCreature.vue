@@ -27,7 +27,7 @@ const ownershipForm = ref('ООО')
 const ownershipOptions = ['ООО', 'АО', 'ПАО', 'ИП', 'НКО']
 
 const openTermsOfUse = () => {
-  openWindow('settings', 'termsOfUse')
+  openWindow('company', 'termsOfUse')
 }
 
 const createEnterprise = async () => {

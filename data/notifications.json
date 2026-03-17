@@ -79,9 +79,6 @@
           "Пользователь": ["USER_NOT_ADDED", "UPDATE_INFO"],
           "Сотрудник": ["EMPLOYEE_NOT_ADDED", "UPDATE_INFO"],
           "Управляющий": []
-        },
-        "users": {
-          "MolodecOfficial": ["DEVELOPER_INFO_ENTERPRISE", "DEVELOPER_INFO_ACHIEVEMENTS", "DEVELOPER_INFO_CONTINUE"]
         }
       }
     }

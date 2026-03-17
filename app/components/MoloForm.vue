@@ -14,6 +14,8 @@ defineProps<{
 
 defineEmits<{
   'update:modelValue': [value: string]
+  'input': [event: Event]
+  'focus': [event: Event]
 }>()
 </script>
 
@@ -27,7 +29,8 @@ defineEmits<{
         :type="type || 'text'"
         :id="id || label"
         :value="modelValue"
-        @input="$emit('update:modelValue', ($event.target as HTMLInputElement).value)"
+        @input="$emit('update:modelValue', ($event.target as HTMLInputElement).value); $emit('input', $event)"
+        @focus="$emit('focus', $event)"
         :required="iRequired"
         :placeholder="placeholder"
         :maxlength="maxLength"
@@ -88,5 +91,4 @@ input:read-only:focus {
   border-color: rgba(255, 255, 255, 0.05);
   box-shadow: none;
 }
-
 </style>

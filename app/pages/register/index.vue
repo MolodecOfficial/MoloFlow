@@ -1,25 +1,101 @@
 <script setup lang="ts">
-import { useRouter } from 'vue-router';
+import {useRouter} from 'vue-router';
 
 const name = ref('')
 const password = ref('')
 const role = ref('Пользователь')
+const phone = ref('')
 const loading = ref(false);
 const statusMessage = ref('');
 
 const router = useRouter();
 
+// Функция для форматирования телефона
+function formatPhone(value: string) {
+  if (!value) return '+7';
+
+  // Удаляем все нецифровые символы
+  let numbers = value.replace(/\D/g, '');
+
+  // Если номер начинается с 7 или 8, заменяем на +7
+  if (numbers.startsWith('8')) {
+    numbers = '7' + numbers.substring(1);
+  }
+  if (!numbers.startsWith('7')) {
+    numbers = '7' + numbers;
+  }
+
+  // Ограничиваем длину до 11 цифр (включая 7)
+  numbers = numbers.substring(0, 11);
+
+  // Форматируем по маске +7 (XXX) XXX-XX-XX
+  let formatted = '+7';
+  if (numbers.length > 1) {
+    formatted += ' (' + numbers.substring(1, 4);
+  }
+  if (numbers.length >= 5) {
+    formatted += ') ' + numbers.substring(4, 7);
+  }
+  if (numbers.length >= 8) {
+    formatted += '-' + numbers.substring(7, 9);
+  }
+  if (numbers.length >= 10) {
+    formatted += '-' + numbers.substring(9, 11);
+  }
+
+  return formatted;
+}
+
+// Обработчик ввода телефона
+function onPhoneInput(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const cursorPosition = input.selectionStart || 0;
+  const oldValue = phone.value;
+
+  // Форматируем новое значение
+  const newValue = formatPhone(input.value);
+
+  // Вычисляем новую позицию курсора
+  let newCursorPosition = cursorPosition;
+
+  // Если добавились автоматические символы, сдвигаем курсор
+  if (newValue.length > oldValue.length) {
+    newCursorPosition += newValue.length - oldValue.length;
+  }
+
+  // Обновляем значение
+  phone.value = newValue;
+
+  // Восстанавливаем позицию курсора после обновления DOM
+  nextTick(() => {
+    input.setSelectionRange(newCursorPosition, newCursorPosition);
+  });
+}
+
+// Очистка телефона при фокусе (опционально)
+function onPhoneFocus(event: Event) {
+  const input = event.target as HTMLInputElement;
+  if (phone.value === '+7') {
+    input.setSelectionRange(2, 2);
+  }
+}
+
 async function registerUser() {
+  // Очищаем телефон от форматирования перед отправкой
+  const cleanPhone = phone.value.replace(/\D/g, '');
+
   const userData = {
     name: name.value,
     password: password.value,
     role: role.value,
+    phone: cleanPhone, // Отправляем только цифры
   }
+
   try {
     loading.value = true;
     statusMessage.value = 'Создаю пользователя...';
 
-    const response = await fetch('/api/users', {
+    const response = await fetch('/api/users/users', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -48,65 +124,7 @@ async function registerUser() {
 
 <template>
   <section class="auth-container">
-    <section class="blob">
-      <div id="bg-wrap">
-        <svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid slice">
-          <defs>
-            <radialGradient id="Gradient1" cx="50%" cy="50%" fx="0.441602%" fy="50%" r=".5">
-              <animate attributeName="fx" dur="34s" values="0%;3%;0%" repeatCount="indefinite"></animate>
-              <stop offset="0%" stop-color="rgba(255, 0, 255, 1)"></stop>
-              <stop offset="100%" stop-color="rgba(255, 0, 255, 0)"></stop>
-            </radialGradient>
-            <radialGradient id="Gradient2" cx="50%" cy="50%" fx="2.68147%" fy="50%" r=".5">
-              <animate attributeName="fx" dur="23.5s" values="0%;3%;0%" repeatCount="indefinite"></animate>
-              <stop offset="0%" stop-color="rgba(255, 255, 0, 1)"></stop>
-              <stop offset="100%" stop-color="rgba(255, 255, 0, 0)"></stop>
-            </radialGradient>
-            <radialGradient id="Gradient3" cx="50%" cy="50%" fx="0.836536%" fy="50%" r=".5">
-              <animate attributeName="fx" dur="21.5s" values="0%;3%;0%" repeatCount="indefinite"></animate>
-              <stop offset="0%" stop-color="rgba(0, 255, 255, 1)"></stop>
-              <stop offset="100%" stop-color="rgba(0, 255, 255, 0)"></stop>
-            </radialGradient>
-            <radialGradient id="Gradient4" cx="50%" cy="50%" fx="4.56417%" fy="50%" r=".5">
-              <animate attributeName="fx" dur="23s" values="0%;5%;0%" repeatCount="indefinite"></animate>
-              <stop offset="0%" stop-color="rgba(0, 255, 0, 1)"></stop>
-              <stop offset="100%" stop-color="rgba(0, 255, 0, 0)"></stop>
-            </radialGradient>
-            <radialGradient id="Gradient5" cx="50%" cy="50%" fx="2.65405%" fy="50%" r=".5">
-              <animate attributeName="fx" dur="24.5s" values="0%;5%;0%" repeatCount="indefinite"></animate>
-              <stop offset="0%" stop-color="rgba(0,0,255, 1)"></stop>
-              <stop offset="100%" stop-color="rgba(0,0,255, 0)"></stop>
-            </radialGradient>
-            <radialGradient id="Gradient6" cx="50%" cy="50%" fx="0.981338%" fy="50%" r=".5">
-              <animate attributeName="fx" dur="25.5s" values="0%;5%;0%" repeatCount="indefinite"></animate>
-              <stop offset="0%" stop-color="rgba(255,0,0, 1)"></stop>
-              <stop offset="100%" stop-color="rgba(255,0,0, 0)"></stop>
-            </radialGradient>
-          </defs>
-          <rect x="13.744%" y="1.18473%" width="100%" height="100%" fill="url(#Gradient1)"
-                transform="rotate(334.41 50 50)">
-            <animate attributeName="x" dur="20s" values="25%;0%;25%" repeatCount="indefinite"></animate>
-            <animate attributeName="y" dur="21s" values="0%;25%;0%" repeatCount="indefinite"></animate>
-            <animateTransform attributeName="transform" type="rotate" from="0 50 50" to="360 50 50" dur="7s"
-                              repeatCount="indefinite"></animateTransform>
-          </rect>
-          <rect x="-2.17916%" y="35.4267%" width="100%" height="100%" fill="url(#Gradient2)"
-                transform="rotate(255.072 50 50)">
-            <animate attributeName="x" dur="23s" values="-25%;0%;-25%" repeatCount="indefinite"></animate>
-            <animate attributeName="y" dur="24s" values="0%;50%;0%" repeatCount="indefinite"></animate>
-            <animateTransform attributeName="transform" type="rotate" from="0 50 50" to="360 50 50" dur="12s"
-                              repeatCount="indefinite"></animateTransform>
-          </rect>
-          <rect x="9.00483%" y="14.5733%" width="100%" height="100%" fill="url(#Gradient3)"
-                transform="rotate(139.903 50 50)">
-            <animate attributeName="x" dur="25s" values="0%;25%;0%" repeatCount="indefinite"></animate>
-            <animate attributeName="y" dur="12s" values="0%;25%;0%" repeatCount="indefinite"></animate>
-            <animateTransform attributeName="transform" type="rotate" from="360 50 50" to="0 50 50" dur="9s"
-                              repeatCount="indefinite"></animateTransform>
-          </rect>
-        </svg>
-      </div>
-    </section>
+    <MoloGround/>
 
     <section class="auth-main-container">
       <section class="auth-header">
@@ -119,13 +137,31 @@ async function registerUser() {
         <span>Создайте нового пользователя</span>
         <section class="auth-login">
           <div class="form__group field">
-            <input v-model="name" class="form__field" placeholder="Имя пользователя" type="text" name="username" id="username" required/>
+            <input v-model="name" class="form__field" placeholder="Имя пользователя" type="text" name="username"
+                   id="username" required/>
             <label for="username" class="form__label">Имя пользователя</label>
           </div>
           <div class="form__group field">
-            <input v-model="password" class="form__field" placeholder="Пароль" type="password" name="password" id="password" required/>
+            <input
+                v-model="phone"
+                @input="onPhoneInput"
+                @focus="onPhoneFocus"
+                class="form__field"
+                placeholder="Номер телефона"
+                type="tel"
+                name="phone"
+                id="phone"
+                maxLength="18"
+                required
+            />
+            <label for="phone" class="form__label">Номер телефона</label>
+          </div>
+          <div class="form__group field">
+            <input v-model="password" class="form__field" placeholder="Пароль" type="password" name="password"
+                   id="password" required/>
             <label for="password" class="form__label">Пароль</label>
           </div>
+
         </section>
       </section>
 
@@ -162,8 +198,12 @@ async function registerUser() {
 }
 
 @keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
 }
 
 .auth-container {
@@ -222,8 +262,12 @@ async function registerUser() {
 }
 
 @keyframes rotate {
-  0% { transform: translate(-50%, -50%) rotate(0deg); }
-  100% { transform: translate(-50%, -50%) rotate(360deg); }
+  0% {
+    transform: translate(-50%, -50%) rotate(0deg);
+  }
+  100% {
+    transform: translate(-50%, -50%) rotate(360deg);
+  }
 }
 
 .auth-form {
@@ -359,7 +403,6 @@ async function registerUser() {
 .login:hover:not(:disabled) {
   border-color: var(--half_opacity_border_hover);
 }
-
 
 
 .login:disabled {

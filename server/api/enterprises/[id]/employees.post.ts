@@ -1,4 +1,4 @@
-import EnterpriseUser from "~~/server/models/enterprise-user.model";
+import Employee from "~~/server/models/employee.model";
 import User from "~~/server/models/user.model";
 import bcrypt from "bcrypt";
 
@@ -6,51 +6,103 @@ export default defineEventHandler(async (event) => {
     const enterpriseId = getRouterParam(event, 'id');
     const body = await readBody(event);
     const {
-        name, password, role,
+        userId, name, password, role,
         position, department, pointId, salary, contacts
     } = body;
 
-    if (!name || !password || !position) {
+    // Валидация общих полей
+    if (!position) {
         throw createError({
             statusCode: 400,
-            message: 'Заполните обязательные поля: имя, пароль, должность'
+            message: 'Заполните обязательное поле: должность'
         });
     }
 
     try {
-        const hashedPassword = await bcrypt.hash(password, 10);
-        const newUser = new User({
-            name,
-            password: hashedPassword,
-            role: role || 'Сотрудник'
+        let user;
+
+        // Случай 1: Добавление существующего пользователя
+        if (userId) {
+            user = await User.findById(userId);
+            if (!user) {
+                throw createError({
+                    statusCode: 404,
+                    message: 'Пользователь не найден'
+                });
+            }
+
+            // Обновляем телефон существующего пользователя, если он передан
+            if (contacts?.phone) {
+                // Очищаем телефон от форматирования
+                const cleanPhone = contacts.phone.replace(/\D/g, '');
+                user.phone = cleanPhone;
+                await user.save();
+            }
+        }
+        // Случай 2: Создание нового пользователя
+        else {
+            if (!name || !password) {
+                throw createError({
+                    statusCode: 400,
+                    message: 'Заполните обязательные поля: имя, пароль'
+                });
+            }
+
+            // Очищаем телефон от форматирования
+            const cleanPhone = contacts?.phone ? contacts.phone.replace(/\D/g, '') : '';
+
+            const hashedPassword = await bcrypt.hash(password, 10);
+            user = new User({
+                name,
+                password: hashedPassword,
+                role: role || 'Сотрудник',
+                phone: cleanPhone // Добавляем телефон
+            });
+
+            await user.save();
+        }
+
+        // Проверяем, не привязан ли уже пользователь к этому предприятию
+        const existingEmployee = await Employee.findOne({
+            enterpriseId,
+            userId: user._id
         });
 
-        await newUser.save();
+        if (existingEmployee) {
+            throw createError({
+                statusCode: 400,
+                message: 'Пользователь уже является сотрудником этого предприятия'
+            });
+        }
 
-        // 2. Привязываем к предприятию
-        const newEnterpriseUser = new EnterpriseUser({
+        // Создаем запись в Employee
+        const newEmployee = new Employee({
             enterpriseId,
-            userId: newUser._id,
+            userId: user._id,
             position,
             department,
-            pointId,
-            salary,
-            contacts,
+            pointId: pointId || null,
+            salary: salary || 0,
+            contacts: {
+                phone: contacts?.phone || user.phone || '',
+                emergencyPhone: contacts?.emergencyPhone || ''
+            },
             hireDate: new Date(),
             status: 'Активен'
         });
 
-        await newEnterpriseUser.save();
+        await newEmployee.save();
 
         return {
             statusCode: 200,
             message: 'Сотрудник успешно добавлен',
             employee: {
-                ...newEnterpriseUser.toObject(),
+                ...newEmployee.toObject(),
                 user: {
-                    _id: newUser._id,
-                    name: newUser.name,
-                    role: newUser.role
+                    _id: user._id,
+                    name: user.name,
+                    role: user.role,
+                    phone: user.phone
                 }
             }
         };
@@ -61,6 +113,9 @@ export default defineEventHandler(async (event) => {
                 message: 'Пользователь с таким именем уже существует'
             });
         }
-        throw createError({ statusCode: 500, message: error.message });
+        throw createError({
+            statusCode: error.statusCode || 500,
+            message: error.message
+        });
     }
 });

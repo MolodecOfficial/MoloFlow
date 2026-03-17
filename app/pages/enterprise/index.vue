@@ -56,6 +56,8 @@ const loadUserData = () => {
 
 function deleteUser() {
   localStorage.removeItem('user')
+  localStorage.removeItem('currentEnterprise')
+  localStorage.removeItem('enterprise_token')
   router.push('/')
 }
 </script>

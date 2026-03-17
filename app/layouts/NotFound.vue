@@ -1,4 +1,3 @@
-<!-- NotFound.vue -->
 <script setup lang="ts">
 import {computed} from 'vue'
 
@@ -136,12 +135,12 @@ const debugInfo = computed(() => ({
         </div>
 
         <!-- Техническая информация -->
-        <section class="technical-details">
-          <summary class="technical-summary">Техническая информация</summary>
+        <details class="technical-details">
+          <summary class="technical-summary">Техническая информация (Нажми на меня)</summary>
           <div class="technical-content">
             <pre class="debug-pre">{{ JSON.stringify(debugInfo, null, 2) }}</pre>
           </div>
-        </section>
+        </details>
       </section>
     </div>
   </div>
@@ -291,7 +290,7 @@ const debugInfo = computed(() => ({
 
 .file-list-item:hover {
   background: rgba(58, 58, 58, 0.15);
-  border-left-color: #228be6;
+  border-left-color: var(--half_opacity_border_hover);
 
 }
 
@@ -332,6 +331,7 @@ const debugInfo = computed(() => ({
   border: 1px solid var(--half_opacity_border);
   border-radius: 4px;
   overflow: hidden;
+  width: 100%;
 }
 
 .technical-summary {

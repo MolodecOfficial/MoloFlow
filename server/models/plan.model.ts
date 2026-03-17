@@ -9,7 +9,8 @@ const planSchema = new mongoose.Schema({
     pointId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Point',
-    }, // если null - план для всего предприятия
+        default: null // null означает общий план предприятия
+    },
     period: {
         type: String,
         enum: ['day', 'week', 'month', 'quarter', 'year'],

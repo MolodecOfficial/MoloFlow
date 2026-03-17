@@ -1,4 +1,4 @@
-import EnterpriseUser from "~~/server/models/enterprise-user.model";
+import Employee from "~~/server/models/employee.model";
 
 export default defineEventHandler(async (event) => {
     const enterpriseId = getRouterParam(event, 'id');
@@ -10,7 +10,7 @@ export default defineEventHandler(async (event) => {
     if (position) filter.position = position;
 
     try {
-        const employees = await EnterpriseUser.find(filter)
+        const employees = await Employee.find(filter)
             .populate('userId', 'name role')
             .populate('pointId', 'name city address');
 

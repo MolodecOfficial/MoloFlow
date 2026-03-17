@@ -13,7 +13,7 @@ const layoutsContext = import.meta.glob('../layouts/*.vue', { eager: false })
 const getComponentLoader = () => {
   if (!props.windowId || !props.groupId) {
     console.log('Не хватает параметров')
-    return () => import('../layouts/NotFound.vue')
+    return () => import('/layouts/NotFound.vue')
   }
 
   // Пробуем разные варианты поиска файла

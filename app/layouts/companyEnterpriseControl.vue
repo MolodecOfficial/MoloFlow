@@ -8,7 +8,6 @@ const props = defineProps<{
 const { openWindow, closeWindow } = useWindowManager()
 const { addNotification } = useNotifications()
 
-
 // Состояния
 const isAuthenticated = ref(false)
 const enterpriseInfo = ref<any>(null)
@@ -105,7 +104,7 @@ const groupedPoints = computed(() => {
 // Методы
 function notAuth() {
   openWindow(
-      'settings',
+      'company',
       'login',
       'enterprise',
       {
@@ -119,7 +118,7 @@ function notAuth() {
 
 function createPoint() {
   openWindow(
-      'settings',
+      'company',
       'createPoint',
       'enterprise',
       {
@@ -133,7 +132,7 @@ function createPoint() {
 
 function createEmployee() {
   openWindow(
-      'settings',
+      'company',
       'createEmployee',
       'enterprise',
       {
@@ -147,7 +146,7 @@ function createEmployee() {
 
 function createPlan() {
   openWindow(
-      'settings',
+      'company',
       'createPlan',
       'enterprise',
       {
@@ -475,25 +474,26 @@ onMounted(() => {
               <thead>
               <tr>
                 <th>Имя</th>
+                <th>Точка</th>
                 <th>Должность</th>
                 <th>Отдел</th>
-                <th>Точка</th>
-                <th>Статус</th>
                 <th>Телефон</th>
+                <th>Статус</th>
               </tr>
               </thead>
               <tbody>
               <tr v-for="emp in filteredEmployees" :key="emp._id">
                 <td>{{ emp.userId?.name }}</td>
+                <td>{{ emp.pointId?.name || '-' }}</td>
                 <td>{{ emp.position }}</td>
                 <td>{{ emp.department || '-' }}</td>
-                <td>{{ emp.pointId?.name || '-' }}</td>
+
+                <td>{{ emp.contacts?.phone || '-' }}</td>
                 <td>
                     <span class="status" :class="emp.status.toLowerCase()">
                       {{ emp.status }}
                     </span>
                 </td>
-                <td>{{ emp.contacts?.phone || '-' }}</td>
               </tr>
               </tbody>
             </table>
@@ -802,29 +802,6 @@ h2 {
   font-size: 14px;
 }
 
-.form-section {
-  margin-top: 15px;
-  padding-top: 15px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.submit-btn {
-  width: 100%;
-  padding: 10px;
-  background: #1eef6f;
-  color: #020b18;
-  border: none;
-  border-radius: 4px;
-  font-weight: 600;
-  cursor: pointer;
-  margin-top: 10px;
-  transition: all 0.2s;
-}
-
-.submit-btn:hover {
-  background: #15b050;
-}
-
 .points-by-region {
   display: flex;
   flex-direction: column;
@@ -1051,17 +1028,12 @@ tr:hover td {
   font-weight: 600;
 }
 
-.loading, .empty-state, .empty-message {
+.loading, .empty-state {
   text-align: center;
   padding: 40px;
   color: rgba(255, 255, 255, 0.5);
 }
 
-.empty-message {
-  padding: 20px;
-  background: rgba(255, 255, 255, 0.02);
-  border-radius: 4px;
-}
 
 .loading-spinner {
   width: 40px;

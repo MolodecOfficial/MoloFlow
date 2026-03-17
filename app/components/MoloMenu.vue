@@ -7,7 +7,6 @@ const props = defineProps<{
   role: string
 }>()
 
-// Добавляем тип для размеров окна
 interface WindowSizeOptions {
   width?: number
   height?: number
@@ -104,7 +103,6 @@ const toggleExpand = (itemId: string) => {
   }
 }
 
-// Определяем размеры для конкретных пунктов меню
 const getWindowSizeOptions = (itemId: string): WindowSizeOptions | undefined => {
   const sizePresets: Record<string, WindowSizeOptions> = {
     login: {
@@ -119,6 +117,12 @@ const getWindowSizeOptions = (itemId: string): WindowSizeOptions | undefined => 
       minWidth: 500,
       minHeight: 600
     },
+    NotFound: {
+      width: 700,
+      height: 650,
+      minWidth: 500,
+      minHeight: 600
+    }
   }
 
   return sizePresets[itemId]
@@ -158,7 +162,6 @@ const handleChildItemClick = (
 ) => {
   handleLinkClick(groupId, childItem.id, parentItem.id)
 }
-
 
 // Инициализация
 onMounted(() => {
@@ -274,7 +277,6 @@ const getPaddingLeft = (depth: number = 0): string => {
 </template>
 
 <style scoped>
-/* Все стили из обоих компонентов */
 .action-list {
   position: absolute;
   border: 1px solid var(--half_opacity_border);
@@ -505,7 +507,7 @@ const getPaddingLeft = (depth: number = 0): string => {
 }
 
 /* Стили для списка предприятий */
-.enterprises-list {
+.settings-list {
   position: absolute;
   border: 1px solid var(--half_opacity_border);
   background-color: var(--half_opacity_bg);

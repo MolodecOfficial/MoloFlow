@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import {useUserStore} from "~~/stores/userStore";
+import QRCode from 'qrcode';
 
 const selected = ref('')
 const statusMessage = ref('')
@@ -9,7 +10,15 @@ const storageName = ref('')
 const password = ref('')
 const router = useRouter()
 const dropdownOpen = ref(false)
-const checkingAuth = ref(true) // Флаг для проверки авторизации
+const checkingAuth = ref(true)
+
+// Состояния для 2FA
+const step = ref<'login' | 'setup-2fa' | 'verify-2fa'>('login')
+const userId = ref('')
+const verificationCode = ref('')
+const twoFactorSecret = ref('')
+const twoFactorQR = ref('')
+const isFirstTime = ref(false)
 
 const userStore = useUserStore()
 
@@ -49,6 +58,13 @@ onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside);
 });
 
+// Возврат к форме входа
+function backToLogin() {
+  step.value = 'login'
+  verificationCode.value = ''
+  statusMessage.value = ''
+}
+
 async function loginUser() {
   const userData = {
     name: name.value,
@@ -73,30 +89,85 @@ async function loginUser() {
       body: JSON.stringify(userData)
     });
 
-    if (response.ok) {
-      const data = await response.json();
+    const data = await response.json();
 
+    if (response.ok) {
+      userId.value = data.userId;
+      isFirstTime.value = data.isFirstTime || false;
+
+      if (data.isFirstTime) {
+        // Первый вход - показываем QR код для настройки
+        twoFactorSecret.value = data.secret;
+        const otpauth = `otpauth://totp/MoloFlow:${name.value}?secret=${data.secret}&issuer=MoloFlow`;
+        twoFactorQR.value = await QRCode.toDataURL(otpauth);
+        step.value = 'setup-2fa';
+        statusMessage.value = 'Отсканируйте QR-код в Google Authenticator';
+      } else {
+        // Обычный вход - просим код
+        step.value = 'verify-2fa';
+        statusMessage.value = 'Введите код из Google Authenticator';
+      }
+    } else {
+      statusMessage.value = data.message || 'Ошибка при входе';
+    }
+  } catch (error) {
+    console.error('Ошибка:', error);
+    statusMessage.value = 'Произошла ошибка при входе';
+  } finally {
+    loading.value = false;
+  }
+}
+
+async function verify2FA() {
+  if (!verificationCode.value || verificationCode.value.length !== 6) {
+    statusMessage.value = 'Введите 6-значный код';
+    return;
+  }
+
+  if (!/^\d+$/.test(verificationCode.value)) {
+    statusMessage.value = 'Код должен содержать только цифры';
+    return;
+  }
+
+  try {
+    loading.value = true;
+    statusMessage.value = 'Проверяю код...';
+
+    const response = await fetch('/api/users/2fa-login', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        userId: userId.value,
+        token: verificationCode.value,
+        loginType: selected.value,
+        isFirstTime: isFirstTime.value
+      })
+    });
+
+    const data = await response.json();
+
+    if (response.ok) {
       userStore.setUser({
         name: data.user.name,
         role: data.user.role
       })
 
-      // Сохраняем последний тип входа для автоматического редиректа
       localStorage.setItem('lastLoginType', selected.value);
 
+      statusMessage.value = `Успешно, ${name.value}`;
       setTimeout(() => router.push(
           selected.value === 'Бухгалтерия' ? '/accountancy' :
               selected.value === 'Склад' ? '/storage' :
                   selected.value === 'Предприятие' ? '/enterprise' : '/'
       ), 1500);
-      statusMessage.value = `Успешно, ${data.message}`;
     } else {
-      const errorData = await response.json();
-      statusMessage.value = errorData.message || 'Ошибка при входе';
+      statusMessage.value = data.message || 'Неверный код';
     }
   } catch (error) {
     console.error('Ошибка:', error);
-    statusMessage.value = 'Произошла ошибка при входе';
+    statusMessage.value = 'Произошла ошибка при проверке кода';
   } finally {
     loading.value = false;
   }
@@ -113,7 +184,6 @@ async function getUser() {
       storageName.value = user.name
       console.log("Текущий пользователь в хранилище: " + user.name)
 
-      // Если есть последний тип входа, делаем автоматический редирект
       if (lastLoginType) {
         console.log("Последний тип входа: " + lastLoginType)
         setTimeout(() => {
@@ -134,14 +204,9 @@ async function getUser() {
   }
 }
 
-function deleteUser() {
-  localStorage.removeItem('user');
-}
-
 onMounted(() => {
   getUser()
 })
-
 </script>
 
 <template>
@@ -154,21 +219,17 @@ onMounted(() => {
           <span v-if="selected" class="selected-module"> - {{ selected }}</span>
         </section>
 
-        <!-- Круговой лоадер при проверке авторизации -->
         <div v-if="checkingAuth" class="auth-check-loader">
           <div class="modern-loader"></div>
-
         </div>
 
-        <!-- Отображение информации о пользователе или выбор модуля -->
         <template v-else>
           <section v-if="storageName" class="user-info-section">
             <span class="storage">Вы уже вошли как {{ storageName }}</span>
             <span>Перенаправляю...</span>
           </section>
 
-          <!-- Кастомный dropdown -->
-          <div v-else class="custom-dropdown">
+          <div v-else-if="step === 'login'" class="custom-dropdown">
             <div
                 class="dropdown-trigger"
                 :class="{ 'dropdown-open': dropdownOpen }"
@@ -204,7 +265,8 @@ onMounted(() => {
         </template>
       </section>
 
-      <section v-show="selected && !checkingAuth && !storageName" class="auth-form">
+      <!-- ШАГ 1: Форма входа - показываем ТОЛЬКО когда выбран модуль -->
+      <section v-if="step === 'login' && selected && !checkingAuth && !storageName" class="auth-form">
         <span class="welcome-text">Добро пожаловать. Выполните вход в систему</span>
         <section class="auth-login">
           <div class="form__group field">
@@ -218,24 +280,111 @@ onMounted(() => {
         </section>
       </section>
 
-      <section class="auth-footer" v-if="selected && !checkingAuth && !storageName">
+      <!-- ШАГ 2: Настройка 2FA (первый вход) -->
+      <section v-else-if="step === 'setup-2fa'" class="auth-form">
+        <span class="welcome-text">Настройка двухфакторной защиты</span>
+        <section class="auth-login">
+          <div class="qr-container">
+            <img :src="twoFactorQR" alt="QR Code" class="qr-code" />
+          </div>
+
+          <div class="secret-box">
+            <code>{{ twoFactorSecret }}</code>
+            <button class="copy-btn" @click="navigator.clipboard.writeText(twoFactorSecret)">
+              Копировать
+            </button>
+          </div>
+
+          <p class="setup-instruction">
+            1. Установите Google Authenticator<br>
+            2. Отсканируйте QR-код или введите ключ вручную<br>
+            3. Введите 6-значный код для подтверждения
+          </p>
+
+          <div class="form__group field">
+            <input
+                v-model="verificationCode"
+                class="form__field"
+                placeholder="6-значный код"
+                type="text"
+                name="code"
+                id="code"
+                maxlength="6"
+                required
+                autofocus
+                :disabled="loading"
+            />
+            <label for="code" class="form__label">Код из приложения</label>
+          </div>
+        </section>
+      </section>
+
+      <!-- ШАГ 3: Обычная проверка 2FA -->
+      <section v-else-if="step === 'verify-2fa'" class="auth-form">
+        <span class="welcome-text">Двухфакторная аутентификация</span>
+        <section class="auth-login">
+          <div class="form__group field">
+            <input
+                v-model="verificationCode"
+                class="form__field"
+                placeholder="6-значный код"
+                type="text"
+                name="code"
+                id="code"
+                maxlength="6"
+                required
+                autofocus
+                :disabled="loading"
+            />
+            <label for="code" class="form__label">Код из Google Authenticator</label>
+          </div>
+
+          <button class="back-to-login" @click="backToLogin" :disabled="loading">
+            Вернуться к входу
+          </button>
+        </section>
+      </section>
+
+      <!-- Футер - показываем ТОЛЬКО когда выбран модуль или мы на шагах 2FA -->
+      <section class="auth-footer" v-if="!checkingAuth && !storageName && (selected || step !== 'login')">
         <section class="login_status">
-          <button class="login-btn" @click="loginUser" :disabled="loading">
+          <!-- Кнопка для шага входа - только если выбран модуль -->
+          <button
+              v-if="step === 'login' && selected"
+              class="login-btn"
+              @click="loginUser"
+              :disabled="!name || !password || loading"
+          >
             <div v-if="loading" class="modern-loader"></div>
             <span v-else>Выполнить вход</span>
           </button>
-          <span class="status">{{ statusMessage }}</span>
+
+          <!-- Кнопка для шагов 2FA -->
+          <button
+              v-if="step === 'setup-2fa' || step === 'verify-2fa'"
+              class="login-btn"
+              @click="verify2FA"
+              :disabled="verificationCode.length !== 6 || loading"
+          >
+            <div v-if="loading" class="modern-loader"></div>
+            <span v-else>Подтвердить</span>
+          </button>
+
+          <!-- Статус сообщение - показываем только если есть сообщение и мы на нужном шаге -->
+          <span v-if="((step === 'login') || step !== 'login')"
+                class="status">{{ statusMessage }}</span>
         </section>
-        <NuxtLink to="/register" class="new_user">Новый аккаунт</NuxtLink>
+
+        <!-- Ссылка на регистрацию - только на шаге входа и когда выбран модуль -->
+        <NuxtLink v-if="step === 'login' && selected" to="/register" class="new_user">
+          Новый аккаунт
+        </NuxtLink>
       </section>
     </section>
   </section>
-
 </template>
 
-
 <style scoped>
-
 * {
   margin: 0;
   padding: 0;
@@ -310,8 +459,6 @@ onMounted(() => {
   font-size: 14px;
 }
 
-
-
 .selected-module {
   font-size: 18px;
   color: var(--half_opacity_border_hover);
@@ -322,7 +469,6 @@ onMounted(() => {
   position: relative;
   min-width: 160px;
 }
-
 
 .dropdown-trigger {
   display: flex;
@@ -532,6 +678,28 @@ option {
   box-shadow: none;
 }
 
+.back-to-login {
+  background: transparent;
+  border: 1px solid var(--half_opacity_border);
+  color: rgba(255, 255, 255, 0.7);
+  padding: 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 13px;
+  margin-top: 5px;
+}
+
+.back-to-login:hover:not(:disabled) {
+  border-color: var(--half_opacity_border_hover);
+  color: white;
+}
+
+.back-to-login:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .auth-footer {
   display: flex;
   flex-direction: column;
@@ -592,38 +760,6 @@ option {
   box-shadow: none;
 }
 
-.delete-btn {
-  cursor: pointer;
-  color: white;
-  text-decoration: none;
-  padding: 10px 15px;
-  border: 1px solid var(--half_opacity_border);
-  background-color: rgba(255, 255, 255, 0.08);
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  height: 50px;
-  min-width: 120px;
-  min-height: 40px;
-  transition: all 0.3s ease;
-  font-family: inherit;
-  font-size: inherit;
-  flex-shrink: 0;
-}
-
-.delete-btn:hover:not(:disabled) {
-  border-color: #38ef7d;
-}
-
-.delete-btn:disabled {
-  cursor: not-allowed;
-  opacity: 0.7;
-  transform: none;
-  box-shadow: none;
-}
-
 .new_user {
   text-align: center;
   color: rgba(255, 255, 255, 0.8);
@@ -636,7 +772,78 @@ option {
   color: #38ef7d;
 }
 
-/* Адаптивность */
+.qr-container {
+  display: flex;
+  justify-content: center;
+  margin: 10px 0;
+  padding: 15px;
+  background: transparent;
+  border-radius: 8px;
+}
+
+.qr-code {
+  width: 150px;
+  height: 150px;
+}
+
+.secret-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 10px;
+  border-radius: 4px;
+  border: 1px solid var(--half_opacity_border);
+}
+
+.secret-box code {
+  font-size: 14px;
+  color: #1eef6f;
+  letter-spacing: 1px;
+  word-break: break-all;
+}
+
+.copy-btn {
+  background: transparent;
+  border: 1px solid var(--half_opacity_border);
+  color: white;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 12px;
+}
+
+.copy-btn:hover {
+  border-color: #1eef6f;
+  color: #1eef6f;
+}
+
+.setup-instruction {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.7);
+  line-height: 1.6;
+  text-align: center;
+  margin: 10px 0;
+}
+
+.back-to-login {
+  background: transparent;
+  border: 1px solid var(--half_opacity_border);
+  color: rgba(255, 255, 255, 0.7);
+  padding: 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 13px;
+  margin-top: 5px;
+}
+
+.back-to-login:hover:not(:disabled) {
+  border-color: var(--half_opacity_border_hover);
+  color: white;
+}
+
 @media (max-width: 480px) {
   .auth-main-container {
     width: 90%;

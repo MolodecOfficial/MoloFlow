@@ -53,7 +53,7 @@ const handleLogin = async () => {
     }
 
     openWindow(
-        'settings',
+        'company',
         'control',
         'enterprise',
     )

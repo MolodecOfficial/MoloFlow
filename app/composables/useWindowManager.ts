@@ -52,6 +52,7 @@ export function useWindowManager() {
         subGroupId?: string,
         sizeOptions?: WindowSizeOptions
     ) => {
+
         console.log('openWindow:', { groupId, itemId, subGroupId, sizeOptions })
 
         // Проверяем существование элемента в конфиге
@@ -81,7 +82,7 @@ export function useWindowManager() {
         if (subGroupTitle) fullTitle += ` → ${subGroupTitle}`
         fullTitle += ` → ${itemTitle}`
 
-        const defaultSize = {
+        let  defaultSize = {
             width: 600,
             height: 400,
             minWidth: 400,

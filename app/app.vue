@@ -12,6 +12,7 @@
 
   ::-webkit-scrollbar {
     width: 4px; /* для вертикального скролла */
+    height: 4px;
   }
 
   /* Трек (фон) */

@@ -1,7 +1,7 @@
 export interface MenuItem {
     id: string;
     title: string;
-    requiredRole: 'Пользователь' | 'Сотрудник' | 'Управляющий';
+    requiredRole: ('Пользователь' | 'Сотрудник' | 'Управляющий')[];
     isActive: boolean;
     componentName?  : string
     items?: MenuItem[];
@@ -12,7 +12,7 @@ export interface MenuGroup {
     id: string;
     title: string;
     order: number;
-    requiredRole: 'Пользователь' | 'Сотрудник' | 'Управляющий';
+    requiredRole: ('Пользователь' | 'Сотрудник' | 'Управляющий')[];
     isActive?: boolean;
     items: MenuItem[];
 }
@@ -73,8 +73,8 @@ export const menuConfig: MenuGroup[] = [
         ]
     },
     {
-        id: 'settings',
-        title: 'Общие настройки',
+        id: 'company',
+        title: 'Настройки предприятия',
         isActive: true,
         requiredRole: 'Управляющий',
         items: [
@@ -133,37 +133,93 @@ export const menuConfig: MenuGroup[] = [
                 ]
             },
             {
+                id: 'points',
+                title: 'Точки',
+                requiredRole: 'Управляющий',
+                isActive: true,
+                componentName: 'Points',
+                items: [
+                    {
+                        id: 'ProblemPoints',
+                        title: 'Проблемные точки',
+                        requiredRole: 'Управляющий',
+                        isActive: true,
+                        componentName: 'ProblemPoints',
+                        parentId: 'points'
+                    },
+                    {
+                        id: 'ConfigurePoints',
+                        title: 'Конфигурация точки',
+                        requiredRole: 'Управляющий',
+                        isActive: true,
+                        componentName: 'ConfigurePoints',
+                        parentId: 'points'
+                    },
+                ]
+            },
+            {
                 id: 'termsOfUse',
                 title: 'Условия пользования',
                 requiredRole: 'Управляющий',
                 isActive: false,
                 componentName: 'TermsOfUse'
             },
-
+        ]
+    },
+    {
+        id: 'settings',
+        title: 'Настройки',
+        requiredRole: ['Сотрудник', 'Управляющий'],
+        isActive: true,
+        items: [
+            {
+                id: 'customisation',
+                title: 'Кастомизация',
+                requiredRole: ['Сотрудник', 'Управляющий'],
+                isActive: true,
+                componentName: 'Customisation'
+            }
         ]
     }
+
 ];
 
 export function getMenuByRole(role: string): MenuGroup[] {
     return menuConfig
-        .filter(group =>
-            group.isActive !== false &&
-            group.requiredRole === role
-        )
+        .filter(group => {
+            if (group.isActive === false) return false
+
+            // Проверяем requiredRole - может быть строкой или массивом
+            if (Array.isArray(group.requiredRole)) {
+                return group.requiredRole.includes(role)
+            } else {
+                return group.requiredRole === role
+            }
+        })
         .map(group => ({
             ...group,
             items: group.items
-                .filter(item =>
-                    item.requiredRole === role &&
-                    item.isActive !== false
-                )
+                .filter(item => {
+                    if (item.isActive === false) return false
+
+                    if (Array.isArray(item.requiredRole)) {
+                        return item.requiredRole.includes(role)
+                    } else {
+                        return item.requiredRole === role
+                    }
+                })
                 .map(item => ({
                     ...item,
                     items: item.items
-                        ?.filter(child =>
-                            child.requiredRole === role &&
-                            child.isActive !== false
-                        )
+                        ?.filter(child => {
+                            if (child.isActive === false) return false
+
+                            if (Array.isArray(child.requiredRole)) {
+                                return child.requiredRole.includes(role)
+                            } else {
+                                return child.requiredRole === role
+                            }
+                        })
                 }))
         }))
 }

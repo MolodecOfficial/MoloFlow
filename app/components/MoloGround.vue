@@ -1,5 +1,4 @@
 <script setup lang="ts">
-
 </script>
 
 <template>
@@ -63,6 +62,26 @@
     </div>
   </section>
 </template>
-<style scoped>
 
+<style scoped>
+.blob {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+}
+
+#bg-wrap {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: -1;
+}
+
+svg {
+  width: 100%;
+  height: 100%;
+}
 </style>

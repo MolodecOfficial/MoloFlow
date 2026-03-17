@@ -1,35 +1,42 @@
+import User from "~~/server/models/user.model";
+import { authenticator } from 'otplib';
 import bcrypt from "bcrypt";
 
-import User from "~~/server/models/user.model";
-
 export default defineEventHandler(async (event) => {
+    const body = await readBody(event);
+    const { name, password, loginType } = body;
 
-    const body = await readBody(event)
-    const { name, password } = body;
-
-    if (!body) {
-        return createError({ statusCode: 400, message: 'Ошибка: тело запроса не может быть пустым.' });
-    }
-
-    // Найти пользователя по email и выбрать пароль
-    const user = await User.findOne({ name: body.name }).select('+password');
-
+    const user = await User.findOne({ name });
     if (!user) {
-        return createError({ statusCode: 401, message: 'Неверное имя или пароль.' });
+        throw createError({ statusCode: 401, message: 'Неверное имя пользователя или пароль' });
     }
 
-    // Проверка пароля
-    const isPasswordCorrect = await bcrypt.compare(body.password, user.password);
-
-    if (!isPasswordCorrect) {
-        return createError({ statusCode: 401, message: 'Неправильный пароль.' });
+    const isValidPassword = await bcrypt.compare(password, user.password);
+    if (!isValidPassword) {
+        throw createError({ statusCode: 401, message: 'Неверное имя пользователя или пароль' });
     }
+
+    // Проверяем, есть ли у пользователя 2FA секрет
+    if (!user.twoFactorSecret) {
+        // Если нет - генерируем новый секрет для первого входа
+        const secret = authenticator.generateSecret();
+        user.twoFactorSecret = secret;
+        user.twoFactorEnabled = true;
+        await user.save();
+
+        return {
+            requires2FA: true,
+            isFirstTime: true,
+            userId: user._id,
+            secret: secret,
+            message: 'Первый вход. Настройте Google Authenticator'
+        };
+    }
+
     return {
-        message: `${user.name}`,
-        user: {
-            _id: user._id,
-            name: user.name,
-            role: user.role,
-        }
-    }
-})
+        requires2FA: true,
+        isFirstTime: false,
+        userId: user._id,
+        message: 'Введите код из Google Authenticator'
+    };
+});

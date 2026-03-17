@@ -5,6 +5,7 @@ import {useWindowResize} from '~/composables/useWindowResize'
 import {ref, computed, onMounted, onUnmounted} from 'vue'
 import RestoreIcon from '~~/app/assets/icons/min.svg'
 import {useUserStore} from "~~/stores/userStore";
+import { windowThemes, windowButtonStyles, THEME_STORAGE_KEY, BUTTON_STYLE_STORAGE_KEY } from '~~/types/window-themes' // ИЗМЕНЕНО: добавлен импорт windowButtonStyles и BUTTON_STYLE_STORAGE_KEY
 
 const { addNotification } = useNotifications()
 
@@ -56,6 +57,10 @@ const windowRef = ref<HTMLElement>()
 const isMinimizing = ref(false)
 const isClosing = ref(false)
 const isMaximizing = ref(false)
+
+// Cостояние для темы и стиля кнопок
+const currentTheme = ref(windowThemes[0])
+const currentButtonStyle = ref(windowButtonStyles[0]) // НОВОЕ: состояние для стиля кнопок
 
 // Определяем, включен ли полный размер
 const isMaximized = computed(() => props.window.size.isMaximized === true)
@@ -179,14 +184,81 @@ const getResizeCursor = (edge: string) => {
   return cursors[edge] || 'default'
 }
 
-// Инициализация
+const loadTheme = () => {
+  const savedThemeId = localStorage.getItem(THEME_STORAGE_KEY)
+  if (savedThemeId) {
+    const theme = windowThemes.find(t => t.id === savedThemeId)
+    if (theme) {
+      currentTheme.value = theme
+    }
+  }
+}
+
+// НОВОЕ: загрузка стиля кнопок
+const loadButtonStyle = () => {
+  const savedButtonId = localStorage.getItem(BUTTON_STYLE_STORAGE_KEY)
+  if (savedButtonId) {
+    const buttonStyle = windowButtonStyles.find(b => b.id === savedButtonId)
+    if (buttonStyle) {
+      currentButtonStyle.value = buttonStyle
+    }
+  }
+}
+
+const handleThemeChange = (event: CustomEvent) => {
+  currentTheme.value = event.detail
+}
+
+// НОВОЕ: обработчик изменения стиля кнопок
+const handleButtonStyleChange = (event: CustomEvent) => {
+  currentButtonStyle.value = event.detail
+}
+
+// ИЗМЕНЕНО: добавлены стили кнопок
+const windowStyles = computed(() => {
+  const theme = currentTheme.value
+  const buttonStyle = currentButtonStyle.value
+  return {
+    // Стили темы
+    '--window-header-bg': theme.styles.headerBg,
+    '--window-header-border': theme.styles.headerBorder,
+    '--window-header-text': theme.styles.headerText,
+    '--window-content-bg': theme.styles.contentBg,
+    '--window-content-text': theme.styles.contentText,
+    '--window-border-color': theme.styles.borderColor,
+    '--window-border-radius': theme.styles.borderRadius,
+    '--window-backdrop-blur': theme.styles.backdropBlur,
+    '--window-controls-bg': theme.styles.controlsBg,
+    '--window-controls-hover': theme.styles.controlsHover,
+    '--window-accent': theme.styles.accentColor,
+
+    // Стили кнопок
+    '--button-controls-border': buttonStyle.styles.controlsBorder,
+    '--button-button-border': buttonStyle.styles.buttonBorder,
+    '--button-button-bg': buttonStyle.styles.buttonBg,
+    '--button-button-hover-bg': buttonStyle.styles.buttonHoverBg,
+    '--button-button-text-color': buttonStyle.styles.buttonTextColor,
+    '--button-button-hover-text-color': buttonStyle.styles.buttonHoverTextColor || buttonStyle.styles.buttonTextColor,
+    '--button-controls-gap': buttonStyle.styles.controlsGap,
+    '--button-controls-padding': buttonStyle.styles.controlsPadding
+  }
+})
+
+// ИЗМЕНЕНО: добавлены обработчики событий и загрузка стиля кнопок
 onMounted(() => {
+  window.addEventListener('theme-changed', handleThemeChange as EventListener)
+  window.addEventListener('button-style-changed', handleButtonStyleChange as EventListener) // НОВОЕ
   document.addEventListener('mousemove', handleMouseMove)
   document.addEventListener('mouseup', handleMouseUp)
   loadUserRole()
+  loadTheme()
+  loadButtonStyle() // НОВОЕ
 })
 
+// ИЗМЕНЕНО: добавлено удаление обработчика
 onUnmounted(() => {
+  window.removeEventListener('theme-changed', handleThemeChange as EventListener)
+  window.removeEventListener('button-style-changed', handleButtonStyleChange as EventListener) // НОВОЕ
   document.removeEventListener('mousemove', handleMouseMove)
   document.removeEventListener('mouseup', handleMouseUp)
 })
@@ -209,13 +281,14 @@ onUnmounted(() => {
         ref="windowRef"
         class="window"
         :class="{
-          dragging: isDragging,
-          resizing: isResizing,
-          'maximized': isMaximized
-        }"
+      dragging: isDragging,
+      resizing: isResizing,
+      'maximized': isMaximized
+    }"
         :style="{
-          cursor: isDragging ? 'grabbing' : 'default',
-        }"
+      ...windowStyles,
+      cursor: isDragging ? 'grabbing' : 'default',
+    }"
     >
       <!-- Заголовок окна -->
       <div class="window-header" @mousedown="handleDragStart">
@@ -314,13 +387,13 @@ onUnmounted(() => {
 }
 
 .window {
-  background: var(--half_opacity_bg);
-  border: 1px solid var(--half_opacity_border);
-  border-radius: 10px;
+  background: var(--window-content-bg, var(--half_opacity_bg));
+  border: 1px solid var(--window-border-color, var(--half_opacity_border));
+  border-radius: var(--window-border-radius, 10px);
+  backdrop-filter: var(--window-backdrop-blur, blur(20px));
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  backdrop-filter: blur(20px);
   position: relative;
   width: 100%;
   height: 100%;
@@ -385,15 +458,15 @@ onUnmounted(() => {
   align-items: center;
   padding: 12px 15px;
   gap: 15px;
-  border-bottom: 1px solid var(--half_opacity_border);
-  background-color: var(--half_opacity_bg);
+  background: var(--window-header-bg, var(--half_opacity_bg));
+  border-bottom: 1px solid var(--window-header-border, var(--half_opacity_border));
   cursor: move;
   user-select: none;
   flex-shrink: 0;
 }
 
 .window-title {
-  color: white;
+  color: var(--window-header-text, white);
   font-size: 18px;
   font-weight: 600;
   white-space: nowrap;
@@ -427,17 +500,17 @@ onUnmounted(() => {
 
 .window-controls {
   display: flex;
-  gap: 6px;
-  flex-shrink: 0;
-  border: 1px solid var(--half_opacity_border);
+  gap: var(--button-controls-gap, 6px);
+  padding: var(--button-controls-padding, 2px);
+  border: var(--button-controls-border, none);
   border-radius: 6px;
-  padding: 2px;
+  flex-shrink: 0;
 }
 
 .control-btn {
-  border: none;
-  background: transparent;
-  color: white;
+  border: var(--button-button-border, 1px solid var(--half_opacity_border));
+  background: var(--button-button-bg, transparent);
+  color: var(--button-button-text-color, white);
   width: 28px;
   height: 28px;
   border-radius: 6px;
@@ -452,22 +525,26 @@ onUnmounted(() => {
 }
 
 .control-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--button-button-hover-bg, rgba(255, 255, 255, 0.1));
+  color: var(--button-button-hover-text-color, white);
 }
 
 .control-btn.maximize:hover {
   background: rgba(33, 150, 243, 0.2);
   border-color: #0c92ff;
+  color: #0c92ff;
 }
 
 .control-btn.close:hover {
   background: rgba(220, 53, 69, 0.2);
   border-color: #ff0a21;
+  color: #ff0a21;
 }
 
 .control-btn.minimize:hover {
   background: rgba(255, 193, 7, 0.2);
   border-color: #ffc107;
+  color: #ffc107;
 }
 
 .control-btn.refresh:hover {
@@ -477,7 +554,8 @@ onUnmounted(() => {
 
 .window-content {
   padding: 20px;
-  color: rgba(255, 255, 255, 0.9);
+  color: var(--window-content-text, rgba(255, 255, 255, 0.9));
+  background: var(--window-content-bg, transparent);
   overflow: auto;
   box-sizing: border-box;
   flex: 1;

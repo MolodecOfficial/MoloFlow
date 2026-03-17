@@ -3,7 +3,7 @@ import User from "~~/server/models/user.model";
 
 export default defineEventHandler(async (event) => {
     const body = await readBody(event)
-    const { name, password } = body;
+    const { name, password, phone } = body;
 
     const existingUser = await User.findOne({ name })
 
@@ -13,7 +13,7 @@ export default defineEventHandler(async (event) => {
 
     const hashedPassword = await bcrypt.hash(password, 10)
 
-    const newUser = new User({ name, password: hashedPassword })
+    const newUser = new User({ name, password: hashedPassword, phone })
     try {
         await newUser.save()
         return {
@@ -22,7 +22,8 @@ export default defineEventHandler(async (event) => {
             user: {
                 _id: newUser._id,
                 name: newUser.name,
-                role: newUser.role
+                role: newUser.role,
+                phone: newUser.phone
             }
         }
     } catch (error: any) {

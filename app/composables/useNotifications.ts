@@ -69,12 +69,6 @@ export function useNotifications() {
                 roleNotifications.forEach(key => addNotification(key))
             }
 
-            if (userId) {
-                const userNotifications = config.conditions.userBased.users[userId as keyof typeof config.conditions.userBased.users]
-                if (userNotifications) {
-                    userNotifications.forEach(key => addNotification(key))
-                }
-            }
         } finally {
             // Сбрасываем флаг с задержкой
             setTimeout(() => {
