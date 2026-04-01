@@ -55,7 +55,6 @@ const loadDynamicModules = async () => {
     const response = await $fetch(
         `/api/enterprises/${currentEnterprise.value._id}/dynamicModules`
     )
-
     dynamicModules.value = response.modules || []
     console.log('Загруженные динамические модули:', dynamicModules.value)
 
