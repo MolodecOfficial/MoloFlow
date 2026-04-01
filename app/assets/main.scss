@@ -5,18 +5,7 @@ body {
 
   -webkit-tap-highlight-color: transparent;
   tap-highlight-color: transparent;
-  & select {
-    padding: 8px 12px;
-    border-radius: 4px;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    color: white;
-    min-width: 150px;
-    & option {
-      background: #363535;
-      border-radius: 5px;
-    }
-  }
+
   hr {
     border: 1px solid var(--half_opacity_border);
     width: 100%;
@@ -35,4 +24,38 @@ body {
   --half_opacity_border: rgba(255, 255, 255, 0.24);
   --half_opacity_bg: rgba(245, 245, 245, 0.03);
 }
+
+.action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.action-btn.confirm {
+  padding: 6px 16px;
+  background: #1eef6f;
+  color: #020b18;
+  border: none;
+  border-radius: 4px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  &.action-btn:hover {
+    background: #15b050;
+  }
+}
+
+.action-btn.close {
+  padding: 8px 16px;
+  background: #ef1e1e;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  &.action-btn:hover {
+    background: #b01515;
+  }
+}
+
 

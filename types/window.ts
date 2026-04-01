@@ -7,6 +7,7 @@ export interface WindowItem {
     itemTitle: string     // 'Управление предприятием'
     fullTitle: string     // 'Общие настройки → Предприятие → Управление предприятием'
     id: string
+    componentName?: string
     zIndex: number
     isMinimized: boolean
     position: { x: number; y: number }
@@ -20,5 +21,7 @@ export interface WindowItem {
         isMaximized?: boolean
     }
     isResizing?: boolean
+    isModal?: boolean
     resizeEdge?: string | null
+    data?: any
 }

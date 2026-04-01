@@ -39,12 +39,10 @@ const resizeWindow = (id: string, newSize: { width: number; height: number }) =>
   emit('resize', id, newSize)
 }
 
-// Функция для восстановления окна с анимацией
 const restoreWindowWithAnimation = (id: string) => {
   const window = props.windows.find(w => w.id === id)
   if (window && window.isMinimized) {
     emit('focus', id)
-
   }
 }
 </script>
@@ -59,6 +57,8 @@ const restoreWindowWithAnimation = (id: string) => {
         :sub-group-id="window.subGroupId"
         :window="window"
         :isVisible="true"
+        :is-modal="window.isModal"
+        :window-data="window.data"
         @close="closeWindow(window.id)"
         @minimize="minimizeWindow(window.id)"
         @move="(pos) => moveWindow(window.id, pos)"
@@ -68,12 +68,14 @@ const restoreWindowWithAnimation = (id: string) => {
         class="draggable-window"
     >
       <template #default="{ refreshKey }">
-      <WindowsContent
-          :window-id="window.itemId"
-          :group-id="window.groupId"
-          :sub-group-id="window.subGroupId"
-          :key="refreshKey"
-      />
+        <WindowsContent
+            :window-id="window.itemId"
+            :group-id="window.groupId"
+            :sub-group-id="window.subGroupId"
+            :key="refreshKey"
+            :component-name="window.componentPath || window.componentName"
+            :window-data="window.data"
+        />
       </template>
     </MoloWindow>
 

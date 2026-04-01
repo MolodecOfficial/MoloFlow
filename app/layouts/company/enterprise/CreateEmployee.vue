@@ -17,6 +17,9 @@ const selectedUser = ref<any>(null)
 const addMode = ref<'new' | 'existing'>('new')
 const showUserList = ref(false)
 
+const availableRoles = ['Сотрудник', 'Бухгалтер', 'Комплектовщик', 'Управляющий']
+const availableDepartment = ['IT-Отдел', 'Отдел продаж', 'Отдел безопасности', 'Юридический отдел']
+
 // Функция для форматирования телефона
 function formatPhone(value: string) {
   if (!value) return '+7';
@@ -122,13 +125,30 @@ const filteredUsers = computed(() => {
 })
 
 const availablePoints = computed(() => {
-  return points.value.filter(p => p.status === 'Активна')
+  return points.value
+      .filter(p => p.status === 'Активна')
+      .map(point => ({
+        ...point,
+        displayName: `${point.name}, ${point.address}`
+      }))
+})
+
+// Вычисляемое свойство для доступных должностей выбранной точки
+const availablePositions = computed(() => {
+  const selectedPoint = points.value.find(p => p._id === newEmployee.value.pointId)
+  return selectedPoint?.positions || []
+})
+
+// Вычисляемое свойство для доступных отделов выбранной точки
+const availableDepartments = computed(() => {
+  const selectedPoint = points.value.find(p => p._id === newEmployee.value.pointId)
+  return selectedPoint?.departments || []
 })
 
 async function loadPoints() {
   if (!enterpriseInfo.value?._id) return
   try {
-    const response = await $fetch(`/api/enterprises/${enterpriseInfo.value._id}/points`)
+    const response = await $fetch(`/api/enterprises/${enterpriseInfo.value._id}/points/points`)
     points.value = response.points
   } catch {
     addNotification('ERROR_DEFAULT', 'Ошибка загрузки точек')
@@ -231,7 +251,7 @@ async function addEmployee() {
         ? { ...baseData, name: newEmployee.value.name, password: newEmployee.value.password }
         : { ...baseData, userId: selectedUser.value._id }
 
-    const response = await $fetch(`/api/enterprises/${enterpriseInfo.value._id}/employees`, {
+    const response = await $fetch(`/api/enterprises/${enterpriseInfo.value._id}/employees/employees`, {
       method: 'POST',
       body: employeeData
     })
@@ -268,6 +288,19 @@ onMounted(() => {
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)
 })
+
+watch(() => newEmployee.value.pointId, (newPointId) => {
+  if (newPointId) {
+    const selectedPoint = points.value.find(p => p._id === newPointId)
+    // Очищаем только если выбранная должность или отдел не входят в списки точки
+    if (newEmployee.value.position && !selectedPoint?.positions?.includes(newEmployee.value.position)) {
+      newEmployee.value.position = ''
+    }
+    if (newEmployee.value.department && !selectedPoint?.departments?.includes(newEmployee.value.department)) {
+      newEmployee.value.department = ''
+    }
+  }
+})
 </script>
 
 <template>
@@ -297,7 +330,7 @@ onUnmounted(() => {
     <template v-if="addMode === 'existing'">
       <div class="user-search">
         <div class="search-container">
-          <MoloForm
+          <MoloInput
               tLabel="Поиск пользователя"
               type="text"
               :modelValue="searchQuery"
@@ -344,7 +377,7 @@ onUnmounted(() => {
     </template>
 
     <template v-else>
-      <MoloForm
+      <MoloInput
           tLabel="Имя"
           lRequired
           type="text"
@@ -352,7 +385,7 @@ onUnmounted(() => {
           placeholder="Максим"
           v-model="newEmployee.name"
       />
-      <MoloForm
+      <MoloInput
           tLabel="Пароль"
           lRequired
           type="password"
@@ -362,57 +395,51 @@ onUnmounted(() => {
       />
     </template>
 
-    <label>Роль</label>
-    <select v-model="newEmployee.role">
-      <option value="Сотрудник">Сотрудник</option>
-      <option value="Бухгалтер">Бухгалтер</option>
-      <option value="Комплектовщик">Комплектовщик</option>
-      <option value="Управляющий">Управляющий</option>
-    </select>
-
-    <div class="grid-2">
-      <MoloForm
-          tLabel="Должность"
-          lRequired
-          type="text"
-          iRequired
-          placeholder="Специалист, Руководитель, Продавец"
-          v-model="newEmployee.position"
-      />
-      <div class="form-field">
-        <label>Отдел</label>
-        <select v-model="newEmployee.department">
-          <option value="" disabled>Выберите отдел</option>
-          <option value="IT-Отдел">IT-Отдел</option>
-          <option value="Отдел продаж">Отдел продаж</option>
-          <option value="Отдел безопасности">Отдел безопасности</option>
-          <option value="Юридический отдел">Юридический отдел</option>
-        </select>
-      </div>
-    </div>
-
-    <label>Точка</label>
-    <select v-model="newEmployee.pointId">
-      <option value="">Не привязан к точке</option>
-      <option v-for="point in availablePoints" :key="point._id" :value="point._id">
-        {{ point.name }}
-      </option>
-    </select>
-
-    <MoloForm
+    <MoloSelect
+        v-model="newEmployee.role"
         lRequired
-        iRequired
-        tLabel="Оклад в час"
-        type="number"
-        placeholder="Оклад"
-        v-model="newEmployee.salary"
+        tLabel="Роль"
+        :parent="availableRoles"
+        :children="role"
+        disabled="Выберите роль"
     />
 
+    <MoloSelect
+        v-model="newEmployee.pointId"
+        lRequired
+        tLabel="Точка"
+        :parent="availablePoints"
+        children="displayName"
+        valueKey="_id"
+        disabled="Выберите точку"
+        iRequired
+    />
+
+    <div class="grid-2">
+      <MoloSelect
+          v-model="newEmployee.position"
+          lRequired
+          tLabel="Должность"
+          :parent="availablePositions"
+          :children="position"
+          disabled="Выберите должность"
+          iRequired
+      />
+      <MoloSelect
+          v-model="newEmployee.department"
+          lRequired
+          tLabel="Отдел"
+          :parent="availableDepartments"
+          :children="department"
+          disabled="Выберите отдел"
+      />
+    </div>
+    <hr>
     <div class="form-section">
       <h5>Контакты</h5>
       <div class="grid-2">
         <div class="phone-input-container">
-          <MoloForm
+          <MoloInput
               lRequired
               iRequired
               tLabel="Телефон"
@@ -428,7 +455,7 @@ onUnmounted(() => {
           />
         </div>
         <div class="phone-input-container">
-          <MoloForm
+          <MoloInput
               lRequired
               iRequired
               tLabel="Экстренный телефон"
@@ -446,7 +473,7 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <button class="submit-btn" @click="addEmployee" :disabled="loading">
+    <button class="action-btn confirm" @click="addEmployee" :disabled="loading">
       <div v-if="loading" class="modern-loader"></div>
       <span v-else>Сохранить сотрудника</span>
     </button>
@@ -469,7 +496,6 @@ onUnmounted(() => {
 .mode-selector {
   display: flex;
   gap: 10px;
-  margin-bottom: 20px;
   padding: 5px;
   background: var(--half_opacity_bg);
   border-radius: 8px;
@@ -603,67 +629,6 @@ onUnmounted(() => {
   width: 100%;
 }
 
-.grid-3 {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: 20px;
-  width: 100%;
-}
-
-.form-field {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  width: 100%;
-}
-
-.form-field label {
-  font-size: 15px;
-  margin-bottom: 2px;
-}
-
-.form-field select {
-  width: 100%;
-  padding: 8px 2px;
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: white;
-}
-
-.form-field select:focus {
-  outline: none;
-  border-color: #1eef6f;
-}
-
-.form-section {
-  margin-top: 15px;
-  padding-top: 15px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.submit-btn {
-  width: 100%;
-  padding: 10px;
-  background: #1eef6f;
-  color: #020b18;
-  border: none;
-  border-radius: 4px;
-  font-weight: 600;
-  cursor: pointer;
-  margin: 20px 0 20px 0;
-  transition: all 0.2s;
-}
-
-.submit-btn:hover:not(:disabled) {
-  background: #15b050;
-}
-
-.submit-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
 .modern-loader {
   width: 12px;
   height: 12px;
@@ -685,7 +650,7 @@ onUnmounted(() => {
 }
 
 @media (max-width: 768px) {
-  .grid-2, .grid-3 {
+  .grid-2 {
     grid-template-columns: 1fr;
   }
 }

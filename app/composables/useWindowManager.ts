@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 import type { WindowItem } from '~/types/window'
-import { menuConfig } from '/utils/menuConfig'
+import { menuConfig, moduleConfig, type MenuGroup, type MenuItem } from '~/utils/menuConfig'
 
 const windows = ref<WindowItem[]>([])
 let zIndexCounter = 100
@@ -12,37 +12,44 @@ export interface WindowSizeOptions {
     minHeight?: number
 }
 
-// Вспомогательная функция для поиска элемента в меню
-function findMenuItem(groupId: string, itemId: string, subGroupId?: string) {
-    const group = menuConfig.find(g => g.id === groupId)
+// Поиск пункта меню в указанном списке групп
+function findInGroups(groups: MenuGroup[], groupId: string, itemId: string, subGroupId?: string) {
+    const group = groups.find(g => g.id === groupId)
     if (!group) return null
 
-    // Если есть subGroupId, ищем вложенный элемент
     if (subGroupId) {
         const parentItem = group.items.find(item => item.id === subGroupId)
         if (!parentItem?.items) return null
-
         const childItem = parentItem.items.find(item => item.id === itemId)
         if (!childItem) return null
-
         return {
             groupTitle: group.title,
             subGroupTitle: parentItem.title,
             itemTitle: childItem.title,
-            componentName: childItem.componentName
+            componentName: childItem.componentName,
+            componentPath: childItem.componentPath,
         }
     }
 
-    // Обычный элемент (не вложенный)
     const item = group.items.find(item => item.id === itemId)
     if (!item) return null
-
     return {
         groupTitle: group.title,
         itemTitle: item.title,
         subGroupTitle: undefined,
-        componentName: item.componentName
+        componentName: item.componentName,
+        componentPath: item.componentPath,
     }
+}
+
+function findMenuItem(groupId: string, itemId: string, subGroupId?: string) {
+    // Сначала ищем в основном меню
+    const fromMenu = findInGroups(menuConfig, groupId, itemId, subGroupId)
+    if (fromMenu) return fromMenu
+
+    // Затем в модулях
+    const fromModules = findInGroups(moduleConfig, groupId, itemId, subGroupId)
+    return fromModules
 }
 
 export function useWindowManager() {
@@ -50,72 +57,85 @@ export function useWindowManager() {
         groupId: string,
         itemId: string,
         subGroupId?: string,
-        sizeOptions?: WindowSizeOptions
+        sizeOptions?: WindowSizeOptions,
+        isModal: boolean = false,
+        componentPath?: string,
+        moduleData?: any,
+        data?: any
     ) => {
+        // Пытаемся найти в статическом меню
+        let menuItem = findMenuItem(groupId, itemId, subGroupId)
 
-        console.log('openWindow:', { groupId, itemId, subGroupId, sizeOptions })
+        // Если это динамический модуль (itemId начинается с dynamic_)
+        let finalComponentName = menuItem?.componentName
+        let finalComponentPath = componentPath || menuItem?.componentPath
+        let finalGroupTitle = menuItem?.groupTitle || groupId
+        let finalSubGroupTitle = menuItem?.subGroupTitle
+        let finalItemTitle = menuItem?.itemTitle || itemId
 
-        // Проверяем существование элемента в конфиге
-        const menuItem = findMenuItem(groupId, itemId, subGroupId)
-        if (!menuItem) {
-            console.error(`MenuItem not found: ${groupId}/${itemId}${subGroupId ? `/${subGroupId}` : ''}`)
-            return
+        if (itemId.startsWith('dynamic_') && moduleData) {
+            finalComponentName = 'DynamicModuleLoader'
+            finalComponentPath = 'modules/DynamicModuleLoader'
+            finalItemTitle = moduleData.name || itemId
+            finalGroupTitle = 'Мои модули'
         }
 
-        const { groupTitle, subGroupTitle, itemTitle, componentName } = menuItem
-
-        // Проверяем, не открыто ли уже такое окно
-        const existingWindow = windows.value.find(w =>
-            w.itemId === itemId &&
-            w.groupId === groupId &&
-            w.subGroupId === subGroupId &&
-            !w.isMinimized
-        )
-
-        if (existingWindow) {
-            focusWindow(existingWindow.id)
-            return
+        // Проверка, не открыто ли уже такое окно (только для немодальных)
+        if (!isModal) {
+            const existingWindow = windows.value.find(
+                w =>
+                    w.itemId === itemId &&
+                    w.groupId === groupId &&
+                    w.subGroupId === subGroupId &&
+                    !w.isMinimized,
+            )
+            if (existingWindow) {
+                focusWindow(existingWindow.id)
+                return
+            }
         }
 
-        // Формируем полный заголовок
-        let fullTitle = groupTitle
-        if (subGroupTitle) fullTitle += ` → ${subGroupTitle}`
-        fullTitle += ` → ${itemTitle}`
+        let fullTitle = finalGroupTitle
+        if (finalSubGroupTitle) fullTitle += ` → ${finalSubGroupTitle}`
+        fullTitle += ` → ${finalItemTitle}`
 
-        let  defaultSize = {
-            width: 600,
-            height: 400,
-            minWidth: 400,
-            minHeight: 300
+        const defaultSize = {
+            width: sizeOptions?.width ?? 600,
+            height: sizeOptions?.height ?? 400,
+            minWidth: sizeOptions?.minWidth ?? 400,
+            minHeight: sizeOptions?.minHeight ?? 300,
         }
 
         const newWindow: WindowItem = {
             id: `window_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-            groupTitle,
-            itemTitle,
+            groupTitle: finalGroupTitle,
+            itemTitle: finalItemTitle,
             fullTitle,
             itemId,
             groupId,
             subGroupId,
-            subGroupTitle,
-            componentName, // добавляем componentName для динамической загрузки
+            subGroupTitle: finalSubGroupTitle,
+            componentName: finalComponentName,
+            componentPath: finalComponentPath,
             zIndex: ++zIndexCounter,
             isMinimized: false,
             position: {
-                x: 50 + (windows.value.length * 30),
-                y: 50 + (windows.value.length * 30)
+                x: 50 + windows.value.length * 30,
+                y: 50 + windows.value.length * 30,
             },
             size: {
-                width: sizeOptions?.width ?? defaultSize.width,
-                height: sizeOptions?.height ?? defaultSize.height,
-                minWidth: sizeOptions?.minWidth ?? defaultSize.minWidth,
-                minHeight: sizeOptions?.minHeight ?? defaultSize.minHeight,
-                isMaximized: false
-            }
+                width: defaultSize.width,
+                height: defaultSize.height,
+                minWidth: defaultSize.minWidth,
+                minHeight: defaultSize.minHeight,
+                isMaximized: false,
+            },
+            isModal: isModal,
+            data: moduleData || data || null
         }
 
-        console.log('created window:', newWindow)
         windows.value.push(newWindow)
+        console.log('Window opened:', newWindow)
     }
 
     const closeWindow = (id: string) => {
@@ -156,7 +176,6 @@ export function useWindowManager() {
         if (!window) return
 
         window.size.isMaximized = !window.size.isMaximized
-
         if (window.size.isMaximized) {
             window.previousSize = { width: window.size.width, height: window.size.height }
             window.previousPosition = { ...window.position }
@@ -181,6 +200,6 @@ export function useWindowManager() {
         minimizeWindow,
         moveWindow,
         resizeWindow,
-        maximizeWindow
+        maximizeWindow,
     }
 }

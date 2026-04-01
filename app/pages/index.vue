@@ -105,7 +105,7 @@ async function loginUser() {
       } else {
         // Обычный вход - просим код
         step.value = 'verify-2fa';
-        statusMessage.value = 'Введите код из Google Authenticator';
+        statusMessage.value = '';
       }
     } else {
       statusMessage.value = data.message || 'Ошибка при входе';

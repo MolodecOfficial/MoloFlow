@@ -24,8 +24,17 @@ const pointSchema = new mongoose.Schema({
     },
     type: {
         type: String,
+        required: [true, 'Укажите формат магазина'],
         enum: ['Магазин', 'Офис', 'Производство', 'Склад', 'Другое'],
         default: 'Магазин',
+    },
+    positions: {
+        type: [String],
+        default: []
+    },
+    departments: {
+        type: [String],
+        default: []
     },
     status: {
         type: String,
@@ -33,9 +42,20 @@ const pointSchema = new mongoose.Schema({
         default: 'Активна',
     },
     contactPerson: {
-        name: String,
-        phone: String,
-        email: String,
+        name: {
+            type: String,
+            required: [true, 'ФИО контактного лица обязательно'],
+        },
+        phone: {
+            type: String,
+            required: [true, 'Телефон контактного лица обязателен'],
+        },
+        email: {
+            type: String,
+            required: [true, 'Email контактного лица обязателен'],
+            lowercase: true,
+            match: [/^\S+@\S+\.\S+$/, 'Введите корректный email'],
+        },
     },
     openingDate: {
         type: Date,

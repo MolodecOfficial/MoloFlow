@@ -2,6 +2,7 @@
 import {useUserStore} from "~~/stores/userStore"
 import {useNotifications} from "~/composables/useNotifications"
 import {useWindowManager} from "~/composables/useWindowManager"
+import logo from '~~/public/logo.svg'
 
 const name = ref('')
 const role = ref('')
@@ -65,6 +66,7 @@ function deleteUser() {
 <template>
   <MoloGuard :allowedRoles="['Управляющий', 'Сотрудник', 'Пользователь']">
     <div class="enterprise-container">
+      <img :src="logo" class="logo">
       <div class="notifications-wrapper">
           <MoloNotice
               v-for="(notification, index) in notifications"
@@ -98,7 +100,6 @@ function deleteUser() {
                 @open-window="openWindow"
 
             />
-
             <WindowsManager
                 :windows="windows"
                 @close="closeWindow"
@@ -136,6 +137,15 @@ function deleteUser() {
 .enterprise-container {
   background-color: #111111;
   min-height: 100vh;
+}
+
+.logo {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  opacity: 0.1;
+  width: 40%;
 }
 
 .loading-state {

@@ -1,5 +1,7 @@
 import Employee from "~~/server/models/employee.model";
 import User from "~~/server/models/user.model";
+import Point from "~~/server/models/point.model";
+
 import bcrypt from "bcrypt";
 
 export default defineEventHandler(async (event) => {
@@ -7,7 +9,7 @@ export default defineEventHandler(async (event) => {
     const body = await readBody(event);
     const {
         userId, name, password, role,
-        position, department, pointId, salary, contacts
+        position, department, pointId, contacts
     } = body;
 
     // Валидация общих полей
@@ -68,6 +70,22 @@ export default defineEventHandler(async (event) => {
             userId: user._id
         });
 
+        const selectedPoint = await Point.findById(pointId);
+        if (selectedPoint) {
+            if (position && !selectedPoint.positions?.includes(position)) {
+                throw createError({
+                    statusCode: 400,
+                    message: `Должность "${position}" не доступна для выбранной точки`
+                });
+            }
+            if (department && !selectedPoint.departments?.includes(department)) {
+                throw createError({
+                    statusCode: 400,
+                    message: `Отдел "${department}" не доступен для выбранной точки`
+                });
+            }
+        }
+
         if (existingEmployee) {
             throw createError({
                 statusCode: 400,
@@ -81,8 +99,8 @@ export default defineEventHandler(async (event) => {
             userId: user._id,
             position,
             department,
+            role,
             pointId: pointId || null,
-            salary: salary || 0,
             contacts: {
                 phone: contacts?.phone || user.phone || '',
                 emergencyPhone: contacts?.emergencyPhone || ''

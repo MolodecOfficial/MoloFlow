@@ -3,7 +3,7 @@ import type {WindowItem} from '~/types/window'
 import {useWindowDrag} from '~/composables/useWindowDrag'
 import {useWindowResize} from '~/composables/useWindowResize'
 import {ref, computed, onMounted, onUnmounted} from 'vue'
-import RestoreIcon from '~~/app/assets/icons/min.svg'
+import RestoreIcon from '~~/public/min.svg'
 import {useUserStore} from "~~/stores/userStore";
 import { windowThemes, windowButtonStyles, THEME_STORAGE_KEY, BUTTON_STYLE_STORAGE_KEY } from '~~/types/window-themes' // ИЗМЕНЕНО: добавлен импорт windowButtonStyles и BUTTON_STYLE_STORAGE_KEY
 
@@ -34,6 +34,8 @@ const props = defineProps<{
   windowId: string,
   groupId: string,
   subGroupId: string,
+  isModal: boolean,
+  windowData?: any
 }>()
 
 const emit = defineEmits<{
@@ -297,13 +299,14 @@ onUnmounted(() => {
           <span>{{ groupId }}</span><span>{{ subGroupId }}</span><span>{{ windowId }}</span>
         </div>
         <div class="window-controls">
-          <button class="control-btn refresh" @click="refreshContent">
+          <button class="control-btn refresh" @click="refreshContent" >
             ↻
           </button>
           <button
               class="control-btn minimize"
               @click="minimizeWithAnimation"
               title="Свернуть"
+              v-if="!isModal"
           >
             _
           </button>
@@ -311,6 +314,7 @@ onUnmounted(() => {
               class="control-btn maximize"
               @click="maximizeWithAnimation"
               :title="isMaximized ? 'Восстановить' : 'На весь экран'"
+              v-if="!isModal"
           >
             <img
                 v-if="isMaximized"
@@ -331,7 +335,7 @@ onUnmounted(() => {
 
 
       <div class="window-content">
-        <slot :refreshKey="refreshKey" />
+        <slot :refreshKey="refreshKey" :windowData="windowData"/>
       </div>
 
       <!-- Ручки для изменения размера (скрываем при максимизации) -->
@@ -553,7 +557,7 @@ onUnmounted(() => {
 }
 
 .window-content {
-  padding: 20px;
+  padding: 10px 15px;
   color: var(--window-content-text, rgba(255, 255, 255, 0.9));
   background: var(--window-content-bg, transparent);
   overflow: auto;

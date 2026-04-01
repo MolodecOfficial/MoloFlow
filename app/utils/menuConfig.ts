@@ -3,7 +3,8 @@ export interface MenuItem {
     title: string;
     requiredRole: ('Пользователь' | 'Сотрудник' | 'Управляющий')[];
     isActive: boolean;
-    componentName?  : string
+    componentName?: string
+    componentPath?: string;
     items?: MenuItem[];
     parentId?: string
 }
@@ -11,10 +12,10 @@ export interface MenuItem {
 export interface MenuGroup {
     id: string;
     title: string;
-    order: number;
+    order?: number;
     requiredRole: ('Пользователь' | 'Сотрудник' | 'Управляющий')[];
     isActive?: boolean;
-    items: MenuItem[];
+    items?: MenuItem[];
 }
 
 export const menuConfig: MenuGroup[] = [
@@ -22,32 +23,32 @@ export const menuConfig: MenuGroup[] = [
         id: 'dashboard',
         title: 'Панель',
         isActive: true,
-        requiredRole: 'Сотрудник',
+        requiredRole: ['Сотрудник'], // Исправлено: массив
         items: [
             {
                 id: 'employee_tasks',
                 title: 'Мои задачи',
-                requiredRole: 'Сотрудник',
+                requiredRole: ['Сотрудник'],
                 isActive: true,
                 componentName: 'dashboardEmployeeTasks'
             },
             {
                 id: 'employee_documents',
                 title: 'Документы',
-                requiredRole: 'Сотрудник',
+                requiredRole: ['Сотрудник'],
                 isActive: true,
                 componentName: 'dashboardEmployeeDocuments'
             },
             {
                 id: 'employee_schedule',
                 title: 'График работы',
-                requiredRole: 'Сотрудник',
+                requiredRole: ['Сотрудник'],
                 isActive: true,
             },
             {
                 id: 'employee_reports',
                 title: 'Отчеты',
-                requiredRole: 'Сотрудник',
+                requiredRole: ['Сотрудник'],
                 isActive: true,
             },
         ]
@@ -56,18 +57,18 @@ export const menuConfig: MenuGroup[] = [
         id: 'sfd',
         title: 'СФД',
         isActive: true,
-        requiredRole: 'Сотрудник',
+        requiredRole: ['Сотрудник'],
         items: [
             {
                 id: 'sfd1',
                 title: 'Движение Денежных Средств',
-                requiredRole: 'Сотрудник',
+                requiredRole: ['Сотрудник'],
                 isActive: true,
             },
             {
                 id: 'sfd2',
                 title: 'Инкассация',
-                requiredRole: 'Сотрудник',
+                requiredRole: ['Сотрудник'],
                 isActive: true,
             }
         ]
@@ -76,58 +77,66 @@ export const menuConfig: MenuGroup[] = [
         id: 'company',
         title: 'Настройки предприятия',
         isActive: true,
-        requiredRole: 'Управляющий',
+        requiredRole: ['Управляющий'],
         items: [
             {
                 id: 'enterprise',
                 title: 'Предприятие',
-                requiredRole: 'Управляющий',
+                requiredRole: ['Управляющий'],
                 isActive: true,
                 items: [
                     {
                         id: 'creature',
                         title: 'Создание предприятия',
-                        requiredRole: 'Управляющий',
+                        requiredRole: ['Управляющий'],
                         isActive: true,
                         componentName: 'Creature',
+                        componentPath: 'company/enterprise/Creature',
                         parentId: 'enterprise'
                     },
                     {
                         id: 'login',
                         title: 'Войти в предприятие',
-                        requiredRole: 'Управляющий',
+                        requiredRole: ['Управляющий'],
                         isActive: true,
                         componentName: 'Login',
+                        componentPath: 'company/enterprise/Login',
                         parentId: 'enterprise'
                     },
                     {
                         id: 'control',
                         title: 'Управление предприятием',
-                        requiredRole: 'Управляющий',
+                        requiredRole: ['Управляющий'],
                         isActive: true,
                         componentName: 'Control',
+                        componentPath: 'company/enterprise/Control',
                         parentId: 'enterprise'
                     },
                     {
                         id: 'createPoint',
                         title: 'Создание точки',
-                        requiredRole: 'Управляющий',
+                        requiredRole: ['Управляющий'],
                         isActive: false,
                         componentName: 'CreatePoint',
+                        componentPath: 'company/enterprise/CreatePoint',
                         parentId: 'enterprise',
-                    },{
+                    },
+                    {
                         id: 'createEmployee',
                         title: 'Создание сотрудника',
-                        requiredRole: 'Управляющий',
+                        requiredRole: ['Управляющий'],
                         isActive: false,
                         componentName: 'CreateEmployee',
+                        componentPath: 'company/enterprise/CreateEmployee',
                         parentId: 'enterprise',
-                    },{
+                    },
+                    {
                         id: 'createPlan',
                         title: 'Создание плана',
-                        requiredRole: 'Управляющий',
+                        requiredRole: ['Управляющий'],
                         isActive: false,
                         componentName: 'CreatePlan',
+                        componentPath: 'company/enterprise/CreatePlan',
                         parentId: 'enterprise',
                     },
                 ]
@@ -135,14 +144,14 @@ export const menuConfig: MenuGroup[] = [
             {
                 id: 'points',
                 title: 'Точки',
-                requiredRole: 'Управляющий',
+                requiredRole: ['Управляющий'],
                 isActive: true,
                 componentName: 'Points',
                 items: [
                     {
                         id: 'ProblemPoints',
                         title: 'Проблемные точки',
-                        requiredRole: 'Управляющий',
+                        requiredRole: ['Управляющий'],
                         isActive: true,
                         componentName: 'ProblemPoints',
                         parentId: 'points'
@@ -150,7 +159,7 @@ export const menuConfig: MenuGroup[] = [
                     {
                         id: 'ConfigurePoints',
                         title: 'Конфигурация точки',
-                        requiredRole: 'Управляющий',
+                        requiredRole: ['Управляющий'],
                         isActive: true,
                         componentName: 'ConfigurePoints',
                         parentId: 'points'
@@ -160,7 +169,7 @@ export const menuConfig: MenuGroup[] = [
             {
                 id: 'termsOfUse',
                 title: 'Условия пользования',
-                requiredRole: 'Управляющий',
+                requiredRole: ['Управляющий'],
                 isActive: false,
                 componentName: 'TermsOfUse'
             },
@@ -178,48 +187,85 @@ export const menuConfig: MenuGroup[] = [
                 requiredRole: ['Сотрудник', 'Управляющий'],
                 isActive: true,
                 componentName: 'Customisation'
+            },
+            {
+                id: 'confirm',
+                title: 'Подтверждение',
+                requiredRole: ['Сотрудник', 'Управляющий'],
+                isActive: false,
+                componentName: 'Confirm'
             }
         ]
-    }
+    },
 
 ];
 
-export function getMenuByRole(role: string): MenuGroup[] {
-    return menuConfig
-        .filter(group => {
-            if (group.isActive === false) return false
+export const moduleConfig: MenuGroup[] = [
+    {
+        id: 'modules',
+        title: 'Модули',
+        requiredRole: ['Управляющий'],
+        isActive: true,
+        items: [
+            {
+                id: 'Creature',
+                title: 'Создание модуля',
+                requiredRole: ['Управляющий'],
+                isActive: true,
+                componentName: 'Creature',
+                componentPath: 'modules/creature'
+            },
+        ]
+    }
+];
 
-            // Проверяем requiredRole - может быть строкой или массивом
+// Функция для фильтрации меню по роли
+export function getMenuByRole(role: string): MenuGroup[] {
+    const filterItems = (items: MenuItem[] = []): MenuItem[] => {
+        return items
+            .filter(item => {
+                if (item.isActive === false) return false;
+                if (Array.isArray(item.requiredRole)) {
+                    return item.requiredRole.includes(role);
+                }
+                return item.requiredRole === role;
+            })
+            .map(item => ({
+                ...item,
+                items: filterItems(item.items)
+            }));
+    };
+
+    // Фильтруем основное меню
+    const filteredMenu = menuConfig
+        .filter(group => {
+            if (group.isActive === false) return false;
             if (Array.isArray(group.requiredRole)) {
-                return group.requiredRole.includes(role)
-            } else {
-                return group.requiredRole === role
+                return group.requiredRole.includes(role);
             }
+            return group.requiredRole === role;
         })
         .map(group => ({
             ...group,
-            items: group.items
-                .filter(item => {
-                    if (item.isActive === false) return false
-
-                    if (Array.isArray(item.requiredRole)) {
-                        return item.requiredRole.includes(role)
-                    } else {
-                        return item.requiredRole === role
-                    }
-                })
-                .map(item => ({
-                    ...item,
-                    items: item.items
-                        ?.filter(child => {
-                            if (child.isActive === false) return false
-
-                            if (Array.isArray(child.requiredRole)) {
-                                return child.requiredRole.includes(role)
-                            } else {
-                                return child.requiredRole === role
-                            }
-                        })
-                }))
+            items: filterItems(group.items)
         }))
+        .filter(group => group.items && group.items.length > 0);
+
+    // Фильтруем модули
+    const filteredModules = moduleConfig
+        .filter(group => {
+            if (group.isActive === false) return false;
+            if (Array.isArray(group.requiredRole)) {
+                return group.requiredRole.includes(role);
+            }
+            return group.requiredRole === role;
+        })
+        .map(group => ({
+            ...group,
+            items: filterItems(group.items)
+        }))
+        .filter(group => group.items && group.items.length > 0);
+
+    // Объединяем и возвращаем
+    return [...filteredMenu, ...filteredModules];
 }

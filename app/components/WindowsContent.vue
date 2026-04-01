@@ -1,91 +1,177 @@
+<!-- components/DynamicComponentLoader.vue -->
 <script setup lang="ts">
-import { useMenuConfig } from '~/composables/useMenuConfig'
+import { defineAsyncComponent, computed } from 'vue'
 
 const props = defineProps<{
-  windowId?: string
-  groupId?: string
+  windowId: string
+  groupId: string
   subGroupId?: string
+  componentName?: string
+  isModal?: boolean
+  windowData?: any
 }>()
 
-const { getComponentPath } = useMenuConfig()
-const layoutsContext = import.meta.glob('../layouts/*.vue', { eager: false })
+// Получаем все файлы .vue из папки layouts и всех подпапок
+const layoutsContext = import.meta.glob('../layouts/**/*.vue', { eager: false })
 
-const getComponentLoader = () => {
-  if (!props.windowId || !props.groupId) {
-    console.log('Не хватает параметров')
-    return () => import('/layouts/NotFound.vue')
-  }
-
-  // Пробуем разные варианты поиска файла
-  const searchPatterns = []
-
-  // 1. Полный путь: settings_enterprise_control
-  if (props.subGroupId) {
-    const fullPath = `${props.groupId}_${props.subGroupId}_${props.windowId}`
-        .split('_')
-        .map((word, index) =>
-            index === 0 ? word.toLowerCase() :
-                word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
-        )
-        .join('')
-    searchPatterns.push(fullPath)  // settingsEnterpriseControl
-  }
-
-  // 2. Без подгруппы: settings_control
-  const withoutSubGroup = `${props.groupId}_${props.windowId}`
+/**
+ * Преобразует строку в PascalCase
+ */
+const toPascalCase = (str: string): string => {
+  return str
       .split('_')
-      .map((word, index) =>
-          index === 0 ? word.toLowerCase() :
-              word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
-      )
+      .map((word, i) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
       .join('')
-  searchPatterns.push(withoutSubGroup)  // settingsControl
+}
 
-  // 3. Только по windowId
-  searchPatterns.push(props.windowId)  // control
+/**
+ * Преобразует строку в camelCase
+ */
+const toCamelCase = (str: string): string => {
+  return str
+      .split('_')
+      .map((word, i) => i === 0 ? word.toLowerCase() : word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join('')
+}
 
-  // 4. Ищем в конфиге
-  const componentPath = getComponentPath(props.windowId, props.groupId)
-  if (componentPath) {
-    searchPatterns.push(componentPath)
+/**
+ * Генерирует возможные имена файлов для поиска
+ */
+const generatePossibleNames = (): string[] => {
+  const names: string[] = []
+
+  // 1. Если указан componentName, используем его в первую очередь
+  if (props.componentName) {
+    names.push(props.componentName)
   }
 
-  console.log('Паттерны поиска:', searchPatterns)
+  // 2. Генерация по паттернам
+  if (props.subGroupId) {
+    // Полный путь: groupId/subGroupId/windowId
+    const fullPath = `${props.groupId}/${props.subGroupId}/${props.windowId}`
+    names.push(fullPath)
 
-  // Перебираем все паттерны
-  for (const pattern of searchPatterns) {
-    const fullPath = `../layouts/${pattern}.vue`
-    if (layoutsContext[fullPath]) {
-      console.log(`Нашли по паттерну: ${pattern}`)
-      return layoutsContext[fullPath]
+    // PascalCase версия: GroupIdSubGroupIdWindowId
+    const pascalFull = `${props.groupId}_${props.subGroupId}_${props.windowId}`
+    names.push(toPascalCase(pascalFull))
+
+    // camelCase версия: groupIdSubGroupIdWindowId
+    names.push(toCamelCase(pascalFull))
+  }
+
+  // 3. Путь: groupId/windowId
+  const groupPath = `${props.groupId}/${props.windowId}`
+  names.push(groupPath)
+
+  // PascalCase: GroupIdWindowId
+  const pascalGroup = `${props.groupId}_${props.windowId}`
+  names.push(toPascalCase(pascalGroup))
+
+  // camelCase: groupIdWindowId
+  names.push(toCamelCase(pascalGroup))
+
+  // 4. Только windowId
+  names.push(props.windowId)
+  names.push(toPascalCase(props.windowId))
+  names.push(toCamelCase(props.windowId))
+
+  // 5. Если есть subGroupId, добавляем варианты с ним
+  if (props.subGroupId) {
+    // subGroupId/windowId
+    names.push(`${props.subGroupId}/${props.windowId}`)
+
+    // groupId/subGroupId
+    names.push(`${props.groupId}/${props.subGroupId}`)
+
+    // Просто subGroupId
+    names.push(props.subGroupId)
+  }
+
+  return [...new Set(names)] // Убираем дубликаты
+}
+
+/**
+ * Находит компонент по различным путям и именам
+ */
+const findComponent = (): (() => Promise<any>) | null => {
+  const possibleNames = generatePossibleNames()
+
+  // Сначала ищем по точному совпадению пути
+  for (const name of possibleNames) {
+    // Ищем по точному пути
+    const exactPath = `../layouts/${name}.vue`
+    if (layoutsContext[exactPath]) {
+      return layoutsContext[exactPath]
     }
-  }
 
-  // Поиск без учета регистра
-  const availableFiles = Object.keys(layoutsContext)
-  for (const pattern of searchPatterns) {
-    const foundFile = availableFiles.find(path => {
-      const fileName = path
-          .replace('../layouts/', '')
-          .replace('.vue', '')
-          .toLowerCase()
-      return fileName === pattern.toLowerCase()
+    // Ищем с учётом регистра
+    const availableFiles = Object.keys(layoutsContext)
+    const found = availableFiles.find(path => {
+      // Убираем '../layouts/' и '.vue' для сравнения
+      const filePath = path.replace('../layouts/', '').replace('.vue', '')
+      return filePath === name || filePath.toLowerCase() === name.toLowerCase()
     })
 
-    if (foundFile) {
-      console.log(`Нашли (без регистра): ${foundFile}`)
-      return layoutsContext[foundFile]
+    if (found) {
+      console.log(`Found component at: ${found}`)
+      return layoutsContext[found]
     }
   }
 
-  console.warn('Файл не найден ни по одному паттерну')
+  // Если не нашли, пробуем найти по componentName в любом месте
+  if (props.componentName) {
+    const availableFiles = Object.keys(layoutsContext)
+    const found = availableFiles.find(path => {
+      const fileName = path.split('/').pop()?.replace('.vue', '')
+      return fileName === props.componentName ||
+          fileName?.toLowerCase() === props.componentName.toLowerCase()
+    })
+
+    if (found) {
+      console.log(`Found component by name in subfolder: ${found}`)
+      return layoutsContext[found]
+    }
+  }
+
+  console.warn(`Component not found for: ${props.groupId}/${props.windowId}`)
+  return null
+}
+
+/**
+ * Получает загрузчик компонента
+ */
+const getComponentLoader = () => {
+  const loader = findComponent()
+
+  if (loader) {
+    return loader
+  }
+
+  // Если ничего не найдено – компонент заглушка
+  console.warn('Using NotFound component as fallback')
   return () => import('../layouts/NotFound.vue')
 }
 
-const Component = defineAsyncComponent(() => {
-  const loader = getComponentLoader()
-  return loader()
+// Создаём асинхронный компонент
+const Component = defineAsyncComponent({
+  loader: getComponentLoader(),
+  loadingComponent: {
+    template: '<div class="loading-spinner"></div>'
+  },
+  errorComponent: {
+    template: '<div class="error-component">Ошибка загрузки компонента</div>'
+  },
+  delay: 200,
+  timeout: 10000
 })
+
+// Данные для передачи в дочерний компонент
+const componentProps = computed(() => ({
+  windowId: props.windowId,
+  groupId: props.groupId,
+  subGroupId: props.subGroupId,
+  windowData: props.windowData
+}))
 </script>
 
 <template>
@@ -94,15 +180,13 @@ const Component = defineAsyncComponent(() => {
       <div class="content-wrapper">
         <component
             :is="Component"
-            :window-id="windowId"
-            :sub-group-id="subGroupId"
-            :group-id="groupId"
+            v-bind="componentProps"
         />
       </div>
     </template>
     <template #fallback>
       <div class="loading-overlay">
-      <div class="loading-spinner"></div>
+        <div class="loading-spinner"></div>
       </div>
     </template>
   </Suspense>
@@ -117,7 +201,6 @@ const Component = defineAsyncComponent(() => {
 
 .loading-overlay {
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
   width: 100%;
@@ -131,6 +214,18 @@ const Component = defineAsyncComponent(() => {
   border-top: 3px solid #38ef7d;
   border-radius: 50%;
   animation: spin 1s linear infinite;
+}
+
+.error-component {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  color: #fa5252;
+  font-size: 14px;
+  padding: 20px;
+  text-align: center;
 }
 
 @keyframes spin {

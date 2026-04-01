@@ -1,12 +1,11 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import { useWindowManager } from '~/composables/useWindowManager'
-import { useNotifications } from '~/composables/useNotifications'
+import {ref} from 'vue'
+import {useWindowManager} from '~/composables/useWindowManager'
+import {useNotifications} from '~/composables/useNotifications'
 
-const { openWindow } = useWindowManager()
-const { addNotification } = useNotifications()
+const {openWindow} = useWindowManager()
+const {addNotification} = useNotifications()
 
-// Состояние загрузки
 const loading = ref(false)
 
 // Данные формы
@@ -30,11 +29,17 @@ const openTermsOfUse = () => {
   openWindow('company', 'termsOfUse')
 }
 
+const copyAddress = () => {
+  if (sameAddress.value) {
+    actualAddress.value = legalAddress.value
+  } else {
+    actualAddress.value = ''
+  }
+}
+
 const createEnterprise = async () => {
   loading.value = true
-
   try {
-    // Подготовка данных
     const enterpriseData = {
       enterpriseName: enterpriseName.value,
       inn: Number(inn.value),
@@ -57,7 +62,6 @@ const createEnterprise = async () => {
 
     addNotification('NOTICE_DEFAULT', response.message)
     resetForm()
-
   } catch (error: any) {
     addNotification('ERROR_DEFAULT', error.data?.message || error.message)
   } finally {
@@ -65,7 +69,6 @@ const createEnterprise = async () => {
   }
 }
 
-// Сброс формы после успешного создания
 const resetForm = () => {
   enterpriseName.value = ''
   inn.value = ''
@@ -81,49 +84,21 @@ const resetForm = () => {
   keypass.value = ''
   ownershipForm.value = 'ООО'
 }
-
-const copyAddress = () => {
-  if (sameAddress.value) {
-    actualAddress.value = legalAddress.value
-  } else {
-    actualAddress.value = ''
-  }
-}
-
-// Валидация полей
-const validateForm = () => {
-  if (inn.value.length !== 10 && inn.value.length !== 12) {
-    addNotification('ENTERPRISE_ADD_ERROR')
-    return false
-  }
-  if (kpp.value.length !== 9 && kpp.value.length > 0) {
-    addNotification('ENTERPRISE_ADD_ERROR')
-    return false
-  }
-  if (ogrn.value.length !== 13 && ogrn.value.length !== 15) {
-    addNotification('ENTERPRISE_ADD_ERROR')
-    return false
-  }
-  return true
-}
 </script>
 
 <template>
-
   <div class="enterprise-creature">
     <h1 class="title">Создание предприятия</h1>
-
     <p class="notice">
       Перед созданием предприятия и внесением его в базу, просьба ознакомиться с нашими
       <a class="tou" @click="openTermsOfUse">условиями пользования</a>!
     </p>
-
     <hr>
 
     <form @submit.prevent="createEnterprise" class="enterprise-form">
       <div class="form-grid">
         <div class="form-group full-width">
-          <MoloForm
+          <MoloInput
               label="enterpriseName"
               tLabel="Полное наименование предприятия"
               lRequired
@@ -136,19 +111,19 @@ const validateForm = () => {
         </div>
 
         <!-- ИНН, КПП, ОГРН в одной строке -->
-        <MoloForm
+        <MoloInput
             label="inn"
             tLabel="ИНН"
             lRequired
             type="text"
             id="inn"
             iRequired
-            placeholder="1234567890"
+            placeholder="123456789012"
             max-length="12"
             v-model="inn"
         />
 
-        <MoloForm
+        <MoloInput
             label="kpp"
             tLabel="КПП"
             lRequired
@@ -159,7 +134,7 @@ const validateForm = () => {
             v-model="kpp"
         />
 
-        <MoloForm
+        <MoloInput
             label="ogrn"
             tLabel="ОГРН"
             lRequired
@@ -167,13 +142,13 @@ const validateForm = () => {
             id="ogrn"
             iRequired
             placeholder="1234567890123"
-            max-length="15"
+            max-length="13"
             v-model="ogrn"
         />
 
-        <!-- Юридический адрес -->
+        <!-- Юридический адрес с поиском -->
         <div class="form-group full-width">
-          <MoloForm
+          <MoloInput
               label="legalAddress"
               tLabel="Юридический адрес"
               lRequired
@@ -182,6 +157,7 @@ const validateForm = () => {
               iRequired
               placeholder="г. Ишимбай, ул. Пушкина, д. 1, оф. 2"
               v-model="legalAddress"
+              :address="true"
           />
         </div>
 
@@ -193,20 +169,20 @@ const validateForm = () => {
           </label>
         </div>
 
-        <!-- Фактический адрес -->
+        <!-- Фактический адрес с поиском -->
         <div class="form-group full-width" v-if="!sameAddress">
-          <MoloForm
+          <MoloInput
               label="actualAddress"
               tLabel="Фактический адрес"
               type="text"
-              id="actualAddress"
               v-model="actualAddress"
               placeholder="г. Ишимбай, ул. Пушкина, д. 1, оф. 2"
+              :address="true"
           />
         </div>
 
         <!-- Телефон и Email -->
-        <MoloForm
+        <MoloInput
             label="phone"
             tLabel="Телефон"
             lRequired
@@ -215,9 +191,10 @@ const validateForm = () => {
             iRequired
             placeholder="+7 (999) 123-45-67"
             v-model="phone"
+            :phone="true"
         />
 
-        <MoloForm
+        <MoloInput
             label="email"
             tLabel="Email"
             lRequired
@@ -229,7 +206,7 @@ const validateForm = () => {
         />
 
         <!-- Руководитель -->
-        <MoloForm
+        <MoloInput
             label="director"
             tLabel="Руководитель"
             lRequired
@@ -241,7 +218,7 @@ const validateForm = () => {
         />
 
         <!-- ОКВЭД -->
-        <MoloForm
+        <MoloInput
             label="okved"
             tLabel="Основной ОКВЭД"
             lRequired
@@ -252,7 +229,8 @@ const validateForm = () => {
             v-model="okved"
         />
 
-        <MoloForm
+        <!-- Ключ доступа -->
+        <MoloInput
             label="keypass"
             tLabel="Ключ доступа к предприятию"
             lRequired
@@ -264,17 +242,17 @@ const validateForm = () => {
         />
 
         <!-- Форма собственности -->
-        <div class="form-group">
-          <label for="ownershipForm">Форма собственности <span class="required">*</span></label>
-          <select id="ownershipForm" v-model="ownershipForm" required>
-            <option v-for="option in ownershipOptions" :key="option" :value="option">
-              {{ option }}
-            </option>
-          </select>
-        </div>
+        <MoloSelect
+            tLabel="Форма собственности"
+            lRequired
+            v-model="ownershipForm"
+            iRequired
+            :parent="ownershipOptions"
+            :children="option"
+        />
       </div>
 
-      <hr>
+      <hr/>
 
       <button type="submit" class="login" :disabled="loading">
         <div v-if="loading" class="modern-loader"></div>
@@ -294,6 +272,7 @@ const validateForm = () => {
   color: white;
   overflow-y: initial;
 }
+
 .title {
   color: white;
 }
@@ -336,53 +315,6 @@ const validateForm = () => {
 
 .form-group.full-width {
   grid-column: span 3;
-}
-
-label {
-  font-size: 0.9rem;
-  font-weight: 500;
-  color: rgba(255, 255, 255, 0.9);
-}
-
-.required {
-  color: #ff4d4d;
-  margin-left: 2px;
-}
-
-input, select {
-  background-color: var(--half_opacity_bg);
-  border: 1px solid var(--half_opacity_border);
-  border-radius: 8px;
-  padding: 10px 12px;
-  color: white;
-  font-size: 0.95rem;
-  transition: border-color 0.2s, box-shadow 0.2s;
-  outline: none;
-  width: 100%;
-  box-sizing: border-box;
-}
-
-input:focus, select:focus {
-  border-color: #1eef6f;
-  box-shadow: 0 0 0 2px rgba(30, 239, 111, 0.2);
-}
-
-input::placeholder {
-  color: rgba(255, 255, 255, 0.3);
-}
-
-select {
-  cursor: pointer;
-  appearance: none;
-  background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='white'%3e%3cpath d='M7 10l5 5 5-5z'/%3e%3c/svg%3e");
-  background-repeat: no-repeat;
-  background-position: right 10px center;
-  background-size: 20px;
-}
-
-select option {
-  background: #1a2634;
-  color: white;
 }
 
 .checkbox-group {
@@ -447,10 +379,11 @@ hr {
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
-/* Медиа-запросы для мобильных */
 @media (max-width: 768px) {
   .form-grid {
     grid-template-columns: 1fr;

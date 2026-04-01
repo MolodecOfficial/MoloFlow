@@ -4,7 +4,7 @@ export default defineEventHandler(async (event) => {
     const enterpriseId = getRouterParam(event, 'id');
     const body = await readBody(event);
 
-    const { name, region, city, address, type, contactPerson, metadata } = body;
+    const { name, region, city, address, type, positions, departments, contactPerson, metadata } = body;
 
     if (!name || !region || !city || !address) {
         throw createError({
@@ -21,6 +21,8 @@ export default defineEventHandler(async (event) => {
             city,
             address,
             type,
+            positions: positions || [],
+            departments: departments || [],
             contactPerson,
             metadata,
             status: 'Активна'

@@ -1,11 +1,10 @@
 <script setup lang="ts">
-import { getMenuByRole, type MenuGroup, type MenuItem } from '~/utils/menuConfig'
+import { ref, type Ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { menuConfig, moduleConfig, type MenuGroup, type MenuItem } from '~/utils/menuConfig'
 import { useNotifications } from '~/composables/useNotifications'
 import lock from "~~/public/lock.svg"
 
-const props = defineProps<{
-  role: string
-}>()
+const props = defineProps<{ role: string }>()
 
 interface WindowSizeOptions {
   width?: number
@@ -20,9 +19,80 @@ const emit = defineEmits<{
     groupId: string,
     itemId: string,
     subGroupId?: string,
-    sizeOptions?: WindowSizeOptions
+    sizeOptions?: WindowSizeOptions,
+    isModal?: boolean,
+    componentPath?: string
   ]
 }>()
+
+// Реактивные данные о входе в предприятие
+const enterpriseDataStr = ref<string | null>(null)
+const token = ref<string | null>(null)
+const currentEnterprise = ref<any>(null)
+const dynamicModules = ref<any[]>([])
+
+// Функция обновления данных из localStorage
+const updateAuthData = () => {
+  enterpriseDataStr.value = localStorage.getItem('currentEnterprise')
+  token.value = localStorage.getItem('enterprise_token')
+
+  if (enterpriseDataStr.value) {
+    try {
+      currentEnterprise.value = JSON.parse(enterpriseDataStr.value)
+    } catch (e) {
+      console.error('Ошибка парсинга данных предприятия', e)
+    }
+  } else {
+    currentEnterprise.value = null
+  }
+}
+
+// Загрузка динамических модулей
+const loadDynamicModules = async () => {
+  if (!currentEnterprise.value?._id) return
+
+  try {
+    const response = await $fetch(
+        `/api/enterprises/${currentEnterprise.value._id}/dynamicModules`
+    )
+
+    dynamicModules.value = response.modules || []
+    console.log('Загруженные динамические модули:', dynamicModules.value)
+
+  } catch (error) {
+    console.error('Ошибка загрузки динамических модулей:', error)
+    dynamicModules.value = []
+  }
+}
+
+// Инициализация данных при монтировании
+onMounted(async () => {
+  updateAuthData()
+  if (props.role === 'Управляющий') await getEnterprises()
+  menuGroups.value = filterGroupsByRole(menuConfig, props.role)
+
+  if (currentEnterprise.value?._id) {
+    await loadDynamicModules()
+  }
+})
+
+const customStorageEvent = async () => {
+  updateAuthData()
+  if (currentEnterprise.value?._id) {
+    await loadDynamicModules()
+  }
+}
+
+window.addEventListener('enterprise-login', customStorageEvent)
+window.addEventListener('enterprise-logout', customStorageEvent)
+window.addEventListener('storage', customStorageEvent)
+
+// Очистка слушателей
+onUnmounted(() => {
+  window.removeEventListener('enterprise-login', customStorageEvent)
+  window.removeEventListener('enterprise-logout', customStorageEvent)
+  window.removeEventListener('storage', customStorageEvent)
+})
 
 const { addNotification } = useNotifications()
 
@@ -32,11 +102,95 @@ const loadingEnterprises = ref(false)
 const isLockedHover = ref(false)
 const tooltipPosition = ref({ x: 0, y: 0 })
 const menuRef = ref<HTMLElement | null>(null)
+const modulesRef = ref<HTMLElement | null>(null)
 const menuGroups = ref<MenuGroup[]>([])
 const activeGroup = ref<string | null>(null)
+const activeModulesGroup = ref<string | null>(null)
 const expandedItems = ref<Set<string>>(new Set())
+const expandedModulesItems = ref<Set<string>>(new Set())
 
-// Загрузка предприятий для управляющего
+const getPaddingLeft = (depth: number = 0): string => `${10 + depth * 20}px`
+
+const filterItemsByRole = (items: MenuItem[] = [], role: string): MenuItem[] => {
+  return items
+      .filter(item => {
+        if (item.isActive === false) return false
+        if (Array.isArray(item.requiredRole)) return item.requiredRole.includes(role)
+        return item.requiredRole === role
+      })
+      .map(item => ({
+        ...item,
+        items: filterItemsByRole(item.items || [], role),
+      }))
+      .filter(item => !(item.items && item.items.length === 0 && item.componentName === undefined))
+}
+
+const filterGroupsByRole = (groups: MenuGroup[], role: string): MenuGroup[] => {
+  return groups
+      .filter(group => {
+        if (group.isActive === false) return false
+        if (Array.isArray(group.requiredRole)) return group.requiredRole.includes(role)
+        return group.requiredRole === role
+      })
+      .map(group => ({
+        ...group,
+        items: filterItemsByRole(group.items || [], role),
+      }))
+      .filter(group => group.items && group.items.length > 0)
+}
+
+// Создание динамических пунктов меню из загруженных модулей
+const createDynamicMenuItems = (): MenuItem[] => {
+  if (!dynamicModules.value.length) return []
+
+  return dynamicModules.value.map(module => ({
+    id: `dynamic_${module._id}`,
+    title: module.name,
+    requiredRole: ['Управляющий', 'Сотрудник'],
+    isActive: true,
+    componentPath: `modules/${module._id}`,
+    componentName: 'DynamicModuleLoader',
+    moduleData: module
+  }))
+}
+
+// Вычисляем модули: показываем только если пользователь вошёл в предприятие
+const modulesGroups = computed<MenuGroup[]>(() => {
+  const isLoggedIn = token.value && enterpriseDataStr.value
+  if (!isLoggedIn) return []
+
+  // Получаем статические модули из конфига
+  const staticModules = filterGroupsByRole(moduleConfig, props.role)
+
+  // Создаем группу для динамических модулей
+  const dynamicModulesItems = createDynamicMenuItems()
+
+  if (dynamicModulesItems.length > 0) {
+    const dynamicGroup: MenuGroup = {
+      id: 'molo_modules',
+      title: 'Мои модули',
+      requiredRole: ['Управляющий', 'Сотрудник'],
+      isActive: true,
+      items: dynamicModulesItems
+    }
+
+    // Если есть статические модули, добавляем группу с динамическими
+    if (staticModules.length > 0) {
+      // Добавляем динамическую группу в существующие
+      return [...staticModules, dynamicGroup]
+    }
+    // Если нет статических, возвращаем только динамическую группу
+    return [dynamicGroup]
+  }
+
+  return staticModules
+})
+
+// Следим за изменениями и обновляем меню
+watch([token, enterpriseDataStr, dynamicModules], () => {
+  menuGroups.value = filterGroupsByRole(menuConfig, props.role)
+}, { deep: true })
+
 const getEnterprises = async () => {
   loadingEnterprises.value = true
   try {
@@ -49,27 +203,21 @@ const getEnterprises = async () => {
   }
 }
 
-// Утилиты
 const getLockMessage = () => {
   switch(props.role) {
-    case 'Пользователь':
-      return 'Доступ заблокирован, свяжитесь с Вашим Управляющим!'
-    case 'Сотрудник':
-      return 'Для доступа нужна должность "Управляющий"'
-    case 'Управляющий':
-      return 'Вы уже имеете полный доступ'
-    default:
-      return 'Недостаточно прав для просмотра'
+    case 'Пользователь': return 'Доступ заблокирован, свяжитесь с Вашим Управляющим!'
+    case 'Сотрудник': return 'Для доступа нужна должность "Управляющий"'
+    case 'Управляющий': return 'Вы уже имеете полный доступ'
+    default: return 'Недостаточно прав для просмотра'
   }
 }
 
-// Обработчики событий
-const handleMouseMove = (event: MouseEvent) => {
-  if (!menuRef.value) return
-  const rect = menuRef.value.getBoundingClientRect()
+const handleMouseMove = (event: MouseEvent, refElement: Ref<HTMLElement | null>) => {
+  if (!refElement.value) return
+  const rect = refElement.value.getBoundingClientRect()
   tooltipPosition.value = {
     x: event.clientX - rect.left,
-    y: event.clientY - rect.top
+    y: event.clientY - rect.top,
   }
 }
 
@@ -87,113 +235,82 @@ const handleMouseLeave = () => {
   }
 }
 
-const handleGroupEnter = (groupId: string) => {
-  activeGroup.value = groupId
-}
+const handleGroupEnter = (groupId: string) => { activeGroup.value = groupId }
+const handleGroupLeave = () => { activeGroup.value = null }
+const handleModulesGroupEnter = (groupId: string) => { activeModulesGroup.value = groupId }
+const handleModulesGroupLeave = () => { activeModulesGroup.value = null }
 
-const handleGroupLeave = () => {
-  activeGroup.value = null
-}
-
-const toggleExpand = (itemId: string) => {
-  if (expandedItems.value.has(itemId)) {
-    expandedItems.value.delete(itemId)
-  } else {
-    expandedItems.value.add(itemId)
-  }
+const toggleExpand = (itemId: string, isModules: boolean = false) => {
+  const expandedSet = isModules ? expandedModulesItems.value : expandedItems.value
+  if (expandedSet.has(itemId)) expandedSet.delete(itemId)
+  else expandedSet.add(itemId)
 }
 
 const getWindowSizeOptions = (itemId: string): WindowSizeOptions | undefined => {
-  const sizePresets: Record<string, WindowSizeOptions> = {
-    login: {
-      width: 400,
-      height: 450,
-      minWidth: 350,
-      minHeight: 400
-    },
-    creature: {
-      width: 700,
-      height: 650,
-      minWidth: 500,
-      minHeight: 600
-    },
-    NotFound: {
-      width: 700,
-      height: 650,
-      minWidth: 500,
-      minHeight: 600
-    }
+  const presets: Record<string, WindowSizeOptions> = {
+    login: { width: 400, height: 450, minWidth: 350, minHeight: 400 },
+    creature: { width: 700, height: 650, minWidth: 500, minHeight: 600 },
+    NotFound: { width: 700, height: 650, minWidth: 500, minHeight: 600 },
   }
-
-  return sizePresets[itemId]
+  return presets[itemId]
 }
 
-const handleLinkClick = (
-    groupId: string,
-    itemId: string,
-    subGroupId?: string
-) => {
+const handleLinkClick = (groupId: string, itemId: string, subGroupId?: string, componentPath?: string, moduleData?: any) => {
   if (props.role === 'Пользователь') {
     addNotification('LOCKED')
     return
   }
 
-  const sizeOptions = getWindowSizeOptions(itemId)
-  emit('open-window', groupId, itemId, subGroupId, sizeOptions)
-}
-
-const handleMenuItemClick = (
-    event: Event,
-    groupId: string,
-    item: MenuItem
-) => {
-  event.preventDefault()
-  if (item.items && item.items.length > 0) {
-    toggleExpand(item.id)
+  if (itemId === 'manage_modules') {
+    openModuleManager()
     return
   }
-  handleLinkClick(groupId, item.id)
-}
 
-const handleChildItemClick = (
-    groupId: string,
-    parentItem: MenuItem,
-    childItem: MenuItem
-) => {
-  handleLinkClick(groupId, childItem.id, parentItem.id)
-}
+  const sizeOptions = getWindowSizeOptions(itemId)
+  const isModal = false
 
-// Инициализация
-onMounted(() => {
-  if (props.role === 'Управляющий') {
-    getEnterprises()
+  // Если это динамический модуль, передаем данные
+  if (moduleData) {
+    emit('open-window', groupId, itemId, subGroupId, sizeOptions, isModal, componentPath, moduleData)
+  } else {
+    emit('open-window', groupId, itemId, subGroupId, sizeOptions, isModal, componentPath)
   }
+}
 
-  menuGroups.value = getMenuByRole(props.role)
-  if (menuGroups.value.length === 0) {
+const handleMenuItemClick = (event: Event, groupId: string, item: MenuItem, isModules: boolean = false) => {
+  event.preventDefault()
+  if (item.items && item.items.length > 0) {
+    toggleExpand(item.id, isModules)
+    return
+  }
+  // Передаем данные модуля если они есть
+  handleLinkClick(groupId, item.id, undefined, item.componentPath, (item as any).moduleData)
+}
+
+const handleChildItemClick = (groupId: string, parentItem: MenuItem, childItem: MenuItem, isModules: boolean = false) => {
+  handleLinkClick(groupId, childItem.id, parentItem.id, childItem.componentPath, (childItem as any).moduleData)
+}
+
+onMounted(() => {
+  if (props.role === 'Управляющий') getEnterprises()
+  menuGroups.value = filterGroupsByRole(menuConfig, props.role)
+
+  if (menuGroups.value.length === 0 && modulesGroups.value.length === 0) {
     addNotification('GET_MENU_ERROR')
   }
 })
 
-const getPaddingLeft = (depth: number = 0): string => {
-  const basePadding = 10
-  return `${basePadding + depth * 20}px`
-}
 </script>
-
 <template>
   <section
       ref="menuRef"
       class="action-list"
-      :class="{ 'locked': isLockedHover }"
-      @mousemove="handleMouseMove"
+      :class="{ locked: isLockedHover }"
+      @mousemove="handleMouseMove($event, menuRef)"
       @mouseenter="handleMouseEnter"
       @mouseleave="handleMouseLeave"
   >
-    <div v-if="menuGroups.length === 0" class="empty-menu">
-      Меню пустое
-    </div>
-
+    <div v-if="menuGroups.length === 0" class="empty-menu">Меню пустое</div>
     <div v-else class="menu-groups">
       <div
           v-for="group in menuGroups"
@@ -206,7 +323,7 @@ const getPaddingLeft = (depth: number = 0): string => {
           <h3 class="group-title">{{ group.title }}</h3>
           <div class="group-indicator">
             <svg width="12" height="8" viewBox="0 0 12 8" fill="none">
-              <path d="M1 1.5L6 6.5L11 1.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M1 1.5L6 6.5L11 1.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
             </svg>
           </div>
         </div>
@@ -222,19 +339,15 @@ const getPaddingLeft = (depth: number = 0): string => {
                       :class="{
                       'has-children': item.items?.length,
                       'is-parent': item.items?.length,
-                      'is-leaf': !item.items?.length
+                      'is-leaf': !item.items?.length,
                     }"
                       :style="{ paddingLeft: getPaddingLeft() }"
                       @click="(e) => handleMenuItemClick(e, group.id, item)"
                   >
                     <span class="item-title">{{ item.title }}</span>
-                    <span
-                        v-if="item.items?.length"
-                        class="expand-icon"
-                        :class="{ 'expanded': expandedItems.has(item.id) }"
-                    >
+                    <span v-if="item.items?.length" class="expand-icon" :class="{ expanded: expandedItems.has(item.id) }">
                       <svg width="12" height="8" viewBox="0 0 12 8" fill="none">
-                        <path d="M1 1.5L6 6.5L11 1.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M1 1.5L6 6.5L11 1.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
                       </svg>
                     </span>
                   </a>
@@ -260,17 +373,80 @@ const getPaddingLeft = (depth: number = 0): string => {
       </div>
     </div>
 
-    <!-- Блокировка для пользователя -->
     <div v-if="isLockedHover && role === 'Пользователь'" class="lock-overlay">
-      <img class="locked-icon" :src="lock" alt="Заблокировано">
-      <div
-          class="lock-message"
-          :style="{
-          left: tooltipPosition.x + 10 + 'px',
-          top: tooltipPosition.y + 10 + 'px'
-        }"
-      >
+      <img class="locked-icon" :src="lock" alt="Заблокировано" />
+      <div class="lock-message" :style="{ left: tooltipPosition.x + 10 + 'px', top: tooltipPosition.y + 10 + 'px' }">
         {{ getLockMessage() }}
+      </div>
+    </div>
+  </section>
+
+  <section
+      v-if="modulesGroups.length > 0"
+      ref="modulesRef"
+      class="modules-list"
+      @mousemove="handleMouseMove($event, modulesRef)"
+      @mouseenter="handleMouseEnter"
+      @mouseleave="handleMouseLeave"
+  >
+    <div class="menu-groups">
+      <div
+          v-for="group in modulesGroups"
+          :key="group.id"
+          class="menu-group"
+          @mouseenter="() => handleModulesGroupEnter(group.id)"
+          @mouseleave="handleModulesGroupLeave"
+      >
+        <div class="group-header">
+          <h3 class="group-title">{{ group.title }}</h3>
+          <div class="group-indicator">
+            <svg width="12" height="8" viewBox="0 0 12 8" fill="none">
+              <path d="M1 1.5L6 6.5L11 1.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </div>
+        </div>
+
+        <transition name="expand">
+          <div v-show="activeModulesGroup === group.id" class="group-content">
+            <div class="links">
+              <template v-for="item in group.items" :key="item.id">
+                <div v-if="item.isActive !== false" class="menu-item-wrapper">
+                  <a
+                      href="#"
+                      class="link"
+                      :class="{
+                      'has-children': item.items?.length,
+                      'is-parent': item.items?.length,
+                      'is-leaf': !item.items?.length,
+                    }"
+                      :style="{ paddingLeft: getPaddingLeft() }"
+                      @click="(e) => handleMenuItemClick(e, group.id, item, true)"
+                  >
+                    <span class="item-title">{{ item.title }}</span>
+                    <span v-if="item.items?.length" class="expand-icon" :class="{ expanded: expandedModulesItems.has(item.id) }">
+                      <svg width="12" height="8" viewBox="0 0 12 8" fill="none">
+                        <path d="M1 1.5L6 6.5L11 1.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                      </svg>
+                    </span>
+                  </a>
+                  <transition name="expand">
+                    <div v-if="item.items?.length && expandedModulesItems.has(item.id)" class="submenu">
+                      <div
+                          v-for="childItem in item.items"
+                          :key="childItem.id"
+                          class="child-link"
+                          :style="{ paddingLeft: getPaddingLeft(1) }"
+                          @click="handleChildItemClick(group.id, item, childItem, true)"
+                      >
+                        {{ childItem.title }}
+                      </div>
+                    </div>
+                  </transition>
+                </div>
+              </template>
+            </div>
+          </div>
+        </transition>
       </div>
     </div>
   </section>
@@ -506,8 +682,7 @@ const getPaddingLeft = (depth: number = 0): string => {
   white-space: nowrap;
 }
 
-/* Стили для списка предприятий */
-.settings-list {
+.modules-list {
   position: absolute;
   border: 1px solid var(--half_opacity_border);
   background-color: var(--half_opacity_bg);
@@ -515,95 +690,29 @@ const getPaddingLeft = (depth: number = 0): string => {
   display: flex;
   top: 50%;
   right: 20px;
-  transform: translateY(-50%);
+  transform: translate(0, -50%);
   height: fit-content;
   flex-direction: column;
   width: fit-content;
-  min-width: 280px;
-  max-width: 400px;
-  max-height: 80vh;
+  gap: 10px;
   padding: 25px;
-  backdrop-filter: blur(10px);
   transition: all 0.3s ease;
-  overflow-y: auto;
+  cursor: default;
+  min-width: 250px;
+  backdrop-filter: blur(10px);
   z-index: 1;
 }
 
-.enterprises-list:hover {
+.modules-list:hover {
   border-color: var(--half_opacity_border_hover);
 }
 
-.list-title {
-  color: white;
-  font-size: 18px;
-  font-weight: 600;
-  margin: 0 0 20px 0;
-  padding-bottom: 10px;
-  border-bottom: 1px solid var(--half_opacity_border);
+.modules-list.locked {
+  background-color: rgba(255, 255, 255, 0.05);
 }
 
-.enterprises-container {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  height: 100px;
-}
-
-.enterprise-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 16px;
-  border-radius: 12px;
-  background-color: rgba(255, 255, 255, 0.03);
-  transition: all 0.2s ease;
-  border: 1px solid transparent;
-}
-
-.enterprise-item:hover {
-  background-color: rgba(56, 239, 125, 0.1);
-  border-color: rgba(56, 239, 125, 0.3);
-}
-
-.enterprise-name {
-  color: white;
-  font-size: 15px;
-  font-weight: 500;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.enterprise-inn {
-  color: rgba(255, 255, 255, 0.6);
-  font-size: 13px;
-  background: rgba(0, 0, 0, 0.2);
-  padding: 4px 8px;
-  border-radius: 6px;
-  margin-left: 10px;
-}
-
-.loading-state {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  padding: 30px;
-}
-
-.loading-spinner {
-  width: 30px;
-  height: 30px;
-  border: 3px solid transparent;
-  border-top: 3px solid #38ef7d;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-}
-
-.empty-list {
-  color: rgba(255, 255, 255, 0.6);
-  text-align: center;
-  padding: 30px;
-  font-style: italic;
+.modules-list.locked:hover {
+  border-color: #FA5252;
 }
 
 @keyframes spin {

@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import { useWindowManager } from '~/composables/useWindowManager'
-import { useNotifications } from '~/composables/useNotifications'
+import {ref} from 'vue'
+import {useWindowManager} from '~/composables/useWindowManager'
+import {useNotifications} from '~/composables/useNotifications'
 
 const props = defineProps<{
   groupId?: string
@@ -9,10 +9,8 @@ const props = defineProps<{
   windowId?: string
 }>()
 
-
-
-const { openWindow, closeWindow } = useWindowManager()
-const { addNotification } = useNotifications()
+const {openWindow, closeWindow} = useWindowManager()
+const {addNotification} = useNotifications()
 
 // Состояния
 const loading = ref(false)
@@ -44,8 +42,10 @@ const handleLogin = async () => {
     localStorage.setItem('currentEnterprise', JSON.stringify(response.enterprise))
     localStorage.setItem('enterprise_token', response.token)
 
-    addNotification('NOTICE_DEFAULT', 'Успешный вход в предприятие!')
+    // Диспатчим событие для обновления меню
+    window.dispatchEvent(new Event('enterprise-login'))
 
+    addNotification('NOTICE_DEFAULT', 'Успешный вход в предприятие!')
 
     // Закрываем окно входа
     if (props.windowId) {
@@ -68,10 +68,13 @@ const handleLogin = async () => {
 
 async function deleteToken() {
   deleting.value = true
-  await nextTick()
   try {
     localStorage.removeItem('currentEnterprise')
     localStorage.removeItem('enterprise_token')
+
+    // Диспатчим событие для обновления меню
+    window.dispatchEvent(new Event('enterprise-logout'))
+
     addNotification('NOTICE_DEFAULT', 'Токены удалены')
   } finally {
     deleting.value = false
@@ -79,34 +82,32 @@ async function deleteToken() {
 }
 </script>
 
+
 <template>
   <div class="enterprise-login">
     <h2 class="title">Вход в предприятие</h2>
     <hr>
     <form @submit.prevent="handleLogin" class="login-form">
       <div class="form-group">
-        <label for="inn">ИНН предприятия</label>
-        <input
-            id="inn"
-            v-model="inn"
+        <MoloInput
+            lRequired
             type="text"
+            tLabel="ИНН предприятия"
+            v-model="inn"
             placeholder="1234567890"
-            maxlength="12"
-            required
+            maxLength="12"
+            iRequired
         />
-      </div>
-
-      <div class="form-group">
-        <label for="keypass">Код доступа</label>
-        <input
-            id="keypass"
-            v-model="keypass"
+        <MoloInput
+            lRequired
+            tLabel="Код доступа"
             type="password"
             placeholder="Введите код доступа"
-            required
+            v-model="keypass"
+            iRequired
         />
       </div>
-
+      <hr>
       <button
           type="submit"
           class="login-btn"
@@ -141,13 +142,13 @@ async function deleteToken() {
 .login-form {
   display: flex;
   flex-direction: column;
-  gap: 1.2rem;
+  gap: 0.5rem;
 }
 
 .form-group {
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
+  gap: 10px;
 }
 
 label {
@@ -209,6 +210,8 @@ input::placeholder {
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 </style>

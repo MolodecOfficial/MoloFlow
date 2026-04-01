@@ -17,8 +17,8 @@ const employeeSchema = new mongoose.Schema({
     },
     department: {
         type: String,
-        enum: ['IT-Отдел', 'Отдел продаж', 'Отдел безопасности', 'Юридический отдел'],
-    }, // Отдел
+        default: ''
+    },
     pointId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Point',
@@ -26,10 +26,6 @@ const employeeSchema = new mongoose.Schema({
     hireDate: { // когда устроен
         type: Date,
         default: Date.now,
-    },
-    salary: { // зарплата
-        type: Number,
-        min: 0,
     },
     status: {
         type: String,
@@ -47,6 +43,6 @@ const employeeSchema = new mongoose.Schema({
 // Один пользователь может работать только в одном предприятии
 employeeSchema.index({ userId: 1 }, { unique: true });
 
-export const EmployeeUser = mongoose.models.EmployeeUser || mongoose.model('EmployeeUser', employeeSchema);
+export const Employee = mongoose.models.Employee || mongoose.model('Employee', employeeSchema);
 
-export default mongoose.model('EmployeeUser', employeeSchema);
+export default mongoose.model('Employee', employeeSchema);

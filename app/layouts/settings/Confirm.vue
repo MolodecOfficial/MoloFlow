@@ -1,0 +1,53 @@
+<!-- layouts/confirm.vue -->
+<script setup lang="ts">
+const props = defineProps<{
+  windowId?: string
+  groupId?: string
+  subGroupId?: string
+  windowData?: {
+    type: any
+    item: any
+    onConfirm?: () => Promise<void>
+    message?: string
+  }
+}>()
+
+const emit = defineEmits<{
+  close: []
+}>()
+
+const {addNotification} = useNotifications()
+const isLoading = ref(false)
+
+const handleConfirm = async () => {
+  if (!props.windowData?.onConfirm) return
+
+  isLoading.value = true
+  try {
+    await props.windowData.onConfirm()
+    emit('close')
+  } catch (error: any) {
+    addNotification('ERROR_DEFAULT', error.message || 'Ошибка при удалении')
+  } finally {
+    isLoading.value = false
+  }
+}
+
+</script>
+
+<template>
+  <div class="confirm-body">
+    <p class="confirm-message">{{ props.windowData?.message   }}</p>
+  </div>
+  <button
+        class="action-btn confirm"
+        @click="handleConfirm"
+        :disabled="isLoading"
+    >
+      {{ isLoading ? 'Удаление...' : 'Удалить' }}
+    </button>
+</template>
+
+<style scoped>
+
+</style>

@@ -46,40 +46,6 @@ function formatPhone(value: string) {
   return formatted;
 }
 
-// Обработчик ввода телефона
-function onPhoneInput(event: Event) {
-  const input = event.target as HTMLInputElement;
-  const cursorPosition = input.selectionStart || 0;
-  const oldValue = phone.value;
-
-  // Форматируем новое значение
-  const newValue = formatPhone(input.value);
-
-  // Вычисляем новую позицию курсора
-  let newCursorPosition = cursorPosition;
-
-  // Если добавились автоматические символы, сдвигаем курсор
-  if (newValue.length > oldValue.length) {
-    newCursorPosition += newValue.length - oldValue.length;
-  }
-
-  // Обновляем значение
-  phone.value = newValue;
-
-  // Восстанавливаем позицию курсора после обновления DOM
-  nextTick(() => {
-    input.setSelectionRange(newCursorPosition, newCursorPosition);
-  });
-}
-
-// Очистка телефона при фокусе (опционально)
-function onPhoneFocus(event: Event) {
-  const input = event.target as HTMLInputElement;
-  if (phone.value === '+7') {
-    input.setSelectionRange(2, 2);
-  }
-}
-
 async function registerUser() {
   // Очищаем телефон от форматирования перед отправкой
   const cleanPhone = phone.value.replace(/\D/g, '');

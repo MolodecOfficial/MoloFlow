@@ -5,8 +5,8 @@ const props = defineProps<{
   windowId?: string
 }>()
 
-const { openWindow, closeWindow } = useWindowManager()
-const { addNotification } = useNotifications()
+const {openWindow} = useWindowManager()
+const {addNotification} = useNotifications()
 
 // Состояния
 const isAuthenticated = ref(false)
@@ -14,6 +14,8 @@ const enterpriseInfo = ref<any>(null)
 const activeTab = ref('overview')
 
 // Данные
+const uniqueFormat = ['Магазин', 'Склад', 'Офис', 'Производство']
+const uniqueStatus = ['Активен', 'В отпуске', 'Уволен']
 const points = ref<any[]>([])
 const employees = ref<any[]>([])
 const plans = ref<any[]>([])
@@ -163,7 +165,7 @@ async function loadPoints() {
   if (!enterpriseInfo.value?._id) return
   loading.value.points = true
   try {
-    const response = await $fetch(`/api/enterprises/${enterpriseInfo.value._id}/points`)
+    const response = await $fetch(`/api/enterprises/${enterpriseInfo.value._id}/points/points`)
     points.value = response.points
     stats.value.totalPoints = response.total
     stats.value.activePoints = response.points.filter((p: any) => p.status === 'Активна').length
@@ -178,7 +180,7 @@ async function loadEmployees() {
   if (!enterpriseInfo.value?._id) return
   loading.value.employees = true
   try {
-    const response = await $fetch(`/api/enterprises/${enterpriseInfo.value._id}/employees`)
+    const response = await $fetch(`/api/enterprises/${enterpriseInfo.value._id}/employees/employees`)
     employees.value = response.employees
     stats.value.totalEmployees = response.stats.total
     stats.value.activeEmployees = response.stats.active
@@ -189,12 +191,116 @@ async function loadEmployees() {
   }
 }
 
+async function deleteEmployee(employee: any) {
+  if (employee.userId?.role === 'Управляющий' && employees.value.filter(e => e.userId?.role === 'Управляющий').length === 1) {
+    addNotification('DANGER_DEFAULT', 'Нельзя удалить единственного владельца точки');
+    return;
+  }
+
+  const employeeDelete = async () => {
+    try {
+      // Используем правильный URL с ID сотрудника
+      await $fetch(`/api/enterprises/${enterpriseInfo.value._id}/employees/${employee._id}`, {
+        method: 'DELETE'
+      });
+
+      // Обновляем локальный список сотрудников
+      employees.value = employees.value.filter(e => e._id !== employee._id);
+
+      // Обновляем статистику
+      stats.value.totalEmployees = employees.value.length;
+      stats.value.activeEmployees = employees.value.filter(e => e.status === 'Активен').length;
+
+      // Показываем уведомление об успехе
+      addNotification('NOTICE_DEFAULT', `Сотрудник "${employee.userId?.name || employee.name}" успешно удален`);
+    } catch (error: any) {
+      console.error('Ошибка при удалении сотрудника:', error);
+
+      if (error.response?.status === 404) {
+        addNotification('ERROR_DEFAULT', 'Сотрудник не найден');
+      } else if (error.response?.status === 403) {
+        addNotification('ERROR_DEFAULT', 'У вас нет прав на удаление сотрудника');
+      } else {
+        addNotification('ERROR_DEFAULT', error.message || 'Ошибка при удалении сотрудника');
+      }
+      throw error;
+    }
+  };
+
+  // ✅ Открываем окно подтверждения
+  openWindow(
+      'settings',
+      'confirm',
+      null,
+      {
+        width: 400,
+        height: 200,
+        minWidth: 350,
+        minHeight: 300
+      },
+      true,
+      {
+        type: 'employee',  // ✅ Добавляем тип
+        item: employee,
+        onConfirm: employeeDelete,
+        message: `Вы уверены, что хотите удалить сотрудника "${employee.userId?.name || employee.name}"?\nЭто действие нельзя отменить.`
+      }
+  );
+}
+
+async function deletePoint(point: any) {
+
+  const pointDelete = async () => {
+    try {
+      await $fetch(`/api/enterprises/${enterpriseInfo.value._id}/points/${point._id}`, {
+        method: 'DELETE'
+      });
+
+      points.value = points.value.filter(p => p._id !== point._id);
+      stats.value.totalPoints = points.value.length;
+      stats.value.activePoints = points.value.filter(p => p.status === 'Активна').length;
+
+      addNotification('NOTICE_DEFAULT', `Точка "${point.name}" успешно удалена`);
+    } catch (error: any) {
+      if (error.response?.status === 404) {
+        addNotification('ERROR_DEFAULT', 'Точка не найдена');
+      } else if (error.response?.status === 403) {
+        addNotification('ERROR_DEFAULT', 'У вас нет прав на удаление точки');
+      } else if (error.response?.status === 409) {
+        addNotification('ERROR_DEFAULT', error.response._data?.message || 'Невозможно удалить точку с привязанными данными');
+      } else {
+        addNotification('ERROR_DEFAULT', error.message || 'Ошибка при удалении точки');
+      }
+      throw error;
+    }
+  };
+
+
+  openWindow(
+      'settings',
+      'confirm',
+      null,
+      {
+        width: 400,
+        height: 200,
+        minWidth: 350,
+        minHeight: 300
+      },
+      true,
+      {
+        item: point,
+        onConfirm: pointDelete,
+        message: `Вы уверены, что хотите удалить точку "${point.name}, ${point.address}"? Это действие нельзя отменить.`
+      },
+  )
+}
+
 async function loadPlans() {
   if (!enterpriseInfo.value?._id) return
   loading.value.plans = true
   try {
     const response = await $fetch(`/api/enterprises/${enterpriseInfo.value._id}/plans/analysis`, {
-      query: { period: 'month' }
+      query: {period: 'month'}
     })
     plans.value = response.plans
     stats.value.totalPlanProfit = response.totals.planProfit
@@ -266,7 +372,8 @@ onMounted(() => {
             <span class="stat-label">Сотрудников:</span>
             <span class="stat-value">{{ stats.totalEmployees }}</span>
           </div>
-          <div class="stat-item" :class="{ 'positive': stats.profitDifference > 0, 'negative': stats.profitDifference < 0 }">
+          <div class="stat-item"
+               :class="{ 'positive': stats.profitDifference > 0, 'negative': stats.profitDifference < 0 }">
             <span class="stat-label">Отклонение:</span>
             <span class="stat-value">{{ formatCurrency(stats.profitDifference) }}</span>
           </div>
@@ -346,37 +453,37 @@ onMounted(() => {
         <div v-if="activeTab === 'points'" class="tab-content">
           <div class="content-header">
             <h3>Управление точками</h3>
-            <button class="action-btn" @click="createPoint">
-              {{ showPointForm ? 'Отмена' : '+ Добавить точку' }}
+            <button class="action-btn confirm" @click="createPoint">
+              + Добавить точку
             </button>
           </div>
 
           <!-- Фильтры -->
           <div class="filters">
-            <select v-model="pointFilters.region" class="filter-select">
-              <option value="">Все регионы</option>
-              <option v-for="region in uniqueRegions" :key="region" :value="region">
-                {{ region }}
-              </option>
-            </select>
-
-            <select v-model="pointFilters.city" class="filter-select">
-              <option value="">Все города</option>
-              <option v-for="city in uniqueCities" :key="city" :value="city">
-                {{ city }}
-              </option>
-            </select>
-
-            <select v-model="pointFilters.type" class="filter-select">
-              <option value="">Все типы</option>
-              <option value="Магазин">Магазин</option>
-              <option value="Склад">Склад</option>
-              <option value="Офис">Офис</option>
-              <option value="Производство">Производство</option>
-            </select>
+            <MoloSelect
+                v-model="pointFilters.region"
+                :parent="uniqueRegions"
+                :children="region"
+                disabled="Выберите регион"
+                all="Все регионы"
+            />
+            <MoloSelect
+                v-model="pointFilters.city"
+                :parent="uniqueCities"
+                :children="city"
+                disabled="Выберите город"
+                all="Все города"
+            />
+            <MoloSelect
+                v-model="pointFilters.type"
+                :parent="uniqueFormat"
+                :children="format"
+                disabled="Выберите формат точки"
+                all="Все форматы"
+            />
           </div>
 
-          <!-- Список точек -->
+          <!-- Таблица точек -->
           <div v-if="loading.points" class="loading">
             <div class="loading-overlay">
               <div class="loading-spinner"></div>
@@ -387,42 +494,52 @@ onMounted(() => {
             Нет точек для отображения
           </div>
 
-          <div v-else class="points-by-region">
-            <div v-for="(regionPoints, region) in groupedPoints" :key="region" class="region-block">
-              <h4 class="region-title">{{ region }}</h4>
-              <div class="points-grid">
-                <div v-for="point in regionPoints" :key="point._id" class="point-card">
-                  <div class="point-header">
-                    <h5>{{ point.name }}</h5>
-                    <section class="point_set">
-                      <span class="point-type">{{ point.type }} </span>
-                      <button class="point-settings">⁝</button>
-                    </section>
-
-                  </div>
-
-                  <div class="point-details">
-                    <p><strong>Город:</strong> {{ point.city }}</p>
-                    <p><strong>Адрес:</strong> {{ point.address }}</p>
-                    <p v-if="point.contactPerson.name">
-                      <strong>Контакт:</strong> {{ point.contactPerson.name }}
-                    </p>
-                    <p v-if="point.metadata.square">
-                      <strong>Площадь:</strong> {{ point.metadata.square }} м²
-                    </p>
-                  </div>
-
-                  <div class="point-footer">
-                    <span class="status" :class="point.status.toLowerCase()">
-                      {{ point.status }}
-                    </span>
-                    <span class="date">
-                      {{ formatDate(point.openingDate) }}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
+          <div v-else class="table-wrapper">
+            <table class="table">
+              <thead>
+              <tr>
+                <th>Название</th>
+                <th>Регион</th>
+                <th>Город</th>
+                <th>Адрес</th>
+                <th>Тип</th>
+                <th>Контактное лицо</th>
+                <th>Телефон</th>
+                <th>Площадь</th>
+                <th>Статус</th>
+                <th>Дата открытия</th>
+                <th>Действия</th>
+              </tr>
+              </thead>
+              <tbody>
+              <tr v-for="point in filteredPoints" :key="point._id">
+                <td class="point-name">{{ point.name }}</td>
+                <td>{{ point.region }}</td>
+                <td>{{ point.city }}</td>
+                <td class="address">{{ point.address }}</td>
+                <td>
+                  <span class="type-badge">{{ point.type }}</span>
+                </td>
+                <td>{{ point.contactPerson?.name || '-' }}</td>
+                <td>{{ point.contactPerson?.phone || '-' }}</td>
+                <td>{{ point.metadata?.square ? `${point.metadata.square} м²` : '-' }}</td>
+                <td>
+              <span class="status" :class="point.status.toLowerCase()">
+                {{ point.status }}
+              </span>
+                </td>
+                <td>{{ formatDate(point.openingDate) }}</td>
+                <td class="actions">
+                  <button class="icon-btn" @click="editPoint(point)" title="Редактировать">
+                    ✏️
+                  </button>
+                  <button class="icon-btn" @click="deletePoint(point)" title="Удалить">
+                    🗑️
+                  </button>
+                </td>
+              </tr>
+              </tbody>
+            </table>
           </div>
         </div>
 
@@ -430,35 +547,38 @@ onMounted(() => {
         <div v-if="activeTab === 'employees'" class="tab-content">
           <div class="content-header">
             <h3>Управление сотрудниками</h3>
-            <button class="action-btn" @click="createEmployee">
+            <button class="action-btn confirm" @click="createEmployee">
               + Добавить сотрудника
             </button>
           </div>
 
           <!-- Фильтры -->
           <div class="filters">
-            <select v-model="employeeFilters.status" class="filter-select">
-              <option value="">Все статусы</option>
-              <option value="Активен">Активен</option>
-              <option value="В отпуске">В отпуске</option>
-              <option value="Уволен">Уволен</option>
-            </select>
-
-            <select v-model="employeeFilters.position" class="filter-select">
-              <option value="">Все должности</option>
-              <option v-for="position in uniquePositions" :key="position" :value="position">
-                {{ position }}
-              </option>
-            </select>
-
-            <select v-model="employeeFilters.pointId" class="filter-select">
-              <option value="">Все точки</option>
-              <option v-for="point in availablePoints" :key="point._id" :value="point._id">
-                {{ point.name }}
-              </option>
-            </select>
+            <MoloSelect
+                v-model="employeeFilters.status"
+                :parent="uniqueStatus"
+                :children="status"
+                disabled="Выберите статус сотрудника"
+                all="Все статусы"
+            />
+            <MoloSelect
+                v-model="employeeFilters.position"
+                :parent="uniquePositions"
+                :children="position"
+                disabled="Выберите должность сотрудника"
+                all="Все должности"
+            />
+            <MoloSelect
+                v-model="employeeFilters.pointId"
+                :parent="availablePoints"
+                children="name"
+                valueKey="_id"
+                disabled="Выберите точку сотрудника"
+                all="Все точки"
+            />
           </div>
-          <!-- Список сотрудников -->
+
+          <!-- Таблица сотрудников -->
           <div v-if="loading.employees" class="loading">
             <div class="loading-overlay">
               <div class="loading-spinner"></div>
@@ -469,30 +589,40 @@ onMounted(() => {
             Нет сотрудников для отображения
           </div>
 
-          <div v-else class="employees-table">
-            <table>
+          <div v-else class="table-wrapper">
+            <table class="table">
               <thead>
               <tr>
                 <th>Имя</th>
                 <th>Точка</th>
                 <th>Должность</th>
+                <th>Роль</th>
                 <th>Отдел</th>
                 <th>Телефон</th>
                 <th>Статус</th>
+                <th>Действия</th>
               </tr>
               </thead>
               <tbody>
               <tr v-for="emp in filteredEmployees" :key="emp._id">
-                <td>{{ emp.userId?.name }}</td>
+                <td class="employee-name">{{ emp.userId?.name }}</td>
                 <td>{{ emp.pointId?.name || '-' }}</td>
                 <td>{{ emp.position }}</td>
+                <td>{{ emp.userId?.role || emp.user?.role || emp.role || '-' }}</td>
                 <td>{{ emp.department || '-' }}</td>
-
                 <td>{{ emp.contacts?.phone || '-' }}</td>
                 <td>
-                    <span class="status" :class="emp.status.toLowerCase()">
-                      {{ emp.status }}
-                    </span>
+              <span class="status" :class="emp.status.toLowerCase()">
+                {{ emp.status }}
+              </span>
+                </td>
+                <td class="actions">
+                  <button class="icon-btn" @click="editEmployee(emp)" title="Редактировать">
+                    ✏️
+                  </button>
+                  <button class="icon-btn" @click="deleteEmployee(emp)" title="Удалить">
+                    🗑️
+                  </button>
                 </td>
               </tr>
               </tbody>
@@ -504,8 +634,8 @@ onMounted(() => {
         <div v-if="activeTab === 'plans'" class="tab-content">
           <div class="content-header">
             <h3>Планы и факты</h3>
-            <button class="action-btn" @click="createPlan">
-             + Создать план
+            <button class="action-btn confirm" @click="createPlan">
+              + Создать план
             </button>
           </div>
 
@@ -521,14 +651,18 @@ onMounted(() => {
               <div class="summary-value">{{ formatCurrency(stats.totalActualProfit) }}</div>
               <div class="summary-label">Прибыль</div>
             </div>
-            <div class="summary-card" :class="{ 'positive': stats.profitDifference > 0, 'negative': stats.profitDifference < 0 }">
+            <div class="summary-card"
+                 :class="{ 'positive': stats.profitDifference > 0, 'negative': stats.profitDifference < 0 }">
               <h4>Отклонение</h4>
               <div class="summary-value">{{ formatCurrency(stats.profitDifference) }}</div>
-              <div class="summary-label">{{ stats.profitDifference > 0 ? '+' : '' }}{{ ((stats.totalActualProfit / stats.totalPlanProfit) * 100).toFixed(1) }}%</div>
+              <div class="summary-label">{{
+                  stats.profitDifference > 0 ? '+' : ''
+                }}{{ ((stats.totalActualProfit / stats.totalPlanProfit) * 100).toFixed(1) }}%
+              </div>
             </div>
           </div>
 
-          <!-- Список планов -->
+          <!-- Таблица планов -->
           <div v-if="loading.plans" class="loading">
             <div class="loading-overlay">
               <div class="loading-spinner"></div>
@@ -539,8 +673,8 @@ onMounted(() => {
             Нет созданных планов
           </div>
 
-          <div v-else class="plans-table">
-            <table>
+          <div v-else class="table-wrapper">
+            <table class="table">
               <thead>
               <tr>
                 <th>Точка</th>
@@ -549,22 +683,32 @@ onMounted(() => {
                 <th>Факт (прибыль)</th>
                 <th>Отклонение</th>
                 <th>Выполнение</th>
+                <th>Действия</th>
               </tr>
               </thead>
               <tbody>
               <tr v-for="plan in plans" :key="plan._id">
-                <td>{{ plan.pointId?.name || 'Общий' }}</td>
+                <td class="plan-point">{{ plan.pointId?.name || 'Общий' }}</td>
                 <td>{{ formatDate(plan.date) }} ({{ plan.period }})</td>
-                <td>{{ formatCurrency(plan.metrics.profit) }}</td>
-                <td>{{ formatCurrency(plan.actual.profit) }}</td>
+                <td class="amount">{{ formatCurrency(plan.metrics.profit) }}</td>
+                <td class="amount">{{ formatCurrency(plan.actual.profit) }}</td>
                 <td :class="{ 'positive': plan.actual.profit - plan.metrics.profit > 0, 'negative': plan.actual.profit - plan.metrics.profit < 0 }">
                   {{ formatCurrency(plan.actual.profit - plan.metrics.profit) }}
                 </td>
                 <td>
                   <div class="progress-bar">
-                    <div class="progress" :style="{ width: Math.min(100, (plan.actual.profit / plan.metrics.profit) * 100) + '%' }"></div>
+                    <div class="progress"
+                         :style="{ width: Math.min(100, (plan.actual.profit / plan.metrics.profit) * 100) + '%' }"></div>
                     <span>{{ ((plan.actual.profit / plan.metrics.profit) * 100).toFixed(1) }}%</span>
                   </div>
+                </td>
+                <td class="actions">
+                  <button class="icon-btn" @click="editPlan(plan)" title="Редактировать">
+                    ✏️
+                  </button>
+                  <button class="icon-btn" @click="deletePlan(plan)" title="Удалить">
+                    🗑️
+                  </button>
                 </td>
               </tr>
               </tbody>
@@ -576,7 +720,10 @@ onMounted(() => {
 
     <div v-else class="not-authorized">
       <p>Вы не авторизованы в предприятии</p>
-      <p>Пожалуйста, <button class="login-btn" @click="notAuth">войдите</button> сначала</p>
+      <p>Пожалуйста,
+        <button class="login-btn" @click="notAuth">войдите</button>
+        сначала
+      </p>
     </div>
   </section>
 </template>
@@ -675,6 +822,205 @@ h2 {
   color: #ff6b6b;
 }
 
+.data-table-wrapper {
+  overflow-x: auto;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 800px;
+}
+
+.data-table th {
+  text-align: left;
+  padding: 14px 12px;
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(255, 255, 255, 0.8);
+  font-weight: 600;
+  font-size: 13px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  white-space: nowrap;
+}
+
+.data-table td {
+  padding: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.data-table tr:hover td {
+  background: rgba(30, 239, 111, 0.03);
+}
+
+/* Специфичные стили для разных типов данных */
+.point-name,
+.employee-name,
+.plan-point {
+  font-weight: 600;
+  color: #1eef6f;
+}
+
+.address {
+  max-width: 250px;
+  white-space: normal;
+  word-break: break-word;
+}
+
+.type-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: rgba(30, 239, 111, 0.1);
+  color: #1eef6f;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.amount {
+  font-family: monospace;
+  font-weight: 500;
+}
+
+.status {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+/* Статусы для точек */
+.status.активна {
+  background: rgba(30, 239, 111, 0.1);
+  color: #1eef6f;
+}
+
+.status.закрыта {
+  background: rgba(255, 80, 80, 0.1);
+  color: #ff6b6b;
+}
+
+.status.на_ремонте {
+  background: rgba(255, 193, 7, 0.1);
+  color: #ffc107;
+}
+
+/* Статусы для сотрудников */
+.status.активен {
+  background: rgba(30, 239, 111, 0.1);
+  color: #1eef6f;
+}
+
+.status.в_отпуске {
+  background: rgba(255, 193, 7, 0.1);
+  color: #ffc107;
+}
+
+.status.уволен {
+  background: rgba(255, 80, 80, 0.1);
+  color: #ff6b6b;
+}
+
+.actions {
+  white-space: nowrap;
+  text-align: center;
+}
+
+.icon-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: none;
+  border-radius: 4px;
+  padding: 4px 8px;
+  margin: 0 2px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.icon-btn:hover {
+  background: rgba(30, 239, 111, 0.2);
+  transform: scale(1.05);
+}
+
+/* Фильтры */
+.filters {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.filters > * {
+  flex: 1;
+  min-width: 150px;
+}
+
+.progress-bar {
+  position: relative;
+  height: 20px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  overflow: hidden;
+
+}
+
+.progress {
+  height: 100%;
+  background: #1eef6f;
+  transition: width 0.3s ease;
+}
+
+.progress-bar span {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 10px;
+  color: #020b18;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Цвета для чисел */
+.positive {
+  color: #1eef6f;
+}
+
+.negative {
+  color: #ff6b6b;
+}
+
+/* Загрузка и пустые состояния */
+.loading, .empty-state {
+  text-align: center;
+  padding: 40px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid transparent;
+  border-top: 3px solid #38ef7d;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 0 auto;
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
 .tabs {
   display: flex;
   gap: 10px;
@@ -724,21 +1070,6 @@ h2 {
   color: white;
 }
 
-.action-btn {
-  padding: 8px 16px;
-  background: #1eef6f;
-  color: #020b18;
-  border: none;
-  border-radius: 4px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.action-btn:hover {
-  background: #15b050;
-}
-
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -780,108 +1111,104 @@ h2 {
   display: flex;
   gap: 10px;
   margin-bottom: 20px;
-  flex-wrap: wrap;
+
 }
 
-.add-form {
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+.table-wrapper {
+  overflow-x: auto;
   border-radius: 8px;
-  padding: 20px;
-  margin-bottom: 30px;
-}
-
-.add-form h4 {
-  margin: 0 0 20px 0;
-  color: #1eef6f;
-}
-
-.add-form h5 {
-  margin: 0 0 10px 0;
-  color: rgba(255, 255, 255, 0.8);
-  font-size: 14px;
-}
-
-.points-by-region {
-  display: flex;
-  flex-direction: column;
-  gap: 30px;
-}
-
-.region-title {
-  color: #1eef6f;
-  margin: 0 0 15px 0;
-  padding-bottom: 5px;
-  border-bottom: 1px solid rgba(30, 239, 111, 0.3);
-}
-
-.points-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 15px;
-}
-
-.point-card {
   background: rgba(255, 255, 255, 0.02);
   border: 1px solid rgba(255, 255, 255, 0.05);
-  border-radius: 6px;
-  padding: 15px;
-  transition: all 0.2s;
 }
 
-.point-card:hover {
-  background: rgba(30, 239, 111, 0.02);
-  border-color: rgba(30, 239, 111, 0.2);
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 1200px;
 }
 
-.point-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 10px;
+.table th {
+  text-align: left;
+  padding: 14px 12px;
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(255, 255, 255, 0.8);
+  font-weight: 600;
+  font-size: 13px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  white-space: nowrap;
 }
 
-.point-header h5 {
-  margin: 0;
-  font-size: 16px;
+.table td {
+  padding: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.9);
 }
 
-.point_set {
-  display: flex;
-  gap: 6px;
+.table tr:hover td {
+  background: rgba(30, 239, 111, 0.03);
 }
 
-.point-type {
-  font-size: 11px;
-  padding: 2px 6px;
+.point-name {
+  font-weight: 600;
+  color: #1eef6f;
+}
+
+.address {
+  max-width: 250px;
+  white-space: normal;
+  word-break: break-word;
+}
+
+.type-badge {
+  display: inline-block;
+  padding: 2px 8px;
   border-radius: 12px;
   background: rgba(30, 239, 111, 0.1);
   color: #1eef6f;
+  font-size: 11px;
+  white-space: nowrap;
 }
 
-.point-settings {
-  border-radius: 50%;
-  background: rgba(30, 239, 111, 0.1);
-  color: #1eef6f;
+.status {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.actions {
+  white-space: nowrap;
+
+}
+
+.icon-btn {
+  background: rgba(255, 255, 255, 0.05);
   border: none;
-  &:hover {
-    cursor: pointer;
-  }
+  border-radius: 4px;
+  padding: 4px 8px;
+  margin: 0 2px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
 }
 
-.point-details p {
-  margin: 5px 0;
-  font-size: 13px;
-  color: rgba(255, 255, 255, 0.8);
+.icon-btn:hover {
+  background: rgba(30, 239, 111, 0.2);
+  transform: scale(1.05);
 }
 
-.point-footer {
+.filters {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  gap: 10px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.filters > * {
+  flex: 1;
+  min-width: 150px;
 }
 
 .status {
@@ -918,11 +1245,6 @@ h2 {
 .status.уволен {
   background: rgba(255, 80, 80, 0.1);
   color: #ff6b6b;
-}
-
-.date {
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.4);
 }
 
 .employees-table, .plans-table {
@@ -1045,7 +1367,11 @@ tr:hover td {
 }
 
 @keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
 }
 </style>

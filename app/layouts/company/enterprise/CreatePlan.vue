@@ -12,7 +12,15 @@ const plans = ref<any[]>([])
 const {addNotification} = useNotifications()
 
 const enterpriseInfo = ref<any>(null)
-const availablePoints = ref<any[]>([])
+const points = ref<any[]>([])
+
+const availablePeriod = [
+  { label: 'День', value: 'day' },
+  { label: 'Неделя', value: 'week' },
+  { label: 'Месяц', value: 'month' },
+  { label: 'Квартал', value: 'quarter' },
+  { label: 'Год', value: 'year' }
+]
 
 const loading = ref({
   points: false,
@@ -24,11 +32,11 @@ const newPlan = ref({
   period: 'month',
   date: new Date().toISOString().split('T')[0],
   metrics: {
-    revenue: null,
-    expenses: null,
-    profit: null,
-    customers: null,
-    averageCheck: null
+    revenue: null as number | null,
+    expenses: null as number | null,
+    profit: null as number | null,
+    customers: null as number | null,
+    averageCheck: null as number | null
   }
 })
 
@@ -36,14 +44,23 @@ async function loadPoints() {
   if (!enterpriseInfo.value?._id) return
   loading.value.points = true
   try {
-    const response = await $fetch(`/api/enterprises/${enterpriseInfo.value._id}/points`)
-    availablePoints.value = response.points.filter((p: any) => p.status === 'Активна')
+    const response = await $fetch(`/api/enterprises/${enterpriseInfo.value._id}/points/points`)
+    points.value = response.points.filter((p: any) => p.status === 'Активна')
   } catch (error) {
     addNotification('ERROR_DEFAULT', 'Ошибка загрузки точек')
   } finally {
     loading.value.points = false
   }
 }
+
+const availablePoints = computed(() => {
+  return points.value
+      .filter(p => p.status === 'Активна')
+      .map(point => ({
+        ...point,
+        displayName: `${point.name}, ${point.address}`
+      }))
+})
 
 async function addPlan() {
   if (!enterpriseInfo.value?._id) {
@@ -57,11 +74,29 @@ async function addPlan() {
     return
   }
 
+  // Валидация периода
+  if (!newPlan.value.period) {
+    addNotification('ERROR_DEFAULT', 'Укажите период плана')
+    return
+  }
+
   loading.value.create = true
   try {
+    // Период теперь передается в теле запроса, а не в URL
     const response = await $fetch(`/api/enterprises/${enterpriseInfo.value._id}/plans/${newPlan.value.period}`, {
       method: 'POST',
-      body: newPlan.value
+      body: {
+        pointId: newPlan.value.pointId || null,
+        period: newPlan.value.period,
+        date: newPlan.value.date,
+        metrics: {
+          revenue: Number(newPlan.value.metrics.revenue) || 0,
+          expenses: Number(newPlan.value.metrics.expenses) || 0,
+          profit: Number(newPlan.value.metrics.profit) || 0,
+          customers: Number(newPlan.value.metrics.customers) || 0,
+          averageCheck: Number(newPlan.value.metrics.averageCheck) || 0
+        }
+      }
     })
 
     plans.value.unshift(response.plan)
@@ -73,11 +108,11 @@ async function addPlan() {
       period: 'month',
       date: new Date().toISOString().split('T')[0],
       metrics: {
-        revenue: 0,
-        expenses: 0,
-        profit: 0,
-        customers: 0,
-        averageCheck: 0
+        revenue: null,
+        expenses: null,
+        profit: null,
+        customers: null,
+        averageCheck: null
       }
     }
   } catch (error: any) {
@@ -90,14 +125,29 @@ async function addPlan() {
 
 // Автоматический расчет прибыли при изменении выручки и расходов
 function calculateProfit() {
-  newPlan.value.metrics.profit = newPlan.value.metrics.revenue - newPlan.value.metrics.expenses
+  const revenue = Number(newPlan.value.metrics.revenue) || 0
+  const expenses = Number(newPlan.value.metrics.expenses) || 0
+  newPlan.value.metrics.profit = revenue - expenses
 }
 
 // Автоматический расчет среднего чека при изменении выручки и количества клиентов
 function calculateAverageCheck() {
-  if (newPlan.value.metrics.customers > 0) {
-    newPlan.value.metrics.averageCheck = Math.round(newPlan.value.metrics.revenue / newPlan.value.metrics.customers)
+  const revenue = Number(newPlan.value.metrics.revenue) || 0
+  const customers = Number(newPlan.value.metrics.customers) || 0
+  if (customers > 0) {
+    newPlan.value.metrics.averageCheck = Math.round(revenue / customers)
+  } else {
+    newPlan.value.metrics.averageCheck = 0
   }
+}
+
+const formatCurrency = (value: number) => {
+  return new Intl.NumberFormat('ru-RU', {
+    style: 'currency',
+    currency: 'RUB',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0
+  }).format(value || 0)
 }
 
 onMounted(() => {
@@ -123,43 +173,50 @@ onMounted(() => {
 <template>
   <h1>Новый план</h1>
   <hr>
+
   <div class="form-grid">
     <h5>Основная информация</h5>
-    <select v-model="newPlan.pointId" class="form-select">
-      <option value="">Общий план предприятия</option>
-      <option v-for="point in availablePoints" :key="point._id" :value="point._id">
-        {{ point.name }}
-      </option>
-    </select>
+    <MoloSelect
+        v-model="newPlan.pointId"
+        all="Общий план предприятия"
+        :parent="availablePoints"
+        children="displayName"
+        valueKey="_id"
+        tLabel="Выберите точку для плана"
+        lRequired
+    />
 
-    <select v-model="newPlan.period" class="form-select">
-      <option value="day">День</option>
-      <option value="week">Неделя</option>
-      <option value="month">Месяц</option>
-      <option value="quarter">Квартал</option>
-      <option value="year">Год</option>
-    </select>
+    <MoloSelect
+        v-model="newPlan.period"
+        :parent="availablePeriod"
+        children="label"
+        tLabel="Выберите период для плана"
+        lRequired
+        valueKey="value"
+    />
 
-    <input v-model="newPlan.date" type="date" class="form-input">
+    <MoloInput
+        v-model="newPlan.date"
+        type="date"
+        tLabel="Выберите начало работы нового плана"
+        lRequired
+    />
+
+    <hr>
 
     <div class="form-section">
       <h5>Плановые показатели</h5>
-
       <div class="input-group">
-        <MoloForm
+        <MoloInput
             tLabel="Выручка"
             lRequired
             type="number"
             iRequired
             placeholder="0"
             v-model="newPlan.metrics.revenue"
-            @input="calculateProfit(); calculateAverageCheck()"
+            @input="newPlan.metrics.revenue = parseFloat(($event.target as HTMLInputElement).value) || null; calculateProfit(); calculateAverageCheck()"
         />
-
-      </div>
-
-      <div class="input-group">
-        <MoloForm
+        <MoloInput
             tLabel="Расходы"
             lRequired
             type="number"
@@ -168,10 +225,7 @@ onMounted(() => {
             v-model="newPlan.metrics.expenses"
             @input="calculateProfit()"
         />
-      </div>
-
-      <div class="input-group">
-        <MoloForm
+        <MoloInput
             tLabel="Прибыль (рассчитывается автоматически)"
             type="number"
             iRequired
@@ -179,23 +233,18 @@ onMounted(() => {
             v-model="newPlan.metrics.profit"
             readonly
         />
-      </div>
 
-      <div class="input-group">
-        <label></label>
-        <MoloForm
+        <MoloInput
             tLabel="Количество клиентов"
             type="number"
             iRequired
             placeholder="0"
             v-model="newPlan.metrics.customers"
             @input="calculateAverageCheck()"
+            lRequired
         />
-      </div>
 
-      <div class="input-group">
-        <label></label>
-        <MoloForm
+        <MoloInput
             tLabel="Средний чек (рассчитывается автоматически)"
             type="number"
             iRequired
@@ -206,8 +255,7 @@ onMounted(() => {
       </div>
     </div>
 
-
-    <button class="submit-btn" @click="addPlan">
+    <button class="action-btn confirm" @click="addPlan">
       <div v-if="loading.create" class="modern-loader"></div>
       <span v-else>Создать план</span>
     </button>
@@ -217,23 +265,19 @@ onMounted(() => {
       <div class="preview-row">
         <span>Прибыль:</span>
         <strong :class="{ 'positive': newPlan.metrics.profit > 0, 'negative': newPlan.metrics.profit < 0 }">
-          {{ new Intl.NumberFormat('ru-RU', {style: 'currency', currency: 'RUB'}).format(newPlan.metrics.profit) }}
+          {{ formatCurrency(newPlan.metrics.profit) }}
         </strong>
       </div>
       <div v-if="newPlan.metrics.customers > 0" class="preview-row">
         <span>Средний чек:</span>
-        <strong>{{
-            new Intl.NumberFormat('ru-RU', {
-              style: 'currency',
-              currency: 'RUB'
-            }).format(newPlan.metrics.averageCheck)
-          }}</strong>
+        <strong>{{ formatCurrency(newPlan.metrics.averageCheck) }}</strong>
       </div>
     </div>
   </div>
 </template>
 
 <style scoped>
+
 
 .form-grid {
   display: flex;
@@ -243,67 +287,11 @@ onMounted(() => {
   overflow: hidden;
 }
 
-.form-input {
-  width: 100%;
-  padding: 10px 12px;
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: white;
-  margin-bottom: 12px;
-  font-size: 14px;
-  transition: all 0.2s;
-}
-
-.form-select {
-  width: 100%;
-  padding: 8px 2px;
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: white;
-  margin-bottom: 10px;
-}
-
-.form-input:focus, .form-select:focus {
-  outline: none;
-  border-color: #1eef6f;
-  background: rgba(255, 255, 255, 0.08);
-}
-
 .input-group {
-  margin-bottom: 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
-
-.form-section {
-  margin: 20px 0;
-  padding: 20px 0;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.submit-btn {
-  width: 100%;
-  padding: 12px;
-  background: #1eef6f;
-  color: #020b18;
-  border: none;
-  border-radius: 4px;
-  font-weight: 600;
-  font-size: 14px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.submit-btn:hover:not(:disabled) {
-  background: #15b050;
-}
-
-.submit-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
 
 .preview-info {
   margin-top: 20px;
@@ -361,15 +349,4 @@ onMounted(() => {
     transform: rotate(360deg);
   }
 }
-
-@keyframes spin {
-  0% {
-    transform: rotate(0deg);
-  }
-  100% {
-    transform: rotate(360deg);
-  }
-}
-
-
 </style>
