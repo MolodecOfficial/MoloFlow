@@ -147,7 +147,6 @@ const createDynamicMenuItems = (): MenuItem[] => {
     title: module.name,
     requiredRole: ['Управляющий', 'Сотрудник'],
     isActive: true,
-    componentPath: `modules/${module._id}`,
     componentName: 'DynamicModuleLoader',
     moduleData: module
   }))

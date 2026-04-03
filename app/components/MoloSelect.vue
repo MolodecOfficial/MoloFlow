@@ -1,9 +1,8 @@
 <script setup lang="ts">
 defineProps<{
   label?: string
-  tLabel: string
+  tLabel?: string
   lRequired?: boolean
-  type?: string
   id?: string
   modelValue?: string
   iRequired?: boolean
@@ -12,7 +11,7 @@ defineProps<{
   readonly?: any
   children?: any
   parent?: any
-  disabled?: string
+  disabled?: any
   key?: any
   value?: any
   valueKey?: string

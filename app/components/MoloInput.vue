@@ -3,7 +3,7 @@ import { ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 
 const props = defineProps<{
   label?: string
-  tLabel: string
+  tLabel?: string
   lRequired?: boolean
   type?: string
   id?: string
@@ -215,7 +215,7 @@ watch(() => props.modelValue, (newVal) => {
             @input="(e) => { addressSearch = (e.target as HTMLInputElement).value; $emit('update:modelValue', addressSearch); $emit('input', e); onAddressSearch(); }"
             @focus="onAddressSearch"
             :required="iRequired"
-            :placeholder="placeholder"
+            :placeholder="placeholder || 'Введите начало адреса'"
             :maxlength="maxLength"
             :readonly="readonly"
         />

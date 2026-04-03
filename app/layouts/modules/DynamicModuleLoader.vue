@@ -3,6 +3,8 @@ import { ref, onMounted, shallowRef } from 'vue'
 import * as Vue from 'vue'
 import * as compiler from '@vue/compiler-sfc'
 import { loadModule } from 'vue3-sfc-loader'
+import MoloInput from '~/components/MoloInput.vue'
+import MoloSelect from '~/components/MoloSelect.vue'
 
 const props = defineProps<{
   windowId: string
@@ -69,7 +71,15 @@ onMounted(async () => {
 
     const module = await loadModule('dynamic.vue', options)
 
-    compiledComponent.value = module.default || module
+    const component = module.default || module
+
+    component.components = {
+      ...(component.components || {}),
+      MoloInput,
+      MoloSelect
+    }
+
+    compiledComponent.value = component
   } catch (err) {
     console.error('Ошибка загрузки/компиляции модуля:', err)
     error.value =

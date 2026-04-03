@@ -306,7 +306,6 @@ watch(() => newEmployee.value.pointId, (newPointId) => {
 <template>
   <h1>Новый сотрудник</h1>
   <hr>
-
   <div class="mode-selector">
     <button
         class="mode-btn"

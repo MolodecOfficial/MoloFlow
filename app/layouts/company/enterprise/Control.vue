@@ -227,20 +227,16 @@ async function deleteEmployee(employee: any) {
     }
   };
 
-  // ✅ Открываем окно подтверждения
   openWindow(
       'settings',
       'confirm',
       null,
-      {
-        width: 400,
-        height: 200,
-        minWidth: 350,
-        minHeight: 300
-      },
-      true,
-      {
-        type: 'employee',  // ✅ Добавляем тип
+      { width: 400, height: 200, minWidth: 350, minHeight: 300 },
+      true,               // isModal
+      null,               // componentPath
+      null,               // moduleData
+      {                   // data (8-й параметр) – сюда кладём объект с сообщением
+        type: 'employee',
         item: employee,
         onConfirm: employeeDelete,
         message: `Вы уверены, что хотите удалить сотрудника "${employee.userId?.name || employee.name}"?\nЭто действие нельзя отменить.`
@@ -280,19 +276,16 @@ async function deletePoint(point: any) {
       'settings',
       'confirm',
       null,
-      {
-        width: 400,
-        height: 200,
-        minWidth: 350,
-        minHeight: 300
-      },
+      { width: 400, height: 200, minWidth: 350, minHeight: 300 },
       true,
+      null,
+      null,
       {
         item: point,
         onConfirm: pointDelete,
         message: `Вы уверены, что хотите удалить точку "${point.name}, ${point.address}"? Это действие нельзя отменить.`
-      },
-  )
+      }
+  );
 }
 
 async function loadPlans() {
@@ -576,7 +569,7 @@ onMounted(() => {
                 disabled="Выберите точку сотрудника"
                 all="Все точки"
             />
-          </div>
+          </div>*
 
           <!-- Таблица сотрудников -->
           <div v-if="loading.employees" class="loading">

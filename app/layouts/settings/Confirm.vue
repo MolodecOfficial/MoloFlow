@@ -1,5 +1,7 @@
-<!-- layouts/confirm.vue -->
 <script setup lang="ts">
+import { ref } from 'vue'
+import { useNotifications } from '~/composables/useNotifications'
+
 const props = defineProps<{
   windowId?: string
   groupId?: string
@@ -16,7 +18,7 @@ const emit = defineEmits<{
   close: []
 }>()
 
-const {addNotification} = useNotifications()
+const { addNotification } = useNotifications()
 const isLoading = ref(false)
 
 const handleConfirm = async () => {
@@ -32,20 +34,17 @@ const handleConfirm = async () => {
     isLoading.value = false
   }
 }
-
 </script>
 
 <template>
   <div class="confirm-body">
-    <p class="confirm-message">{{ props.windowData?.message   }}</p>
+    <p class="confirm-message">{{ windowData?.message || 'Подтвердите действие' }}</p>
   </div>
-  <button
-        class="action-btn confirm"
-        @click="handleConfirm"
-        :disabled="isLoading"
-    >
+  <div class="confirm-actions">
+    <button class="action-btn confirm" @click="handleConfirm" :disabled="isLoading">
       {{ isLoading ? 'Удаление...' : 'Удалить' }}
     </button>
+  </div>
 </template>
 
 <style scoped>

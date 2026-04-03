@@ -208,13 +208,21 @@ export const moduleConfig: MenuGroup[] = [
         isActive: true,
         items: [
             {
-                id: 'Creature',
+                id: 'creature',
                 title: 'Создание модуля',
                 requiredRole: ['Управляющий'],
                 isActive: true,
                 componentName: 'Creature',
                 componentPath: 'modules/creature'
             },
+            {
+                id: 'preview',
+                title: 'Предпоказ модуля',
+                requiredRole: ['Управляющий'],
+                isActive: false,
+                componentName: 'Preview',
+                componentPath: 'modules/preview'
+            }
         ]
     }
 ];

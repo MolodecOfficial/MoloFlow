@@ -4,6 +4,7 @@
 
 <template>
   <NuxtLayout>
+
     <NuxtPage/>
   </NuxtLayout>
 </template>
@@ -11,7 +12,7 @@
 <style>
 
 ::-webkit-scrollbar {
-  width: 4px; /* для вертикального скролла */
+  width: 8px;
   height: 4px;
 }
 

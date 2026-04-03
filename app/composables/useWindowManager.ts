@@ -106,6 +106,8 @@ export function useWindowManager() {
             minHeight: sizeOptions?.minHeight ?? 300,
         }
 
+
+
         const newWindow: WindowItem = {
             id: `window_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
             groupTitle: finalGroupTitle,
@@ -192,6 +194,19 @@ export function useWindowManager() {
         }
     }
 
+    const updateWindowData = (groupId: string, itemId: string, newData: any) => {
+        const win = windows.value.find(
+            w => w.groupId === groupId && w.itemId === itemId
+        )
+
+        if (!win) return
+
+        win.data = {
+            ...(win.data || {}),
+            ...newData
+        }
+    }
+
     return {
         windows,
         openWindow,
@@ -201,5 +216,6 @@ export function useWindowManager() {
         moveWindow,
         resizeWindow,
         maximizeWindow,
+        updateWindowData
     }
 }

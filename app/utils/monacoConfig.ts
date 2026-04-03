@@ -1,0 +1,72 @@
+import type { editor } from 'monaco-editor';
+
+export const MONACO_EDITOR_OPTIONS: editor.IStandaloneEditorConstructionOptions = {
+    automaticLayout: true,
+    fontSize: 13,
+    fontFamily: 'JetBrains Mono, Fira Code, Consolas, monospace',
+    fontWeight: 'normal',
+    lineHeight: 1.5,
+    letterSpacing: 0.5,
+    minimap: { enabled: true, scale: 1 },
+    scrollBeyondLastLine: false,
+    wordWrap: 'on',
+    formatOnPaste: true,
+    formatOnType: true,
+    suggestOnTriggerCharacters: true,
+    quickSuggestions: { other: true, comments: false, strings: false },
+    parameterHints: { enabled: true },
+    snippetSuggestions: 'top',
+    acceptSuggestionOnEnter: 'on',
+    tabCompletion: 'on',
+    wordBasedSuggestions: true,
+    renderWhitespace: 'selection',
+    renderControlCharacters: true,
+    cursorBlinking: 'smooth',
+    cursorSmoothCaretAnimation: 'on',
+    smoothScrolling: true,
+    bracketPairColorization: { enabled: true },
+    guides: { bracketPairs: true },
+    autoClosingBrackets: 'always',
+    autoClosingQuotes: 'always',
+    autoSurround: 'languageDefined',
+    codeLens: { enabled: true },
+    semanticHighlighting: { enabled: true },
+    suggest: {
+        showIcons: true,
+        showMethods: true,
+        showFunctions: true,
+        showConstructors: true,
+        showFields: true,
+        showVariables: true,
+        showClasses: true,
+        showStructs: true,
+        showInterfaces: true,
+        showModules: true,
+        showProperties: true,
+        showEvents: true,
+        showOperators: true,
+        showUnits: true,
+        showValues: true,
+        showConstants: true,
+        showEnums: true,
+        showEnumMembers: true,
+        showKeywords: true,
+        showWords: true,
+        showColors: true,
+        showFiles: true,
+        showReferences: true,
+        showFolders: true,
+        showTypeParameters: true,
+        showSnippets: true,
+    },
+};
+
+// Настройка языка для разных форматов
+export const getEditorLanguage = (format: string): string => {
+    const langMap: Record<string, string> = {
+        vue: 'html',
+        js: 'javascript',
+        ts: 'typescript'
+    };
+    return langMap[format] || 'plaintext';
+};
