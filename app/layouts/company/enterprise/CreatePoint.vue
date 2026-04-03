@@ -404,44 +404,6 @@ async function addPoint() {
   border-radius: 4px;
 }
 
-.submit-btn {
-  width: 100%;
-  padding: 10px;
-  background: #1eef6f;
-  color: #020b18;
-  border: none;
-  border-radius: 4px;
-  font-weight: 600;
-  cursor: pointer;
-  margin: 20px 0;
-  transition: all 0.2s;
-}
-
-.submit-btn:hover:not(:disabled) {
-  background: #15b050;
-}
-
-.submit-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.modern-loader {
-  width: 12px;
-  height: 12px;
-  border: 3px solid rgba(0, 0, 0, 0.1);
-  border-radius: 50%;
-  border-top-color: #020b18;
-  animation: spin 0.8s linear infinite;
-  margin: 0 auto;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
 @media (max-width: 768px) {
   .grid-2, .grid-3 {
     grid-template-columns: 1fr;

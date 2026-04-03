@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {ref} from "vue"
+import { ref, computed } from "vue"
 
 const inputMode = ref<'default' | 'address' | 'phone'>('default')
 const inputValue = ref('')
@@ -45,177 +45,447 @@ const selectedItemName = computed(() => {
 
   return item?.name || null
 })
+
+// Секции для навигации
+const sections = [
+  { id: 'input', title: 'MoloInput', icon: '📝' },
+  { id: 'select', title: 'MoloSelect', icon: '🔽' }
+]
+
+const activeSection = ref<string>('input')
 </script>
 
 <template>
-  <div class="documentation-header">
-    <h3>Документация</h3>
-  </div>
-  <div class="documentation-content">
-    <h3>Здесь доступна общая информация о работе с редактором кода и дополнительными элементами, которые помогут в разработке модулей</h3>
-    <ul>
-      <li>Встроенный элемент ввода - <code>MoloInput</code>. Содержит в себе несколько параметров:
-        <ul>
-          <li><code>tLabel</code> - Позволит ввести надпись над вводом текста</li>
-          <li><code>lRequired</code> - Устанавливает звездочку над надписью, указывая обязательным это поле</li>
-          <li><code>modelValue</code> - Аналог <code>v-model</code>, использовать при неразрешимых проблемах</li>
-          <li><code>iRequired</code> - Устанавливает обязательное заполнение данного поля</li>
-          <li><code>placeholder</code> - Фоновый текст для поля ввода</li>
-          <li><code>maxLength</code> - Позволяет указать максимально разрешимое количество символов для ввода</li>
-          <li><code>readonly</code> - Включит режим - только для чтения</li>
-          <li><code>address</code> - Специальная надстройка у <code>MoloInput</code>. Установив параметр -
-            <code>true</code>, введя начало адреса, отобразится список адресов по введеным данным
-          </li>
-          <li><code>phone</code> - Специальная надстройка у <code>MoloInput</code>. Установив параметр -
-            <code>true</code>, включится специальное форматирование текста под формат номера телефона
-          </li>
-        </ul>
-        <div class="input-modes">
-          <label>
-            <input type="radio" value="default" v-model="inputMode"/>
-            Обычный режим
-          </label>
+  <div class="documentation-container">
+    <!-- Боковая навигация -->
+    <div class="doc-nav">
+      <div class="nav-header">
+        <h4>Содержание</h4>
+      </div>
+      <div class="nav-items">
+        <button
+            v-for="section in sections"
+            :key="section.id"
+            class="nav-item"
+            :class="{ active: activeSection === section.id }"
+            @click="activeSection = section.id"
+        >
+          <span class="nav-icon">{{ section.icon }}</span>
+          <code>{{ section.title }}</code>
+        </button>
+      </div>
+    </div>
 
-          <label>
-            <input type="radio" value="address" v-model="inputMode"/>
-            Режим адреса
-          </label>
+    <!-- Основной контент -->
+    <div class="documentation-wrapper">
+      <div class="documentation-header">
+        <h3>Документация по компонентам</h3>
+      </div>
 
-          <label>
-            <input type="radio" value="phone" v-model="inputMode"/>
-            Режим телефона
-          </label>
+      <div class="documentation-content">
+        <!-- Введение -->
+        <div class="intro-box">
+          <p>Здесь доступна общая информация о работе с редактором кода и дополнительными элементами, которые помогут в разработке модулей</p>
         </div>
-        <MoloInput
-            :address="inputMode === 'address'"
-            :phone="inputMode === 'phone'"
-        />
-      </li>
-      <li>Встроенный элемент ввода - <code>MoloSelect</code>. Содержит в себе несколько параметров:
-        <ul>
-          <li><code>tLabel</code> - Позволит ввести надпись над вводом текста</li>
-          <li><code>lRequired</code> - Устанавливает звездочку над надписью, указывая обязательным это поле</li>
-          <li><code>modelValue</code> - Аналог <code>v-model</code>, использовать при неразрешимых проблемах</li>
-          <li><code>iRequired</code> - Устанавливает обязательное заполнение данного поля</li>
-          <li><code>placeholder</code> - Фоновый текст для поля ввода</li>
-          <li><code>maxLength</code> - Позволяет указать максимально разрешимое количество символов для ввода</li>
-          <li><code>readonly</code> - Включит режим - только для чтения</li>
-          <li><code>parent</code> - Специальная надстройка у <code>MoloSelect</code>. Прямой аналог <code>v-for</code>,
-            позволит напрямую выбрать "родителя" данного объекта
-          </li>
-          <li><code>children</code> - Специальная надстройка у <code>MoloSelect</code>. Работает вместе с
-            <code>parent</code>, но уже отвечает за "детей" внутри "родителя"
-          </li>
-          <li><code>valueKey</code> - Позволит перебрать "детей" по определённым параметрам (_id)</li>
-          <li><code>disabled</code> - Добавляет заблокированный параметр, текст которого Вы можете установить внутри
-            параметра
-          </li>
-          <li><code>all</code> - Включит полный список досутпных вариантов</li>
-        </ul>
 
-        <!-- Пример с parent/children - выбор категории -->
-        <div class="select-example">
-          <MoloSelect
-              tLabel="Выберите имя из простого списка"
-              :parent="selectOptions"
-              children="name"
-              disabled="Выберите имя"
-          />
+        <!-- Секция MoloInput -->
+        <div v-show="activeSection === 'input'" class="doc-section">
+          <div class="section-header">
+            <h2>MoloInput</h2>
+            <span class="section-badge">Компонент ввода</span>
+          </div>
 
+          <div class="props-table">
+            <h3>Параметры (Props)</h3>
+            <table>
+              <thead>
+              <tr><th>Параметр</th><th>Тип</th><th>Описание</th></tr>
+              </thead>
+              <tbody>
+              <tr><td><code>tLabel</code></td><td>String</td><td>Надпись над полем ввода</td></tr>
+              <tr><td><code>lRequired</code></td><td>Boolean</td><td>Показывает звездочку (*) обязательного поля</td></tr>
+              <tr><td><code>modelValue</code></td><td>Any</td><td>Аналог v-model</td></tr>
+              <tr><td><code>iRequired</code></td><td>Boolean</td><td>Обязательное заполнение поля</td></tr>
+              <tr><td><code>placeholder</code></td><td>String</td><td>Подсказка в поле ввода</td></tr>
+              <tr><td><code>maxLength</code></td><td>Number</td><td>Максимальная длина текста</td></tr>
+              <tr><td><code>readonly</code></td><td>Boolean</td><td>Режим только для чтения</td></tr>
+              <tr><td><code>address</code></td><td>Boolean</td><td>Режим ввода адреса с автоподбором</td></tr>
+              <tr><td><code>phone</code></td><td>Boolean</td><td>Режим ввода телефона с форматированием</td></tr>
+              </tbody>
+            </table>
+          </div>
 
-          <MoloSelect
-              v-model="selectedCategory"
-              :parent="testParent"
-              children="category"
-              valueKey="id"
-              tLabel="Выберите категорию из списка с вложениями"
-              placeholder="Выберите категорию"
-              disabled="Выберите категорию"
-          />
+          <div class="demo-block">
+            <div class="demo-header">
+              <span class="demo-title">Демонстрация</span>
+            </div>
 
-          <MoloSelect
-              v-if="selectedCategory"
-              v-model="selectedItem"
-              :parent="testParent.find(c => c.id === Number(selectedCategory))?.items || []"
-              children="name"
-              valueKey="_id"
-              tLabel="Выберите пункт из определённого вложения"
-              placeholder="Выберите пункт"
-              disabled="Выберите пункт"
-          />
+            <div class="input-modes">
+              <label class="mode-label" :class="{ active: inputMode === 'default' }">
+                <input type="radio" value="default" v-model="inputMode"/>
+                <span>Обычный режим</span>
+              </label>
+              <label class="mode-label" :class="{ active: inputMode === 'address' }">
+                <input type="radio" value="address" v-model="inputMode"/>
+                <span>Режим адреса</span>
+              </label>
+              <label class="mode-label" :class="{ active: inputMode === 'phone' }">
+                <input type="radio" value="phone" v-model="inputMode"/>
+                <span>Режим телефона</span>
+              </label>
+            </div>
+
+            <div class="demo-example">
+              <MoloInput
+                  v-if="inputMode === 'default'"
+                  v-model="inputValue"
+                  tLabel="Пример обычного ввода"
+                  placeholder="Введите текст..."
+              />
+              <MoloInput
+                  v-if="inputMode === 'address'"
+                  v-model="addressValue"
+                  tLabel="Пример ввода адреса"
+                  placeholder="Начните вводить адрес..."
+                  :address="true"
+              />
+              <MoloInput
+                  v-if="inputMode === 'phone'"
+                  v-model="phoneValue"
+                  tLabel="Пример ввода телефона"
+                  placeholder="+7 (___) ___-__-__"
+                  :phone="true"
+              />
+            </div>
+          </div>
         </div>
-      </li>
-    </ul>
+
+        <!-- Секция MoloSelect -->
+        <div v-show="activeSection === 'select'" class="doc-section">
+          <div class="section-header">
+            <h2>MoloSelect</h2>
+            <span class="section-badge">Компонент выбора</span>
+          </div>
+
+          <div class="props-table">
+            <h3>Параметры (Props)</h3>
+            <table>
+              <thead>
+              <tr><th>Параметр</th><th>Тип</th><th>Описание</th></tr>
+              </thead>
+              <tbody>
+              <tr><td><code>tLabel</code></td><td>String</td><td>Надпись над полем выбора</td></tr>
+              <tr><td><code>parent</code></td><td>Array</td><td>Массив данных для отображения</td></tr>
+              <tr><td><code>children</code></td><td>String</td><td>Ключ для отображения текста опций</td></tr>
+              <tr><td><code>valueKey</code></td><td>String</td><td>Ключ для значения опций</td></tr>
+              <tr><td><code>disabled</code></td><td>String</td><td>Текст заблокированной опции</td></tr>
+              <tr><td><code>all</code></td><td>String</td><td>Опция "Все" в начале списка</td></tr>
+              <tr><td><code>placeholder</code></td><td>String</td><td>Placeholder для селекта</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="demo-block">
+            <div class="demo-header">
+              <span class="demo-title">Демонстрация</span>
+            </div>
+
+            <div class="demo-examples">
+              <!-- Простой пример -->
+              <div class="demo-item">
+                <h4>Пример 1: Простой список</h4>
+                <MoloSelect
+                    tLabel="Выберите имя"
+                    :parent="selectOptions"
+                    children="name"
+                    placeholder="Выберите имя"
+                />
+              </div>
+
+              <!-- Вложенные селекты -->
+              <div class="demo-item">
+                <h4>Пример 2: Вложенные списки (категории → пункты)</h4>
+                <div class="nested-selects">
+                  <MoloSelect
+                      v-model="selectedCategory"
+                      :parent="testParent"
+                      children="category"
+                      valueKey="id"
+                      tLabel="Категория"
+                      placeholder="Выберите категорию"
+                  />
+
+                  <MoloSelect
+                      v-if="selectedCategory"
+                      v-model="selectedItem"
+                      :parent="testParent.find(c => c.id === Number(selectedCategory))?.items || []"
+                      children="name"
+                      valueKey="_id"
+                      tLabel="Пункт"
+                      placeholder="Выберите пункт"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <style scoped>
-.documentation-header {
+.documentation-container {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 16px;
+  height: 100%;
+  background-color: #1e1e1e;
+}
+
+.doc-nav {
+  width: 240px;
   background-color: #252526;
+  border-right: 1px solid #3c3c3c;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+.nav-header {
+  padding: 16px;
   border-bottom: 1px solid #3c3c3c;
 }
 
-.documentation-header h3 {
+.nav-header h4 {
   margin: 0;
   color: #fff;
   font-size: 14px;
 }
 
-.documentation-content {
-  flex: 2;
-  padding: 16px;
+.nav-items {
+  flex: 1;
+  padding: 8px;
+}
+
+.nav-item {
+  width: 100%;
+  padding: 10px 12px;
+  background: transparent;
+  border: none;
   color: #ccc;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: all 0.2s;
   font-size: 13px;
-  line-height: 1.5;
+}
+
+.nav-item:hover {
+  background-color: #2d2d2d;
+  color: #fff;
+}
+
+.nav-item.active {
+  background-color: #1e6f3f;
+  color: #fff;
+}
+
+.nav-icon {
+  font-size: 18px;
+}
+
+/* Основной контент */
+.documentation-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.documentation-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 20px;
+  background-color: #252526;
+  border-bottom: 1px solid #3c3c3c;
+  flex-shrink: 0;
+}
+
+.documentation-header h3 {
+  margin: 0;
+  color: #fff;
+  font-size: 16px;
+}
+.documentation-content {
+  flex: 1;
+  padding: 20px;
   overflow-y: auto;
 }
 
-.documentation-content ul {
-  margin-top: 12px;
-  padding-left: 20px;
+/* Введение */
+.intro-box {
+  padding: 16px 20px;
+  border-radius: 8px;
+  margin-bottom: 24px;
+  color: #ccc;
 }
 
-.documentation-content li {
-  margin: 8px 0;
+/* Секции */
+.doc-section {
+  animation: fadeIn 0.3s ease;
 }
 
-.documentation-content code {
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.section-header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 20px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid #3c3c3c;
+}
+
+.section-header h2 {
+  margin: 0;
+  color: #fff;
+  font-size: 22px;
+}
+
+.section-badge {
+  background-color: #3c3c3c;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  color: #ccc;
+}
+
+/* Таблица параметров */
+.props-table {
+  margin-bottom: 24px;
+}
+
+.props-table h3 {
+  color: #fff;
+  font-size: 16px;
+  margin-bottom: 12px;
+}
+
+.props-table table {
+  width: 100%;
+  border-collapse: collapse;
+  background-color: #252526;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.props-table th,
+.props-table td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid #3c3c3c;
+}
+
+.props-table th {
   background-color: #2d2d2d;
-  padding: 2px 6px;
-  border-radius: 3px;
-  font-family: monospace;
-  color: #d4d4d4;
+  color: #fff;
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.props-table td {
+  color: #ccc;
+  font-size: 12px;
+}
+
+.props-table code {
+  background-color: #1e1e1e;
+}
+
+/* Демо-блоки */
+.demo-block {
+  background-color: #252526;
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 24px;
+  border: 1px solid #3c3c3c;
+}
+
+.demo-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background-color: #2d2d2d;
+  border-bottom: 1px solid #3c3c3c;
+}
+
+.demo-title {
+  color: #fff;
+  font-weight: 500;
+  font-size: 14px;
 }
 
 .input-modes {
-  margin: 10px 0;
-  display: flex;
-  gap: 15px;
-}
-
-.input-modes label {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  cursor: pointer;
-}
-
-.select-example {
-  margin-top: 15px;
+  height: fit-content;
+  padding: 16px;
   display: flex;
   flex-direction: column;
-  gap: 15px;
+  gap: 12px;
+  border-bottom: 1px solid #3c3c3c;
 }
 
-.selected-info {
-  margin-top: 10px;
-  padding: 8px;
-  background-color: #2d2d2d;
-  border-radius: 4px;
-  color: #4ec9b0;
+.mode-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background-color: #1e1e1e;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: 1px solid #3c3c3c;
 }
+
+.mode-label:hover {
+  background-color: #2d2d2d;
+}
+
+.mode-label.active {
+  background-color: #1e6f3f;
+  border-color: #1e6f3f;
+}
+
+.mode-label input {
+  margin: 0;
+}
+
+.demo-example,
+.demo-examples {
+  padding: 16px;
+  display: flex;
+}
+
+.demo-item {
+  margin-bottom: 20px;
+}
+
+.demo-item h4 {
+  color: #fff;
+  font-size: 14px;
+  margin: 0 0 12px 0;
+}
+
+.nested-selects {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+
 </style>

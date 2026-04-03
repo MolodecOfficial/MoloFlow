@@ -70,7 +70,13 @@ const handleClick = () => {
     <h1>{{ message }}</h1>
     <button @click="handleClick">Click me</button>
   </div>
-</template>`
+</template>
+
+<style scoped>
+
+</style>
+
+`
   }
 
   return '// module code...'
@@ -261,7 +267,7 @@ onUnmounted(() => {
         :parent="modules"
         children="name"
         valueKey="_id"
-        disabled="Готовый модуль"
+        disabled="Готовые модули"
     />
   </div>
 
@@ -337,7 +343,9 @@ onUnmounted(() => {
     <hr>
 
     <button type="submit" class="action-btn confirm" :disabled="loading" @click="saveModule">
-      {{ loading ? 'Сохранение...' : (isEditing ? 'Обновить' : 'Создать') }}
+
+      <div v-if="loading" class="modern-loader"></div>
+      <span v-else> {{ isEditing ? 'Обновить' : 'Создать' }} </span>
     </button>
   </section>
 </template>
@@ -406,49 +414,10 @@ onUnmounted(() => {
   }
 }
 
-.documentation-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 16px;
-  background-color: #252526;
-  border-bottom: 1px solid #3c3c3c;
-}
-
 .documentation-header h3 {
   margin: 0;
   color: #fff;
   font-size: 14px;
-}
-
-.close-docs {
-  background: none;
-  border: none;
-  color: #ccc;
-  font-size: 24px;
-  cursor: pointer;
-  padding: 0;
-  width: 24px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 4px;
-  transition: all 0.2s;
-}
-
-.close-docs:hover {
-  background-color: #3c3c3c;
-  color: #fff;
-}
-
-.documentation-content {
-  flex: 2;
-  padding: 16px;
-  color: #ccc;
-  font-size: 13px;
-  line-height: 1.5;
-  overflow-y: auto;
 }
 
 .documentation-content ul {
@@ -492,8 +461,6 @@ onUnmounted(() => {
   display: flex;
   justify-content: space-between;
 }
-
-
 
 /* Адаптив для маленьких экранов */
 @media (max-width: 768px) {

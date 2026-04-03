@@ -154,11 +154,6 @@ onMounted(() => {
   margin: 10px 0;
 }
 
-.user-info {
-  font-size: 0.9rem !important;
-  opacity: 0.6 !important;
-}
-
 .actions {
   display: flex;
   gap: 15px;

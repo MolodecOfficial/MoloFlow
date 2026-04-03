@@ -5,9 +5,9 @@ import {useWindowResize} from '~/composables/useWindowResize'
 import {ref, computed, onMounted, onUnmounted} from 'vue'
 import RestoreIcon from '~~/public/min.svg'
 import {useUserStore} from "~~/stores/userStore";
-import { windowThemes, windowButtonStyles, THEME_STORAGE_KEY, BUTTON_STYLE_STORAGE_KEY } from '~~/types/window-themes' // ИЗМЕНЕНО: добавлен импорт windowButtonStyles и BUTTON_STYLE_STORAGE_KEY
+import {windowThemes, windowButtonStyles, THEME_STORAGE_KEY, BUTTON_STYLE_STORAGE_KEY} from '~~/types/window-themes' // ИЗМЕНЕНО: добавлен импорт windowButtonStyles и BUTTON_STYLE_STORAGE_KEY
 
-const { addNotification } = useNotifications()
+const {addNotification} = useNotifications()
 
 const userStore = useUserStore()
 const role = ref('')
@@ -299,7 +299,7 @@ onUnmounted(() => {
           <span>{{ groupId }}</span><span>{{ subGroupId }}</span><span>{{ windowId }}</span>
         </div>
         <div class="window-controls">
-          <button class="control-btn refresh" @click="refreshContent" >
+          <button class="control-btn refresh" @click="refreshContent">
             ↻
           </button>
           <button
@@ -335,7 +335,9 @@ onUnmounted(() => {
 
 
       <div class="window-content">
-        <slot :refreshKey="refreshKey" :windowData="windowData"/>
+        <div class="window-content-inner">
+          <slot :refreshKey="refreshKey" :windowData="windowData"/>
+        </div>
       </div>
 
       <!-- Ручки для изменения размера (скрываем при максимизации) -->
@@ -368,6 +370,7 @@ onUnmounted(() => {
   width: calc(100vw - 40px);
   height: calc(100vh - 40px);
   z-index: 1;
+
   & .window-header {
     cursor: auto;
   }
@@ -566,6 +569,10 @@ onUnmounted(() => {
   min-height: 0;
 }
 
+.window-content-inner {
+
+}
+
 .restore-icon {
   width: 16px;
   height: 16px;
@@ -574,9 +581,7 @@ onUnmounted(() => {
   transition: filter 0.2s ease;
 }
 
-/* При наведении на кнопку максимизации меняем цвет SVG */
 .control-btn.maximize:hover .restore-icon {
-  /* Для синего цвета (#0c92ff) */
   filter: brightness(0) invert(0.5) sepia(1) saturate(30) hue-rotate(200deg);
 }
 

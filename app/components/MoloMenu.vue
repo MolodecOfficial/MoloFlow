@@ -719,8 +719,7 @@ onMounted(() => {
 }
 
 @media (max-width: 767px) {
-  .action-list,
-  .enterprises-list {
+  .action-list {
     left: 10px;
     right: 10px;
     padding: 20px;

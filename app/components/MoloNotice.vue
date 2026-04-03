@@ -234,8 +234,6 @@ const getAccentColor = computed(() => {
   border-color: rgba(255, 255, 255, 0.15);
 }
 
-
-
 /* Адаптивность */
 @media (max-width: 500px) {
   .main-notice {
