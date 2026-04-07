@@ -47,10 +47,7 @@ const handleLogin = async () => {
 
     addNotification('NOTICE_DEFAULT', 'Успешный вход в предприятие!')
 
-    // Закрываем окно входа
-    if (props.windowId) {
-      closeWindow(props.windowId)
-    }
+
 
     openWindow(
         'company',
@@ -58,11 +55,16 @@ const handleLogin = async () => {
         'enterprise',
     )
 
+    // Закрываем окно входа
+    if (props.windowId) {
+      closeWindow(props.windowId)
+    }
   } catch (error: any) {
     console.error('Ошибка входа:', error)
     addNotification('ERROR_DEFAULT', error.data?.message || 'Ошибка входа')
   } finally {
     loading.value = false
+
   }
 }
 

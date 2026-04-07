@@ -1,9 +1,8 @@
-import * as monaco from 'monaco-editor';
+import * as monaco from 'monaco-editor'
 
 export function initMonacoTypeScript() {
-    // Настройка компилятора TypeScript
     monaco.languages.typescript.javascriptDefaults.setCompilerOptions({
-        target: monaco.languages.typescript.ScriptTarget.ES2020,
+        target: monaco.languages.typescript.ScriptTarget.ES2022,
         allowNonTsExtensions: true,
         moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
         module: monaco.languages.typescript.ModuleKind.ESNext,
@@ -11,22 +10,29 @@ export function initMonacoTypeScript() {
         allowJs: true,
         checkJs: false,
         strict: false,
-    });
+        allowSyntheticDefaultImports: true,
+        esModuleInterop: true,
+    })
 
-    // Добавление типов для Vue
     monaco.languages.typescript.javascriptDefaults.addExtraLib(
         `declare module '*.vue' { 
-      import type { DefineComponent } from 'vue'; 
-      const component: DefineComponent; 
-      export default component; 
-    }`,
+            import type { DefineComponent } from 'vue'
+            const component: DefineComponent<{}, {}, any>
+            export default component
+        }`,
         'file:///node_modules/@types/vue/index.d.ts'
-    );
+    )
+
+    monaco.languages.typescript.javascriptDefaults.addExtraLib(
+        `declare module '@/components/*' {
+            const component: any
+            export default component
+        }`,
+        'file:///node_modules/@types/components/index.d.ts'
+    )
 }
 
-// Опционально: регистрация сниппетов
 export function registerMonacoSnippets() {
-    // Сниппет для Vue компонента
     monaco.languages.registerCompletionItemProvider('html', {
         provideCompletionItems: () => ({
             suggestions: [
@@ -53,44 +59,9 @@ export function registerMonacoSnippets() {
                         '</style>'
                     ].join('\n'),
                     insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-                    detail: 'Vue component scaffold',
-                    range: { startLineNumber: 1, startColumn: 0, endLineNumber: 1, endColumn: 0 }
-                },
-                {
-                    label: 'vfor',
-                    kind: monaco.languages.CompletionItemKind.Snippet,
-                    insertText: 'v-for="(${1:item}, ${2:index}) in ${3:items}" :key="${2:index}"',
-                    detail: 'Vue v-for directive'
-                },
-                {
-                    label: 'vmodel',
-                    kind: monaco.languages.CompletionItemKind.Snippet,
-                    insertText: 'v-model="${1:variable}"',
-                    detail: 'Vue v-model directive'
+                    detail: 'Vue component scaffold'
                 }
             ]
         })
-    });
-
-    // Сниппеты для JavaScript
-    monaco.languages.registerCompletionItemProvider('javascript', {
-        provideCompletionItems: () => ({
-            suggestions: [
-                {
-                    label: 'clog',
-                    kind: monaco.languages.CompletionItemKind.Snippet,
-                    insertText: 'console.log(${1:data});',
-                    insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-                    detail: 'Console log'
-                },
-                {
-                    label: 'fun',
-                    kind: monaco.languages.CompletionItemKind.Snippet,
-                    insertText: 'function ${1:name}(${2:params}) {\n  ${3}\n}',
-                    insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-                    detail: 'Function declaration'
-                }
-            ]
-        })
-    });
+    })
 }

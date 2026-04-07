@@ -16,24 +16,23 @@ const {
   compiledComponent,
   compiling,
   compileError,
-  compileModule,
+  compileModuleDebounced
 } = useModuleCompiler()
 
 // 🔥 ТОЛЬКО КОД
 watch(
     () => props.windowData?.code,
-    async (code) => {
+    (code) => {
       if (!code) return
 
       loading.value = false
       error.value = null
-      currentModuleName.value = props.windowData?.moduleName || 'Без названия'
+      currentModuleName.value =
+          props.windowData?.moduleName || 'Без названия'
 
-      await compileModule(code)
-
-      renderKey.value++
+      compileModuleDebounced(code)
     },
-    {immediate: true}
+    { immediate: true }
 )
 
 // ошибки
@@ -79,7 +78,7 @@ watch(compileError, (err) => {
 .module-name {
   top: 70px;
   position: absolute;
-  right: 20px;
+  right: 10px;
   width: fit-content;
   display: flex;
   font-size: 10px;

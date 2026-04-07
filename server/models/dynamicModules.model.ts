@@ -7,6 +7,12 @@ const dynamicModuleSchema = new mongoose.Schema({
         unique: true,
         trim: true
     },
+    fileName: {
+        type: String,
+        required: [true, 'Название файла обязательно'],
+        unique: true,
+        trim: true
+    },
     description: {
         type: String,
         default: ''

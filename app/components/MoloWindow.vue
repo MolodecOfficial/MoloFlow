@@ -532,31 +532,27 @@ onUnmounted(() => {
 }
 
 .control-btn:hover {
-  background: var(--button-button-hover-bg, rgba(255, 255, 255, 0.1));
   color: var(--button-button-hover-text-color, white);
 }
 
 .control-btn.maximize:hover {
-  background: rgba(33, 150, 243, 0.2);
   border-color: #0c92ff;
   color: #0c92ff;
 }
 
 .control-btn.close:hover {
-  background: rgba(220, 53, 69, 0.2);
   border-color: #ff0a21;
   color: #ff0a21;
 }
 
 .control-btn.minimize:hover {
-  background: rgba(255, 193, 7, 0.2);
   border-color: #ffc107;
   color: #ffc107;
 }
 
 .control-btn.refresh:hover {
-  background: rgba(161, 161, 161, 0.2);
-  border-color: #d3d3d3;
+  border-color: #1eef6f;
+  color: #1eef6f;
 }
 
 .window-content {

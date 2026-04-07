@@ -332,12 +332,7 @@ const resetForm = () => {
   cursor: pointer;
 }
 
-input[type="checkbox"] {
-  width: 18px;
-  height: 18px;
-  accent-color: #1eef6f;
-  cursor: pointer;
-}
+
 
 button.login {
   padding: 12px 24px;

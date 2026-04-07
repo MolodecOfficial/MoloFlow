@@ -143,7 +143,7 @@ const createDynamicMenuItems = (): MenuItem[] => {
   if (!dynamicModules.value.length) return []
 
   return dynamicModules.value.map(module => ({
-    id: `dynamic_${module._id}`,
+    id: `dynamic${module.fileName}`,
     title: module.name,
     requiredRole: ['Управляющий', 'Сотрудник'],
     isActive: true,
@@ -165,7 +165,7 @@ const modulesGroups = computed<MenuGroup[]>(() => {
 
   if (dynamicModulesItems.length > 0) {
     const dynamicGroup: MenuGroup = {
-      id: 'molo_modules',
+      id: 'Molo',
       title: 'Мои модули',
       requiredRole: ['Управляющий', 'Сотрудник'],
       isActive: true,
@@ -247,7 +247,7 @@ const toggleExpand = (itemId: string, isModules: boolean = false) => {
 const getWindowSizeOptions = (itemId: string): WindowSizeOptions | undefined => {
   const presets: Record<string, WindowSizeOptions> = {
     login: { width: 400, height: 450, minWidth: 350, minHeight: 400 },
-    creature: { width: 700, height: 650, minWidth: 500, minHeight: 600 },
+    creature: { width: 800, height: 650, minWidth: 500, minHeight: 600 },
     NotFound: { width: 700, height: 650, minWidth: 500, minHeight: 600 },
   }
   return presets[itemId]

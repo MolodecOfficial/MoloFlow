@@ -44,6 +44,20 @@ body {
   }
 }
 
+.action-btn.danger {
+  padding: 8px 16px;
+  background: #efd31e;
+  color: #020b18;
+  border: none;
+  border-radius: 4px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  &.action-btn:hover {
+    background: #b09b15;
+  }
+}
+
 .action-btn.close {
   padding: 8px 16px;
   background: #ef1e1e;
@@ -72,4 +86,11 @@ body {
   to {
     transform: rotate(360deg);
   }
+}
+
+input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: #1eef6f;
+  cursor: pointer;
 }

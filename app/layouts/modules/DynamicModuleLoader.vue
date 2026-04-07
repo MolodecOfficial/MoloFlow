@@ -5,6 +5,8 @@ import * as compiler from '@vue/compiler-sfc'
 import { loadModule } from 'vue3-sfc-loader'
 import MoloInput from '~/components/MoloInput.vue'
 import MoloSelect from '~/components/MoloSelect.vue'
+import { useNotifications } from '~~/app/composables/useNotifications'
+import { useWindowManager } from '~/composables/useWindowManager'
 
 const props = defineProps<{
   windowId: string
@@ -68,6 +70,23 @@ onMounted(async () => {
         document.head.appendChild(style)
       },
     }
+
+    const injectGlobals = () => {
+      const g = window as any
+
+      Object.assign(g, Vue)
+
+      const notifications = useNotifications()
+      const windowManager = useWindowManager()
+
+      g.useNotifications = () => notifications
+      g.useWindowManager = () => windowManager
+
+      g.MoloInput = MoloInput
+      g.MoloSelect = MoloSelect
+    }
+
+    injectGlobals()
 
     const module = await loadModule('dynamic.vue', options)
 

@@ -73,7 +73,7 @@ export function useWindowManager() {
         let finalSubGroupTitle = menuItem?.subGroupTitle
         let finalItemTitle = menuItem?.itemTitle || itemId
 
-        if (itemId.startsWith('dynamic_') && moduleData) {
+        if (moduleData) {
             finalComponentName = 'DynamicModuleLoader'
             finalComponentPath = 'modules/DynamicModuleLoader'
             finalItemTitle = moduleData.name || itemId

@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
-import { VueMonacoEditor } from '@guolao/vue-monaco-editor'
+import {ref, computed, watch, onMounted, onUnmounted} from 'vue'
+import {VueMonacoEditor} from '@guolao/vue-monaco-editor'
 
-import { MONACO_EDITOR_OPTIONS, getEditorLanguage } from '~~/app/utils/monacoConfig'
-import { initMonacoTypeScript, registerMonacoSnippets } from '~~/app/utils/monaco-init'
+import {MONACO_EDITOR_OPTIONS, getEditorLanguage} from '~~/app/utils/monacoConfig'
+import {initMonacoTypeScript, registerMonacoSnippets} from '~~/app/utils/monaco-init'
 
 if (typeof window !== 'undefined') {
   initMonacoTypeScript()
@@ -12,8 +12,8 @@ if (typeof window !== 'undefined') {
 
 const emit = defineEmits(['close', 'saved'])
 
-const { openWindow, updateWindowData } = useWindowManager()
-const { addNotification } = useNotifications()
+const {openWindow, updateWindowData} = useWindowManager()
+const {addNotification} = useNotifications()
 
 // 🔥 данные предприятия
 const enterpriseInfo = ref<any>(null)
@@ -27,17 +27,16 @@ const isEditing = computed(() => !!selectedModuleId.value)
 const monacoRef = ref()
 const showDocumentation = ref(false)
 
-const inputMode = ref<'default' | 'address' | 'phone'>('default')
-
 const availableFormats = [
-  { label: '.vue', value: 'vue' },
-  { label: '.js', value: 'js' },
-  { label: '.ts', value: 'ts' }
+  {label: '.vue', value: 'vue'},
+  {label: '.js', value: 'js'},
+  {label: '.ts', value: 'ts'}
 ]
 
 // 🔥 форма
 const formData = ref({
   name: '',
+  fileName: '',
   description: '',
   format: 'vue',
   code: ''
@@ -58,22 +57,136 @@ const getPlaceholder = () => {
     return `<script setup>
 import { ref } from 'vue'
 
-const message = ref('Hello from dynamic module!')
+const message = ref('Привет из динамического модуля!')
 
 const handleClick = () => {
-  message.value = 'Clicked!'
+  message.value = 'Работает!'
 }
+
+const { addNotification } = useNotifications()
+
+const notice = () => {
+  addNotification('NOTICE_DEFAULT', 'Стандартное уведомление')
+}
+
+const danger = () => {
+  addNotification('DANGER_DEFAULT', 'Предупреждающее уведомление')
+}
+
+const error = () => {
+  addNotification('ERROR_DEFAULT', 'Уведомление об ошибке')
+}
+
+const testArray = ['Вика', 'Максим', 'Кирилл']
+
 <\/script>
 
 <template>
-  <div>
+  <div class="container">
     <h1>{{ message }}</h1>
-    <button @click="handleClick">Click me</button>
+    <button @click="handleClick" class="action-btn confirm">Click me</button>
+    <section class="container_input">
+        <MoloInput
+            lRequired
+            tLabel="Надпись к полю ввода, Максимальная длина строчки - 12 символов"
+            maxLength="12"
+            placeholder="Фоновый текст"
+        />
+        <MoloInput
+            address
+            lRequired
+            tLabel="Режим ввода адреса"
+        />
+        <MoloInput
+            phone
+            lRequired
+            tLabel="Режим ввода телефона"
+        />
+        <MoloSelect
+            lRequired
+            tLabel="Работа со списком"
+            :parent="testArray"
+            disabled="Выберите элемент"
+            all="Все имена"
+        />
+    </section>
+    <section class="container_notifications">
+        <button @click="notice" class="action-btn confirm">Стандартное уведомление</button>
+        <button @click="danger" class="action-btn danger">Предупреждающее уведомление</button>
+        <button @click="error" class="action-btn close">Уведомление об ошибке</button>
+    </section>
   </div>
 </template>
 
 <style scoped>
+.container {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
 
+.container_input {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.container_notifications {
+    display: flex;
+    width: 100%;
+    flex-direction: row;
+    gap: 20px;
+    justify-content: space-between;
+}
+
+.action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.action-btn.confirm {
+  padding: 6px 16px;
+  background: #1eef6f;
+  color: #020b18;
+  border: none;
+  border-radius: 4px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  &.action-btn:hover {
+    background: #15b050;
+  }
+}
+
+.action-btn.danger {
+  padding: 8px 16px;
+  background: #efd31e;
+  color: #020b18;
+  border: none;
+  border-radius: 4px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  &.action-btn:hover {
+    background: #b09b15;
+  }
+}
+
+.action-btn.close {
+  padding: 8px 16px;
+  background: #ef1e1e;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  &.action-btn:hover {
+    background: #b01515;
+  }
+}
 </style>
 
 `
@@ -99,6 +212,7 @@ watch(selectedModuleId, (id) => {
   if (!id) {
     formData.value = {
       name: '',
+      fileName: '',
       description: '',
       format: 'vue',
       code: getPlaceholder()
@@ -111,6 +225,7 @@ watch(selectedModuleId, (id) => {
   if (mod) {
     formData.value = {
       name: mod.name,
+      fileName: mod.fileName,
       description: mod.description || '',
       format: mod.format,
       code: mod.code
@@ -191,7 +306,7 @@ const openPreviewInWindow = () => {
     return
   }
 
-  const id = 'Preview' + Date.now()
+  const id = 'preview'
   previewWindowId.value = id
 
   openWindow(
@@ -282,6 +397,15 @@ onUnmounted(() => {
           :disabled="isEditing"
       />
 
+      <MoloInput
+          tLabel="Название файла (на английском)"
+          lRequired
+          v-model="formData.fileName"
+          type="text"
+          placeholder="Введите название модуля"
+          :disabled="isEditing"
+      />
+
       <MoloSelect
           tLabel="Формат файла"
           lRequired
@@ -291,6 +415,7 @@ onUnmounted(() => {
           children="label"
           valueKey="value"
       />
+
     </div>
 
     <div class="form-group">
@@ -376,6 +501,7 @@ onUnmounted(() => {
   display: flex;
   height: 600px;
   width: 100%;
+  overflow: hidden;
 }
 
 .editor-wrapper {
@@ -385,6 +511,7 @@ onUnmounted(() => {
   border: 1px solid #3c3c3c;
   border-radius: 4px;
   overflow: hidden;
+
 }
 
 .monaco-editor-container {
@@ -394,13 +521,13 @@ onUnmounted(() => {
 }
 
 .documentation {
-  flex: 0 0 600px;
-  width: 320px;
+  flex: 0 0 700px;
+  width: 350px;
   background-color: #1e1e1e;
   border-left: 1px solid #3c3c3c;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow: auto;
 }
 
 @keyframes slideIn {

@@ -34,6 +34,8 @@ const testParent = ref([
   }
 ])
 
+
+
 const selectedCategory = ref<string>('')
 const selectedItem = ref<string>('')
 
@@ -49,7 +51,8 @@ const selectedItemName = computed(() => {
 // Секции для навигации
 const sections = [
   { id: 'input', title: 'MoloInput', icon: '📝' },
-  { id: 'select', title: 'MoloSelect', icon: '🔽' }
+  { id: 'select', title: 'MoloSelect', icon: '🔽' },
+  { id: 'notifications', title: 'useNotifications', icon: '🔔' }
 ]
 
 const activeSection = ref<string>('input')
@@ -229,6 +232,122 @@ const activeSection = ref<string>('input')
             </div>
           </div>
         </div>
+
+        <div v-show="activeSection === 'notifications'" class="doc-section">
+          <div class="section-header">
+            <h2>useNotifications</h2>
+            <span class="section-badge">Composable уведомлений</span>
+          </div>
+
+          <div class="description-block">
+            <p>Инструмент для управления системой уведомлений. Поддерживает:</p>
+            <ul>
+              <li>Глобальное хранилище уведомлений</li>
+              <li>Одиночные уведомления (не показываются повторно)</li>
+              <li>Автоматическое предотвращение дубликатов</li>
+              <li>Условный показ на основе роли пользователя</li>
+            </ul>
+          </div>
+          <!-- Параметры конфига -->
+          <div class="props-table">
+            <h3>Параметры уведомления (в конфиге)</h3>
+            <table>
+              <thead>
+              <tr><th>Параметр</th><th>Тип</th><th>Описание</th></tr>
+              </thead>
+              <tbody>
+              <tr><td><code>type</code></td><td>String</td><td>Тип уведомления: info, success, warning, error</td></tr>
+              <tr><td><code>title</code></td><td>String</td><td>Заголовок уведомления</td></tr>
+              <tr><td><code>text</code></td><td>String</td><td>Текст уведомления</td></tr>
+              <tr><td><code>single</code></td><td>Boolean</td><td>Если true — показывается только один раз (сохраняется в localStorage)</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Методы -->
+          <div class="props-table">
+            <h3>Методы (Returns)</h3>
+            <table>
+              <thead>
+              <tr><th>Метод</th><th>Параметры</th><th>Возвращает</th><th>Описание</th></tr>
+              </thead>
+              <tbody>
+              <tr>
+                <td><code>addNotification</code></td>
+                <td><code>key: string, dynamicText?: string</code></td>
+                <td><code>boolean</code></td>
+                <td>Добавляет уведомление по ключу из конфига. Возвращает true если добавлено</td>
+              </tr>
+              <tr>
+                <td><code>removeNotification</code></td>
+                <td><code>id: number</code></td>
+                <td><code>void</code></td>
+                <td>Удаляет уведомление по ID</td>
+              </tr>
+              <tr>
+                <td><code>clearNotifications</code></td>
+                <td><code>-</code></td>
+                <td><code>void</code></td>
+                <td>Очищает все уведомления</td>
+              </tr>
+              <tr>
+                <td><code>checkAndShowNotifications</code></td>
+                <td><code>role: string, userId?: string</code></td>
+                <td><code>void</code></td>
+                <td>Проверяет роль и показывает соответствующие уведомления</td>
+              </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Реактивные данные -->
+          <div class="props-table">
+            <h3>Пример с добавлением уведомления</h3>
+            <table>
+              <thead>
+              <tr>
+                <th>Функция</th>
+                <th>Тип</th>
+                <th>Динамический текст</th>
+                <th>Описание</th>
+              </tr>
+              </thead>
+              <tbody>
+              <tr>
+                <td><code>addNotification(1, 2)</code></td>
+                <td>1. <code>NOTICE_DEFAULT</code></td>
+                <td>2. Любой текст</td>
+                <td>Имеет стандартное оформление уведомления, используется в основном для положительных результатов выполнения</td>
+              </tr>
+              <tr>
+                <td><code>addNotification(1, 2)</code></td>
+                <td>1. <code>DANGER_DEFAULT</code></td>
+                <td>2. Любой текст / Предупреждение</td>
+                <td>Имеет оформление уведомления, предупреждающее о конфликтном моменте. Используется в основном для предупреждения или дополнительного информирования результатов выполнения</td>
+              </tr>
+              <tr>
+                <td><code>addNotification(1, 2)</code></td>
+                <td>1. <code>ERROR_DEFAULT</code></td>
+                <td>2. Любой текст / Ошибка</td>
+                <td>Имеет оформление, уведомляющее о неудачном выполнении операции. Используется для разбора ошибок и выяснения их происхождения</td>
+              </tr>
+              </tbody>
+            </table>
+          </div>
+          <!-- Особенности работы -->
+          <div class="props-table">
+            <h3>⚠️ Особенности работы</h3>
+            <table>
+              <tbody>
+              <tr><td><code>single: true</code></td><td>Уведомление сохраняется в localStorage и больше никогда не покажется</td></tr>
+              <tr><td><code>Предотвращение дубликатов</code></td><td>Одинаковые уведомления (title + text) не добавляются повторно</td></tr>
+              <tr><td><code>Защита от повторных вызовов</code></td><td><code>checkAndShowNotifications</code> имеет защиту от множественных вызовов</td></tr>
+              <tr><td><code>Глобальное хранилище</code></td><td>Состояние уведомлений общее для всех экземпляров хука</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+        </div>
       </div>
     </div>
   </div>
@@ -242,7 +361,7 @@ const activeSection = ref<string>('input')
 }
 
 .doc-nav {
-  width: 240px;
+  width: 250px;
   background-color: #252526;
   border-right: 1px solid #3c3c3c;
   display: flex;

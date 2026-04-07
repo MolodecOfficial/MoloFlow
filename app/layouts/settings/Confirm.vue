@@ -38,7 +38,7 @@ const handleConfirm = async () => {
 
 <template>
   <div class="confirm-body">
-    <p class="confirm-message">{{ windowData?.message || 'Подтвердите действие' }}</p>
+    <p class="confirm-message">{{ windowData?.message }}</p>
   </div>
   <div class="confirm-actions">
     <button class="action-btn confirm" @click="handleConfirm" :disabled="isLoading">

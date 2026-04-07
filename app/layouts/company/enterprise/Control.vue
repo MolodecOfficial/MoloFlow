@@ -231,11 +231,11 @@ async function deleteEmployee(employee: any) {
       'settings',
       'confirm',
       null,
-      { width: 400, height: 200, minWidth: 350, minHeight: 300 },
-      true,               // isModal
-      null,               // componentPath
-      null,               // moduleData
-      {                   // data (8-й параметр) – сюда кладём объект с сообщением
+      { width: 400, height: 220, minWidth: 350, minHeight: 220 },
+      true,
+      null,
+      null,
+      {                  
         type: 'employee',
         item: employee,
         onConfirm: employeeDelete,
@@ -276,7 +276,7 @@ async function deletePoint(point: any) {
       'settings',
       'confirm',
       null,
-      { width: 400, height: 200, minWidth: 350, minHeight: 300 },
+      { width: 400, height: 220, minWidth: 350, minHeight: 220 },
       true,
       null,
       null,
@@ -569,7 +569,7 @@ onMounted(() => {
                 disabled="Выберите точку сотрудника"
                 all="Все точки"
             />
-          </div>*
+          </div>
 
           <!-- Таблица сотрудников -->
           <div v-if="loading.employees" class="loading">
