@@ -67,8 +67,8 @@ watch(compileError, (err) => {
         <component :is="compiledComponent" :key="renderKey" />
       </div>
 
-      <div v-else class="empty-state">
-        <p>Нет данных</p>
+      <div v-else class="loading-overlay">
+        <div class="loading-spinner"></div>
       </div>
     </div>
   </div>
@@ -96,6 +96,30 @@ watch(compileError, (err) => {
   box-shadow: 0 2px 8px rgba(0,0,0,0.1);
 }
 
+.loading-overlay {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
 
+.loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid transparent;
+  border-top: 3px solid #38ef7d;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
 
 </style>
