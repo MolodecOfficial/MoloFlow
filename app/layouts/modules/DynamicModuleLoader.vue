@@ -7,6 +7,7 @@ import MoloInput from '~/components/MoloInput.vue'
 import MoloSelect from '~/components/MoloSelect.vue'
 import { useNotifications } from '~~/app/composables/useNotifications'
 import { useWindowManager } from '~/composables/useWindowManager'
+import { useModulesStore } from "~~/stores/moduleStore";
 
 const props = defineProps<{
   windowId: string
@@ -31,9 +32,7 @@ onMounted(async () => {
   }
 
   try {
-    const moduleId =
-        props.windowData?._id ||
-        props.windowId.replace('dynamic_', '')
+    const moduleId = props.windowData?._id
 
     if (!moduleId || !enterpriseInfo.value?._id) {
       throw new Error('Нет ID модуля или предприятия')
@@ -78,9 +77,11 @@ onMounted(async () => {
 
       const notifications = useNotifications()
       const windowManager = useWindowManager()
+      const moduleStore = useModulesStore()
 
       g.useNotifications = () => notifications
       g.useWindowManager = () => windowManager
+      g.useModulesStore = () => moduleStore
 
       g.MoloInput = MoloInput
       g.MoloSelect = MoloSelect

@@ -3,16 +3,16 @@ import MoloWindow from './MoloWindow.vue'
 import type { WindowItem } from '~/types/window'
 
 const props = defineProps<{
-  windows: WindowItem[]
+  windows?: WindowItem[]
 }>()
 
 const emit = defineEmits<{
-  close: [id: string]
-  focus: [id: string]
-  minimize: [id: string]
-  move: [id: string, newPosition: { x: number; y: number }]
-  resize: [id: string, newSize: { width: number; height: number }]
-  maximize: [id: string]
+  close?: [id: string]
+  focus?: [id: string]
+  minimize?: [id: string]
+  move?: [id: string, newPosition: { x: number; y: number }]
+  resize?: [id: string, newSize: { width: number; height: number }]
+  maximize?: [id: string]
 }>()
 
 const closeWindow = (id: string) => {

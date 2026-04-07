@@ -47,18 +47,19 @@ const handleLogin = async () => {
 
     addNotification('NOTICE_DEFAULT', 'Успешный вход в предприятие!')
 
-
-
-    openWindow(
-        'company',
-        'control',
-        'enterprise',
-    )
-
-    // Закрываем окно входа
     if (props.windowId) {
       closeWindow(props.windowId)
     }
+
+    // ПОТОМ ОТКРЫВАЕМ НОВОЕ (с небольшой задержкой)
+    setTimeout(() => {
+      openWindow(
+          'company',
+          'control',
+          'enterprise',
+          { width: 800, height: 600 }
+      )
+    }, 50)
   } catch (error: any) {
     console.error('Ошибка входа:', error)
     addNotification('ERROR_DEFAULT', error.data?.message || 'Ошибка входа')

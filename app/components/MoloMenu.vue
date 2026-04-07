@@ -3,6 +3,8 @@ import { ref, type Ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { menuConfig, moduleConfig, type MenuGroup, type MenuItem } from '~/utils/menuConfig'
 import { useNotifications } from '~/composables/useNotifications'
 import lock from "~~/public/lock.svg"
+import { useModulesStore } from '~~/stores/moduleStore'
+
 
 const props = defineProps<{ role: string }>()
 
@@ -30,6 +32,9 @@ const enterpriseDataStr = ref<string | null>(null)
 const token = ref<string | null>(null)
 const currentEnterprise = ref<any>(null)
 const dynamicModules = ref<any[]>([])
+
+const modulesStore = useModulesStore()
+
 
 // Функция обновления данных из localStorage
 const updateAuthData = () => {
@@ -165,7 +170,7 @@ const modulesGroups = computed<MenuGroup[]>(() => {
 
   if (dynamicModulesItems.length > 0) {
     const dynamicGroup: MenuGroup = {
-      id: 'Molo',
+      id: 'Modules',
       title: 'Мои модули',
       requiredRole: ['Управляющий', 'Сотрудник'],
       isActive: true,
@@ -295,6 +300,15 @@ onMounted(() => {
 
   if (menuGroups.value.length === 0 && modulesGroups.value.length === 0) {
     addNotification('GET_MENU_ERROR')
+  }
+})
+
+onMounted(async () => {
+  updateAuthData()
+
+  if (currentEnterprise.value?._id) {
+    modulesStore.setEnterprise(currentEnterprise.value._id)
+    await modulesStore.fetchModules()
   }
 })
 

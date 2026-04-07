@@ -420,7 +420,7 @@ onUnmounted(() => {
 
     <div class="form-group">
       <MoloInput
-          tLabel="Описание"
+          tLabel="Описание (для разработчиков)"
           v-model="formData.description"
           placeholder="Опишите функциональность модуля"
       />

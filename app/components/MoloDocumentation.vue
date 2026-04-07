@@ -236,7 +236,7 @@ const activeSection = ref<string>('input')
         <div v-show="activeSection === 'notifications'" class="doc-section">
           <div class="section-header">
             <h2>useNotifications</h2>
-            <span class="section-badge">Composable уведомлений</span>
+            <span class="section-badge">Инструмент уведомлений</span>
           </div>
 
           <div class="description-block">

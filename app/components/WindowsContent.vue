@@ -2,8 +2,8 @@
 import {defineAsyncComponent, computed} from 'vue'
 
 const props = defineProps<{
-  windowId: string
-  groupId: string
+  windowId?: string
+  groupId?: string
   subGroupId?: string
   componentName?: string
   isModal?: boolean

@@ -29,12 +29,12 @@ const loadUserRole = () => {
 }
 
 const props = defineProps<{
-  window: WindowItem
-  isVisible: boolean
-  windowId: string,
-  groupId: string,
-  subGroupId: string,
-  isModal: boolean,
+  window?: WindowItem
+  isVisible?: boolean
+  windowId?: string,
+  groupId?: string,
+  subGroupId?: string,
+  isModal?: boolean,
   windowData?: any
 }>()
 

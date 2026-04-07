@@ -9,7 +9,10 @@ import MoloSelect from '~/components/MoloSelect.vue'
 
 // composables
 import { useNotifications } from '~~/app/composables/useNotifications'
-import { useWindowManager } from '~/composables/useWindowManager'
+import { useWindowManager } from '~~/app/composables/useWindowManager'
+
+// stores
+import { useModulesStore } from "~~/stores/moduleStore";
 
 let _instance: ReturnType<typeof createCompiler> | null = null
 
@@ -33,10 +36,12 @@ function createCompiler() {
 
         const notifications = useNotifications()
         const windowManager = useWindowManager()
+        const moduleStore = useModulesStore()
 
         // теперь это НЕ функции, а готовые объекты
         g.useNotifications = () => notifications
         g.useWindowManager = () => windowManager
+        g.useModulesStore = () => moduleStore
 
         g.MoloInput = MoloInput
         g.MoloSelect = MoloSelect

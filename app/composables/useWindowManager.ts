@@ -140,9 +140,10 @@ export function useWindowManager() {
         console.log('Window opened:', newWindow)
     }
 
-    const closeWindow = (id: string) => {
-        const index = windows.value.findIndex(w => w.id === id)
+    const closeWindow = (itemId: string) => {
+        const index = windows.value.findIndex(w => w.id === itemId)
         if (index !== -1) windows.value.splice(index, 1)
+
     }
 
     const focusWindow = (id: string) => {

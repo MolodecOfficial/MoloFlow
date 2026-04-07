@@ -1,11 +1,11 @@
 <script setup lang="ts">
-const props = defineProps({
-  notice_type: String,
-  notice_title: String,
-  notice_text: String,
-  index: { type: Number, default: 0 },
-  total: { type: Number, default: 1 }
-});
+const props = defineProps<{
+  notice_type?: String,
+  notice_title?: String,
+  notice_text?: String,
+  index?: { type: Number, default: 0 },
+  total?: { type: Number, default: 1 }
+}>()
 
 const emit = defineEmits(['close']);
 const isClosing = ref(false);
