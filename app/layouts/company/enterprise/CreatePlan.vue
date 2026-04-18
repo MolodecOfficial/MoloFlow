@@ -171,11 +171,8 @@ onMounted(() => {
 </script>
 
 <template>
-  <h1>Новый план</h1>
-  <hr>
-
   <div class="form-grid">
-    <h5>Основная информация</h5>
+    <h1>Основная информация</h1>
     <MoloSelect
         v-model="newPlan.pointId"
         all="Общий план предприятия"
@@ -205,7 +202,7 @@ onMounted(() => {
     <hr>
 
     <div class="form-section">
-      <h5>Плановые показатели</h5>
+      <h2>Плановые показатели</h2>
       <div class="input-group">
         <MoloInput
             tLabel="Выручка"

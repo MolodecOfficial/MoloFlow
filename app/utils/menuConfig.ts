@@ -23,7 +23,7 @@ export const menuConfig: MenuGroup[] = [
         id: 'dashboard',
         title: 'Панель',
         isActive: true,
-        requiredRole: ['Сотрудник'], // Исправлено: массив
+        requiredRole: ['Сотрудник'],
         items: [
             {
                 id: 'employee_tasks',
@@ -224,56 +224,41 @@ export const moduleConfig: MenuGroup[] = [
                 componentPath: 'modules/preview'
             }
         ]
+    },
+    {
+        id: 'search',
+        title: 'Поиск модуля',
+        requiredRole: ['Управляющий'],
+        isActive: true,
+        items: [
+            {
+                id: 'browser',
+                title: 'Браузер',
+                requiredRole: ['Управляющий'],
+                isActive: true,
+                componentName: 'Browser',
+                componentPath: 'modules/browser'
+            }
+        ]
     }
 ];
 
-// Функция для фильтрации меню по роли
-export function getMenuByRole(role: string): MenuGroup[] {
-    const filterItems = (items: MenuItem[] = []): MenuItem[] => {
+export function filterGroupsByRole(groups: MenuGroup[], role: string): MenuGroup[] {
+    const filterItems = (items: MenuItem[]): MenuItem[] => {
         return items
-            .filter(item => {
-                if (item.isActive === false) return false;
-                if (Array.isArray(item.requiredRole)) {
-                    return item.requiredRole.includes(role);
-                }
-                return item.requiredRole === role;
-            })
+            .filter(item => item.isActive !== false && item.requiredRole.includes(role))
             .map(item => ({
                 ...item,
-                items: filterItems(item.items)
-            }));
-    };
+                items: item.items ? filterItems(item.items) : undefined
+            }))
+            .filter(item => !item.items || item.items.length > 0)
+    }
 
-    // Фильтруем основное меню
-    const filteredMenu = menuConfig
-        .filter(group => {
-            if (group.isActive === false) return false;
-            if (Array.isArray(group.requiredRole)) {
-                return group.requiredRole.includes(role);
-            }
-            return group.requiredRole === role;
-        })
+    return groups
+        .filter(group => group.isActive !== false && group.requiredRole.includes(role))
         .map(group => ({
             ...group,
             items: filterItems(group.items)
         }))
-        .filter(group => group.items && group.items.length > 0);
-
-    // Фильтруем модули
-    const filteredModules = moduleConfig
-        .filter(group => {
-            if (group.isActive === false) return false;
-            if (Array.isArray(group.requiredRole)) {
-                return group.requiredRole.includes(role);
-            }
-            return group.requiredRole === role;
-        })
-        .map(group => ({
-            ...group,
-            items: filterItems(group.items)
-        }))
-        .filter(group => group.items && group.items.length > 0);
-
-    // Объединяем и возвращаем
-    return [...filteredMenu, ...filteredModules];
+        .filter(group => group.items.length > 0)
 }

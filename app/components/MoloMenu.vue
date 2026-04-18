@@ -4,6 +4,9 @@ import { menuConfig, moduleConfig, type MenuGroup, type MenuItem } from '~/utils
 import { useNotifications } from '~/composables/useNotifications'
 import lock from "~~/public/lock.svg"
 import { useModulesStore } from '~~/stores/moduleStore'
+import { executeScriptBackground } from '~~/app/composables/useScriptCompiler'
+import tsIcon from '~~/public/ts.png'
+import jsIcon from '~~/public/js.png'
 
 
 const props = defineProps<{ role: string }>()
@@ -34,6 +37,7 @@ const currentEnterprise = ref<any>(null)
 const dynamicModules = ref<any[]>([])
 
 const modulesStore = useModulesStore()
+
 
 
 // Функция обновления данных из localStorage
@@ -87,17 +91,6 @@ const customStorageEvent = async () => {
   }
 }
 
-window.addEventListener('enterprise-login', customStorageEvent)
-window.addEventListener('enterprise-logout', customStorageEvent)
-window.addEventListener('storage', customStorageEvent)
-
-// Очистка слушателей
-onUnmounted(() => {
-  window.removeEventListener('enterprise-login', customStorageEvent)
-  window.removeEventListener('enterprise-logout', customStorageEvent)
-  window.removeEventListener('storage', customStorageEvent)
-})
-
 const { addNotification } = useNotifications()
 
 // Состояния
@@ -143,18 +136,21 @@ const filterGroupsByRole = (groups: MenuGroup[], role: string): MenuGroup[] => {
       .filter(group => group.items && group.items.length > 0)
 }
 
-// Создание динамических пунктов меню из загруженных модулей
 const createDynamicMenuItems = (): MenuItem[] => {
   if (!dynamicModules.value.length) return []
 
-  return dynamicModules.value.map(module => ({
-    id: `dynamic${module.fileName}`,
-    title: module.name,
-    requiredRole: ['Управляющий', 'Сотрудник'],
-    isActive: true,
-    componentName: 'DynamicModuleLoader',
-    moduleData: module
-  }))
+  return dynamicModules.value.map(module => {
+    return {
+      id: `dynamic${module.fileName}`,
+      title: module.name,
+      format: module.format,
+      requiredRole: ['Управляющий', 'Сотрудник'],
+      isActive: true,
+      componentName: module.format === 'vue' ? 'DynamicModuleLoader' : undefined,
+      moduleData: module,
+      isScript: module.format !== 'vue'
+    }
+  })
 }
 
 // Вычисляем модули: показываем только если пользователь вошёл в предприятие
@@ -238,6 +234,7 @@ const handleMouseLeave = () => {
   }
 }
 
+
 const handleGroupEnter = (groupId: string) => { activeGroup.value = groupId }
 const handleGroupLeave = () => { activeGroup.value = null }
 const handleModulesGroupEnter = (groupId: string) => { activeModulesGroup.value = groupId }
@@ -253,7 +250,9 @@ const getWindowSizeOptions = (itemId: string): WindowSizeOptions | undefined => 
   const presets: Record<string, WindowSizeOptions> = {
     login: { width: 400, height: 450, minWidth: 350, minHeight: 400 },
     creature: { width: 800, height: 650, minWidth: 500, minHeight: 600 },
-    NotFound: { width: 700, height: 650, minWidth: 500, minHeight: 600 },
+    notFound: { width: 700, height: 650, minWidth: 500, minHeight: 600 },
+    browser: { width: 800, height: 650, minWidth: 500, minHeight: 600 },
+    customisation: { width: 800, height: 650, minWidth: 500, minHeight: 600 },
   }
   return presets[itemId]
 }
@@ -261,6 +260,11 @@ const getWindowSizeOptions = (itemId: string): WindowSizeOptions | undefined => 
 const handleLinkClick = (groupId: string, itemId: string, subGroupId?: string, componentPath?: string, moduleData?: any) => {
   if (props.role === 'Пользователь') {
     addNotification('LOCKED')
+    return
+  }
+
+  if (moduleData && moduleData.format !== 'vue') {
+    addNotification('NOTICE_DEFAULT', `Модуль "${moduleData.name}" уже выполнен в фоне`)
     return
   }
 
@@ -272,7 +276,6 @@ const handleLinkClick = (groupId: string, itemId: string, subGroupId?: string, c
   const sizeOptions = getWindowSizeOptions(itemId)
   const isModal = false
 
-  // Если это динамический модуль, передаем данные
   if (moduleData) {
     emit('open-window', groupId, itemId, subGroupId, sizeOptions, isModal, componentPath, moduleData)
   } else {
@@ -294,6 +297,47 @@ const handleChildItemClick = (groupId: string, parentItem: MenuItem, childItem: 
   handleLinkClick(groupId, childItem.id, parentItem.id, childItem.componentPath, (childItem as any).moduleData)
 }
 
+const autoExecuteModules = async () => {
+  if (!currentEnterprise.value?._id) return
+
+  try {
+    const response = await $fetch(
+        `/api/enterprises/${currentEnterprise.value._id}/dynamicModules`
+    )
+
+    const modules = response.modules || []
+
+    // Запускаем все JS/TS модули в фоне
+    for (const module of modules) {
+      if ((module.format === 'js' || module.format === 'ts') && module.isActive) {
+        try {
+          await executeScriptBackground(module.code, module.format)
+          addNotification('NOTICE_DEFAULT', `Модуль "${module.name}" успешно выполнен`);
+        } catch (err) {
+          addNotification('ERROR_DEFAULT', err || `Ошибка выполнения ${module.name}:`)
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Ошибка автозапуска модулей:', error)
+  }
+}
+
+window.addEventListener('enterprise-login', customStorageEvent)
+window.addEventListener('enterprise-logout', customStorageEvent)
+window.addEventListener('storage', customStorageEvent)
+window.addEventListener('modules-updated', customStorageEvent)
+window.addEventListener('module-imported', customStorageEvent)
+
+// Очистка слушателей
+onUnmounted(() => {
+  window.removeEventListener('enterprise-login', customStorageEvent)
+  window.removeEventListener('enterprise-logout', customStorageEvent)
+  window.removeEventListener('storage', customStorageEvent)
+  window.removeEventListener('module-imported', customStorageEvent)
+
+})
+
 onMounted(() => {
   if (props.role === 'Управляющий') getEnterprises()
   menuGroups.value = filterGroupsByRole(menuConfig, props.role)
@@ -309,8 +353,10 @@ onMounted(async () => {
   if (currentEnterprise.value?._id) {
     modulesStore.setEnterprise(currentEnterprise.value._id)
     await modulesStore.fetchModules()
+    await autoExecuteModules()
   }
 })
+
 
 </script>
 <template>
@@ -427,20 +473,40 @@ onMounted(async () => {
                       href="#"
                       class="link"
                       :class="{
-                      'has-children': item.items?.length,
-                      'is-parent': item.items?.length,
-                      'is-leaf': !item.items?.length,
-                    }"
+            'has-children': item.items?.length,
+            'is-parent': item.items?.length,
+            'is-leaf': !item.items?.length,
+            'script-module': item.isScript
+          }"
                       :style="{ paddingLeft: getPaddingLeft() }"
                       @click="(e) => handleMenuItemClick(e, group.id, item, true)"
                   >
-                    <span class="item-title">{{ item.title }}</span>
+          <span class="item-title">
+            <!-- Иконка в зависимости от формата -->
+            <img
+                v-if="item.format === 'ts'"
+                :src="tsIcon"
+                class="format-icon"
+                alt="TS"
+            />
+            <img
+                v-if="item.format === 'js'"
+                :src="jsIcon"
+                class="format-icon"
+                alt="JS"
+            />
+            <!-- Название модуля -->
+            {{ item.title }}
+
+          </span>
+
                     <span v-if="item.items?.length" class="expand-icon" :class="{ expanded: expandedModulesItems.has(item.id) }">
-                      <svg width="12" height="8" viewBox="0 0 12 8" fill="none">
-                        <path d="M1 1.5L6 6.5L11 1.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-                      </svg>
-                    </span>
+            <svg width="12" height="8" viewBox="0 0 12 8" fill="none">
+              <path d="M1 1.5L6 6.5L11 1.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </span>
                   </a>
+
                   <transition name="expand">
                     <div v-if="item.items?.length && expandedModulesItems.has(item.id)" class="submenu">
                       <div
@@ -525,7 +591,7 @@ onMounted(async () => {
 }
 
 .group-header:hover {
-  background-color: rgba(56, 239, 125, 0.1);
+  background-color: rgba(56, 114, 239, 0.1);
   color: var(--half_opacity_border_hover);
 }
 
@@ -595,7 +661,7 @@ onMounted(async () => {
 }
 
 .link:hover {
-  background: rgba(56, 239, 125, 0.1);
+  background: rgba(56, 114, 239, 0.1);
 }
 
 .link.has-children {
@@ -628,6 +694,19 @@ onMounted(async () => {
   margin-left: 8px;
   transition: transform 0.3s ease;
   opacity: 0.7;
+}
+
+.item-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.format-icon {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
 }
 
 .expand-icon.expanded {

@@ -298,12 +298,11 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 }
 
 input[type="date"]::-webkit-calendar-picker-indicator:hover {
-  background-color: rgba(30, 239, 111, 0.3);
+  background-color: rgba(30, 72, 239, 0.3);
 }
 
 input:focus {
-  border-color: #1eef6f;
-  box-shadow: 0 0 0 2px rgba(30, 239, 111, 0.2);
+  border-color: var(--half_opacity_border_hover);
 }
 
 input::placeholder {
@@ -335,8 +334,8 @@ input:read-only:focus {
   top: 10px;
   width: 16px;
   height: 16px;
-  border: 2px solid rgba(30, 239, 111, 0.2);
-  border-top: 2px solid #1eef6f;
+  border: 2px solid rgba(30, 103, 239, 0.2);
+  border-top: 2px solid var(--half_opacity_border_hover);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
@@ -359,7 +358,7 @@ input:read-only:focus {
   font-size: 13px;
 }
 .dropdown-item:hover {
-  background: rgba(30, 239, 111, 0.1);
+  background: rgba(30, 135, 239, 0.1);
 }
 @keyframes spin {
   0% { transform: rotate(0deg); }

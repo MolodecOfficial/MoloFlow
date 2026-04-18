@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import {ref, computed, watch, onMounted, onUnmounted} from 'vue'
+import {computed, nextTick, onMounted, onUnmounted, ref, watch} from 'vue'
 import {VueMonacoEditor} from '@guolao/vue-monaco-editor'
-
-import {MONACO_EDITOR_OPTIONS, getEditorLanguage} from '~~/app/utils/monacoConfig'
+import {getEditorLanguage, MONACO_EDITOR_OPTIONS} from '~~/app/utils/monacoConfig'
 import {initMonacoTypeScript, registerMonacoSnippets} from '~~/app/utils/monaco-init'
+import {useUserStore} from "~~/stores/userStore";
 
 if (typeof window !== 'undefined') {
   initMonacoTypeScript()
@@ -11,21 +11,25 @@ if (typeof window !== 'undefined') {
 }
 
 const emit = defineEmits(['close', 'saved'])
-
 const {openWindow, updateWindowData} = useWindowManager()
 const {addNotification} = useNotifications()
+const userStore = useUserStore()
 
-// 🔥 данные предприятия
 const enterpriseInfo = ref<any>(null)
-
-// 🔥 список модулей
 const modules = ref<any[]>([])
 const selectedModuleId = ref<string | null>(null)
-
 const isEditing = computed(() => !!selectedModuleId.value)
-
 const monacoRef = ref()
 const showDocumentation = ref(false)
+const loading = ref(false)
+const previewWindowId = ref<string | null>(null)
+
+// Данные текущего пользователя (для определения роли)
+const currentUser = computed(() => ({
+  _id: userStore.userId || 'system',
+  name: userStore.userName || 'System',
+  role: userStore.userRole || 'system'
+}))
 
 const availableFormats = [
   {label: '.vue', value: 'vue'},
@@ -33,25 +37,34 @@ const availableFormats = [
   {label: '.ts', value: 'ts'}
 ]
 
-// 🔥 форма
 const formData = ref({
   name: '',
   fileName: '',
   description: '',
   format: 'vue',
-  code: ''
+  code: '',
+  isPublic: false,
+  tags: [] as string[],
+  previewImage: null as string | null,
+})
+
+// Для отображения тегов в строковом виде
+const tagsInput = ref('')
+
+watch(() => formData.value.tags, (val) => {
+  tagsInput.value = Array.isArray(val) ? val.join(', ') : ''
+}, { immediate: true })
+
+watch(tagsInput, (val) => {
+  formData.value.tags = val.split(',').map(t => t.trim()).filter(Boolean)
 })
 
 const toggleDocumentation = () => {
   showDocumentation.value = !showDocumentation.value
 }
-// 🔥 язык редактора
+
 const editorLanguage = computed(() => getEditorLanguage(formData.value.format))
 
-// 🔥 ID окна предпросмотра
-const previewWindowId = ref<string | null>(null)
-
-// 🔥 placeholder
 const getPlaceholder = () => {
   if (formData.value.format === 'vue') {
     return `<script setup>
@@ -195,19 +208,15 @@ const testArray = ['Вика', 'Максим', 'Кирилл']
   return '// module code...'
 }
 
-// 🔥 загрузка модулей
 const fetchModules = async () => {
   try {
-    const res = await $fetch(
-        `/api/enterprises/${enterpriseInfo.value._id}/dynamicModules`
-    )
+    const res = await $fetch(`/api/enterprises/${enterpriseInfo.value._id}/dynamicModules`)
     modules.value = res.modules || []
   } catch (e) {
     console.error('Ошибка загрузки модулей', e)
   }
 }
 
-// 🔥 выбор модуля
 watch(selectedModuleId, (id) => {
   if (!id) {
     formData.value = {
@@ -215,75 +224,92 @@ watch(selectedModuleId, (id) => {
       fileName: '',
       description: '',
       format: 'vue',
-      code: getPlaceholder()
+      code: getPlaceholder(),
+      isPublic: false,
+      tags: [],
+      previewImage: null,
     }
+    tagsInput.value = ''
     return
   }
-
   const mod = modules.value.find(m => m._id === id)
-
   if (mod) {
     formData.value = {
       name: mod.name,
       fileName: mod.fileName,
       description: mod.description || '',
       format: mod.format,
-      code: mod.code
+      code: mod.code,
+      isPublic: mod.isPublic || false,
+      tags: mod.tags || [],
+      previewImage: mod.previewImage || null,
     }
+    tagsInput.value = (mod.tags || []).join(', ')
   }
 })
 
-// 🔥 init
-onMounted(async () => {
-  const data = localStorage.getItem('currentEnterprise')
-
-  if (data) {
-    try {
-      enterpriseInfo.value = JSON.parse(data)
-      await fetchModules()
-    } catch (e) {
-      console.error(e)
+// Загрузка превью (аватарки)
+const handleImageUpload = (event: Event) => {
+  const input = event.target as HTMLInputElement
+  if (input.files && input.files[0]) {
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      formData.value.previewImage = e.target?.result as string
     }
+    reader.readAsDataURL(input.files[0])
   }
+}
 
-  formData.value.code = getPlaceholder()
-})
-
-// 🔥 сохранение
-const loading = ref(false)
+const removePreview = () => {
+  formData.value.previewImage = null
+}
 
 const saveModule = async () => {
   loading.value = true
-
   const wasEditing = isEditing.value
-
   try {
     const url = wasEditing
         ? `/api/enterprises/${enterpriseInfo.value._id}/dynamicModules/${selectedModuleId.value}`
         : `/api/enterprises/${enterpriseInfo.value._id}/dynamicModules`
-
     const method = wasEditing ? 'PUT' : 'POST'
+
+    const payload = {
+      name: formData.value.name,
+      fileName: formData.value.fileName,
+      description: formData.value.description,
+      format: formData.value.format,
+      code: formData.value.code,
+      enterpriseId: enterpriseInfo.value._id,
+      isPublic: formData.value.isPublic,
+      tags: formData.value.tags,
+      previewImage: formData.value.previewImage,
+      // ✅ ЯВНО передаем данные пользователя
+      createdBy: {
+        _id: currentUser.value._id,
+        name: currentUser.value.name,
+        role: currentUser.value.role
+      }
+    }
 
     const response = await $fetch(url, {
       method,
-      body: {
-        ...formData.value,
-        enterpriseId: enterpriseInfo.value._id
+      body: payload,
+      // ✅ Добавляем заголовки для аутентификации
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('enterprise_token')}`,
+        'Content-Type': 'application/json'
       }
     })
 
     await fetchModules()
-
-    if (!wasEditing) {
-      selectedModuleId.value = response.module._id
-    }
-
-    addNotification(
-        'NOTICE_DEFAULT',
-        wasEditing ? 'Модуль обновлен' : 'Модуль создан'
-    )
-
+    if (!wasEditing) selectedModuleId.value = response.module._id
+    addNotification('NOTICE_DEFAULT', wasEditing ? 'Модуль обновлен' : 'Модуль создан')
     emit('saved', response.module)
+
+    window.dispatchEvent(new CustomEvent('modules-updated', {
+      detail: { action: wasEditing ? 'update' : 'create', module: response.module }
+    }))
+
 
   } catch (error: any) {
     addNotification('ERROR_DEFAULT', error?.data?.message || 'Ошибка')
@@ -292,71 +318,52 @@ const saveModule = async () => {
   }
 }
 
-// 🔥 смена формата
 watch(() => formData.value.format, () => {
-  if (!isEditing.value) {
-    formData.value.code = getPlaceholder()
-  }
+  if (!isEditing.value) formData.value.code = getPlaceholder()
 })
 
-// 🔥 ОТКРЫТЬ ПРЕВЬЮ
 const openPreviewInWindow = () => {
   if (!formData.value.code?.trim()) {
-    addNotification('WARNING_DEFAULT', 'Нет кода для предпросмотра')
+    addNotification('DANGER_DEFAULT', 'Нет кода для предпросмотра')
     return
   }
-
   const id = 'preview'
   previewWindowId.value = id
-
-  openWindow(
-      'modules',
-      id,
-      null,
-      {
-        width: 600,
-        height: 500,
-        minWidth: 600,
-        minHeight: 400,
-      },
-      false,
-      'modules/preview',
-      null,
-      {
-        moduleName: formData.value.name || 'Без названия',
-        code: formData.value.code
-      }
-  )
+  openWindow('modules', id, null, { width: 600, height: 500, minWidth: 600, minHeight: 400 }, false, 'modules/preview', null, {
+    moduleName: formData.value.name || 'Без названия',
+    code: formData.value.code
+  })
 }
 
-// 🔥 РЕАКТИВНОЕ ОБНОВЛЕНИЕ ПРЕВЬЮ
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
-
-watch(
-    () => formData.value.code,
-    (code) => {
-      if (!previewWindowId.value) return
-
-      if (debounceTimer) clearTimeout(debounceTimer)
-
-      debounceTimer = setTimeout(() => {
-        updateWindowData('modules', previewWindowId.value!, {
-          moduleName: formData.value.name,
-          code
-        })
-      }, 300)
-    }
-)
+watch(() => formData.value.code, (code) => {
+  if (!previewWindowId.value) return
+  if (debounceTimer) clearTimeout(debounceTimer)
+  debounceTimer = setTimeout(() => {
+    updateWindowData('modules', previewWindowId.value!, {
+      moduleName: formData.value.name,
+      code,
+      isEditing: isEditing.value
+    })
+  }, 300)
+})
 
 watch(showDocumentation, async () => {
   await nextTick()
-
-  setTimeout(() => {
-    monacoRef.value?.editor?.layout?.()
-  }, 50)
+  setTimeout(() => monacoRef.value?.editor?.layout?.(), 50)
 })
 
-// cleanup
+onMounted(async () => {
+  const data = localStorage.getItem('currentEnterprise')
+  if (data) {
+    try {
+      enterpriseInfo.value = JSON.parse(data)
+      await fetchModules()
+    } catch (e) { addNotification('DANGER_DEFAULT', `${e}` || 'Произошла ошибка при получении пользователя')}
+  }
+  formData.value.code = getPlaceholder()
+})
+
 onUnmounted(() => {
   if (debounceTimer) clearTimeout(debounceTimer)
 })
@@ -367,14 +374,7 @@ onUnmounted(() => {
   <hr>
 
   <div class="mode-switcher">
-    <button
-        type="button"
-        class="action-btn confirm"
-        @click="selectedModuleId = null"
-    >
-      Новый модуль
-    </button>
-
+    <button type="button" class="action-btn confirm" @click="selectedModuleId = null">Новый модуль</button>
     <MoloSelect
         tLabel="Выберите Ваш модуль"
         lRequired
@@ -388,89 +388,49 @@ onUnmounted(() => {
 
   <section class="editor-form">
     <div class="form-row">
-      <MoloInput
-          tLabel="Название модуля"
-          lRequired
-          v-model="formData.name"
-          type="text"
-          placeholder="Введите название модуля"
-          :disabled="isEditing"
-      />
-
-      <MoloInput
-          tLabel="Название файла (на английском)"
-          lRequired
-          v-model="formData.fileName"
-          type="text"
-          placeholder="Введите название модуля"
-          :disabled="isEditing"
-      />
-
-      <MoloSelect
-          tLabel="Формат файла"
-          lRequired
-          v-model="formData.format"
-          :disabled="isEditing"
-          :parent="availableFormats"
-          children="label"
-          valueKey="value"
-      />
-
+      <MoloInput tLabel="Название модуля" lRequired v-model="formData.name" type="text" placeholder="Введите название модуля" :disabled="isEditing" />
+      <MoloInput tLabel="Название файла (на английском)" lRequired v-model="formData.fileName" type="text" placeholder="Введите название модуля" :disabled="isEditing" />
+      <MoloSelect tLabel="Формат файла" lRequired v-model="formData.format" :disabled="isEditing" :parent="availableFormats" children="label" valueKey="value" />
     </div>
 
-    <div class="form-group">
-      <MoloInput
-          tLabel="Описание (для разработчиков)"
-          v-model="formData.description"
-          placeholder="Опишите функциональность модуля"
-      />
+    <MoloInput tLabel="Описание (для разработчиков)" v-model="formData.description" placeholder="Опишите функциональность модуля" />
 
+    <!-- Поле для тегов -->
+    <MoloInput tLabel="Теги (через запятую)" v-model="tagsInput" placeholder="ui, таблицы, графики" />
+
+    <!-- Загрузка превью-изображения -->
+    <div class="preview-upload">
+      <label>Превью-изображение (аватарка)</label>
+      <input type="file" class="action-btn confirm" accept="image/*" @change="handleImageUpload" />
+      <div v-if="formData.previewImage" class="preview-image">
+        <img :src="formData.previewImage" alt="preview" style="max-width: 100px; max-height: 100px;" />
+        <button type="button" class="action-btn confirm" @click="removePreview">Удалить</button>
+      </div>
     </div>
 
-    <hr>
+    <label class="checkbox-label">
+      <input type="checkbox" v-model="formData.isPublic" />
+      <span>Сделать этот модуль общедоступным (доступен всем предприятиям)</span>
+    </label>
 
+    <hr />
     <div class="form-group">
       <div class="code-header">
-        <button
-            v-if="formData.format === 'vue'"
-            class="action-btn confirm"
-            @click="openPreviewInWindow"
-        >
-          Открыть предпоказ
-        </button>
-        <button
-            class="action-btn confirm"
-            @click="toggleDocumentation"
-        >
-          {{ showDocumentation ? 'Закрыть документацию' : 'Открыть документацию' }}
-        </button>
-
+        <button v-if="formData.format === 'vue'" class="action-btn confirm" @click="openPreviewInWindow">Открыть предпоказ</button>
+          <button class="action-btn confirm" @click="toggleDocumentation">{{ showDocumentation ? 'Закрыть документацию' : 'Открыть документацию' }}</button>
       </div>
       <span>Код модуля *</span>
       <section class="code-container">
         <div class="editor-wrapper" :class="{ 'with-docs': showDocumentation }">
-          <vue-monaco-editor
-              ref="monacoRef"
-              v-model:value="formData.code"
-              :theme="'vs-dark'"
-              :language="editorLanguage"
-              :options="MONACO_EDITOR_OPTIONS"
-              class="monaco-editor-container"
-          />
+          <vue-monaco-editor ref="monacoRef" v-model:value="formData.code" theme="vs-dark" :language="editorLanguage" :options="MONACO_EDITOR_OPTIONS" class="monaco-editor-container" />
         </div>
-        <div class="documentation" v-show="showDocumentation">
-          <MoloDocumentation/>
-        </div>
+        <div class="documentation" v-show="showDocumentation"><MoloDocumentation/></div>
       </section>
-
     </div>
-
-    <hr>
-
+    <hr />
     <button type="submit" class="action-btn confirm" :disabled="loading" @click="saveModule">
-
       <div v-if="loading" class="modern-loader"></div>
-      <span v-else> {{ isEditing ? 'Обновить' : 'Создать' }} </span>
+      <span v-else>{{ isEditing ? 'Обновить' : 'Создать' }}</span>
     </button>
   </section>
 </template>
@@ -491,6 +451,26 @@ onUnmounted(() => {
   border-radius: 4px;
   gap: 0;
   transition: gap 0.2s ease;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 14px;
+}
+
+.checkbox-label input {
+  cursor: pointer;
+  width: 18px;
+  height: 18px;
+}
+
+.checkbox-label input:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .editor-wrapper.with-docs {
@@ -566,8 +546,7 @@ onUnmounted(() => {
 
 .form-row {
   display: flex;
-  gap: 20px;
-  justify-content: center;
+  gap: 10px;
   align-items: center;
   height: 100%;
 }
@@ -587,6 +566,27 @@ onUnmounted(() => {
 .code-header {
   display: flex;
   justify-content: space-between;
+}
+
+.preview-upload {
+  margin: 10px 0;
+  display: flex;
+  flex-direction: column;
+}
+.preview-image {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  color: rgba(255,255,255,0.9);
+  font-size: 14px;
 }
 
 /* Адаптив для маленьких экранов */

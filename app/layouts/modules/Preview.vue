@@ -51,12 +51,10 @@ watch(compileError, (err) => {
     <div class="preview-content">
       <div v-if="loading" class="loading-state">
         <div class="spinner"></div>
-        <p>Загрузка...</p>
       </div>
 
       <div v-else-if="compiling" class="compiling-state">
         <div class="spinner"></div>
-        <p>Компиляция...</p>
       </div>
 
       <div v-else-if="error" class="error-state">

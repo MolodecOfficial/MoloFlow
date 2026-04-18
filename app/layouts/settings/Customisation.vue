@@ -4,15 +4,19 @@ import {
   type WindowTheme,
   type WindowButtonStyle,
   windowButtonStyles,
+  windowTitleStyles,
+  type WindowTitleStyle,
   THEME_STORAGE_KEY,
-  BUTTON_STYLE_STORAGE_KEY
+  BUTTON_STYLE_STORAGE_KEY,
+  TITLE_STYLE_STORAGE_KEY
 } from '~~/types/window-themes'
 
 const selectedTheme = ref<WindowTheme>(windowThemes[0])
 const selectedButtonStyle = ref<WindowButtonStyle>(windowButtonStyles[0])
+const selectedTitleStyle = ref<WindowTitleStyle>(windowTitleStyles[0])
 
 onMounted(() => {
-  // Загрузка сохраненной темы
+  // Загрузка темы
   const savedThemeId = localStorage.getItem(THEME_STORAGE_KEY)
   if (savedThemeId) {
     const theme = windowThemes.find(t => t.id === savedThemeId)
@@ -22,7 +26,7 @@ onMounted(() => {
     }
   }
 
-  // Загрузка сохраненного стиля кнопок
+  // Загрузка стиля кнопок
   const savedButtonId = localStorage.getItem(BUTTON_STYLE_STORAGE_KEY)
   if (savedButtonId) {
     const buttonStyle = windowButtonStyles.find(b => b.id === savedButtonId)
@@ -31,38 +35,50 @@ onMounted(() => {
       applyButtonStyle(buttonStyle)
     }
   }
+
+  // Загрузка стиля заголовка
+  const savedTitleId = localStorage.getItem(TITLE_STYLE_STORAGE_KEY)
+  if (savedTitleId) {
+    const titleStyle = windowTitleStyles.find(t => t.id === savedTitleId)
+    if (titleStyle) {
+      selectedTitleStyle.value = titleStyle
+      applyTitleStyle(titleStyle)
+    }
+  }
 })
 
 const applyTheme = (theme: WindowTheme) => {
   localStorage.setItem(THEME_STORAGE_KEY, theme.id)
-  const root = document.documentElement
-
   Object.entries(theme.styles).forEach(([key, value]) => {
-    root.style.setProperty(`--window-${key}`, value)
+    document.documentElement.style.setProperty(`--window-${key}`, value)
   })
-
   window.dispatchEvent(new CustomEvent('theme-changed', { detail: theme }))
 }
 
 const applyButtonStyle = (buttonStyle: WindowButtonStyle) => {
   localStorage.setItem(BUTTON_STYLE_STORAGE_KEY, buttonStyle.id)
-  const root = document.documentElement
-
   Object.entries(buttonStyle.styles).forEach(([key, value]) => {
-    root.style.setProperty(`--button-${key}`, value)
+    document.documentElement.style.setProperty(`--button-${key}`, value)
   })
-
   window.dispatchEvent(new CustomEvent('button-style-changed', { detail: buttonStyle }))
+}
+
+const applyTitleStyle = (titleStyle: WindowTitleStyle) => {
+  localStorage.setItem(TITLE_STYLE_STORAGE_KEY, titleStyle.id)
+  window.dispatchEvent(new CustomEvent('title-style-changed', { detail: titleStyle }))
 }
 
 const selectTheme = (theme: WindowTheme) => {
   selectedTheme.value = theme
   applyTheme(theme)
 }
-
 const selectButtonStyle = (buttonStyle: WindowButtonStyle) => {
   selectedButtonStyle.value = buttonStyle
   applyButtonStyle(buttonStyle)
+}
+const selectTitleStyle = (titleStyle: WindowTitleStyle) => {
+  selectedTitleStyle.value = titleStyle
+  applyTitleStyle(titleStyle)
 }
 
 const previewStyle = computed(() => {
@@ -100,9 +116,8 @@ const previewStyle = computed(() => {
     </div>
 
     <div class="content-wrapper">
-      <!-- Левая колонка -->
       <div class="left-column">
-        <!-- Выбор темы окна -->
+        <!-- Тема оформления -->
         <div class="themes-section">
           <h3>Тема оформления окон</h3>
           <div class="themes-grid">
@@ -132,7 +147,7 @@ const previewStyle = computed(() => {
           </div>
         </div>
 
-        <!-- Выбор стиля кнопок -->
+        <!-- Стиль кнопок -->
         <div class="buttons-section">
           <h3>Стиль кнопок окна</h3>
           <div class="buttons-grid">
@@ -173,14 +188,32 @@ const previewStyle = computed(() => {
             </div>
           </div>
         </div>
+
+        <div class="title-section">
+          <h3>Отображение заголовка</h3>
+          <div class="title-options">
+            <div
+                v-for="titleStyle in windowTitleStyles"
+                :key="titleStyle.id"
+                class="title-card"
+                :class="{ active: selectedTitleStyle.id === titleStyle.id }"
+                @click="selectTitleStyle(titleStyle)"
+            >
+              <h4>{{ titleStyle.name }}</h4>
+              <p>{{ titleStyle.description }}</p>
+            </div>
+          </div>
+        </div>
       </div>
 
-      <!-- Правая колонка с предпросмотром -->
+      <!-- Предпросмотр -->
       <div class="preview-section">
         <h3>Предпросмотр</h3>
         <div class="demo-window" :style="previewStyle">
           <div class="demo-header">
-            <span class="demo-title">Окно с выбранными настройками</span>
+            <span class="demo-title">
+              {{ selectedTitleStyle.isFullTitle ? 'Полный заголовок → Пример' : 'Пример окна' }}
+            </span>
             <div class="demo-controls" :style="{
               gap: 'var(--preview-controls-gap)',
               padding: 'var(--preview-controls-padding)',
@@ -285,16 +318,18 @@ hr {
 }
 
 .theme-card:hover,
-.button-card:hover {
+.button-card:hover,
+.title-card:hover {
   transform: translateY(-2px);
   background: rgba(255, 255, 255, 0.05);
-  border-color: rgba(30, 239, 111, 0.3);
+  border-color: rgba(30, 114, 239, 0.3);
 }
 
 .theme-card.active,
-.button-card.active {
-  border-color: #1eef6f;
-  background: rgba(30, 239, 111, 0.05);
+.button-card.active,
+.title-card.active {
+  border-color: #2196F3;
+  background: rgba(30, 96, 239, 0.05);
 }
 
 .theme-preview {
@@ -306,11 +341,6 @@ hr {
   flex-direction: column;
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
-
-.buttons-section {
-  margin-bottom: 30px;
-}
-
 
 .button-preview {
   height: 40px;
@@ -385,6 +415,39 @@ hr {
   font-size: 11px;
   color: rgba(255, 255, 255, 0.5);
   line-height: 1.3;
+}
+
+.title-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.title-options {
+  display: flex;
+  gap: 15px;
+}
+
+.title-card {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 15px;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex: 1;
+}
+
+.title-card h4 {
+  margin: 0 0 8px 0;
+  color: white;
+  font-size: 16px;
+}
+
+.title-card p {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 13px;
+  line-height: 1.4;
 }
 
 .preview-section {
@@ -464,6 +527,8 @@ hr {
   transition: all 0.2s;
   margin-top: 10px;
 }
+
+
 
 .demo-accent-btn:hover {
   filter: brightness(1.1);

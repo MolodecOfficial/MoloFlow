@@ -137,7 +137,6 @@ export function useWindowManager() {
         }
 
         windows.value.push(newWindow)
-        console.log('Window opened:', newWindow)
     }
 
     const closeWindow = (itemId: string) => {

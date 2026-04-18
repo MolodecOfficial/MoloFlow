@@ -18,11 +18,15 @@ body {
 }
 
 :root {
-  --half_opacity_border_hover: rgba(0, 255, 33, 0.88);
+  --half_opacity_border_hover: #2196F3;
+  --half_opacity_border_disabled: #0d3f67;
   --half_opacity_botton-border: rgba(255, 255, 255, 0.28);
   --half_opacity_right-border: rgba(255, 255, 255, 0.1);
   --half_opacity_border: rgba(255, 255, 255, 0.24);
   --half_opacity_bg: rgba(245, 245, 245, 0.03);
+  --borber-color_main: #2196F3;
+  --border-color_hover: #0a67e1;
+  --border-color_disabled: #0e436b;
 }
 
 .action-btn:disabled {
@@ -32,7 +36,7 @@ body {
 
 .action-btn.confirm {
   padding: 6px 16px;
-  background: #1eef6f;
+  background: var(--borber-color_main);
   color: #020b18;
   border: none;
   border-radius: 4px;
@@ -40,7 +44,10 @@ body {
   cursor: pointer;
   transition: all 0.2s;
   &.action-btn:hover {
-    background: #15b050;
+    background: var(--border-color_hover);
+  }
+  &.action-btn:disabled {
+    background: var(--border-color_disabled);
   }
 }
 
@@ -91,6 +98,26 @@ body {
 input[type="checkbox"] {
   width: 18px;
   height: 18px;
-  accent-color: #1eef6f;
+  accent-color: var(--borber-color_main);
   cursor: pointer;
 }
+
+.loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid transparent;
+  border-top: 3px solid var(--borber-color_main);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+.modern-loader {
+  width: 12px;
+  height: 12px;
+  border: 3px solid rgba(0, 0, 0, 0.1);
+  border-radius: 50%;
+  border-top-color: #020b18;
+  animation: spin 0.8s linear infinite;
+  margin: 0 auto;
+}
+

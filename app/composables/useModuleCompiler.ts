@@ -3,17 +3,27 @@ import * as Vue from 'vue'
 import * as compiler from '@vue/compiler-sfc'
 import { loadModule } from 'vue3-sfc-loader'
 
-// компоненты
-import MoloInput from '~/components/MoloInput.vue'
-import MoloSelect from '~/components/MoloSelect.vue'
-
-// composables
+// composables (реальные зависимости)
 import { useNotifications } from '~~/app/composables/useNotifications'
 import { useWindowManager } from '~~/app/composables/useWindowManager'
+import { useModulesStore } from '~~/stores/moduleStore'
 
-// stores
-import { useModulesStore } from "~~/stores/moduleStore";
+// авто-регистрация компонентов
+const componentModules = import.meta.glob('~~/app/components/**/*.vue', {
+    eager: true,
+    import: 'default'
+})
 
+const componentRegistry: Record<string, any> = {}
+
+for (const path in componentModules) {
+    const name = path.split('/').pop()?.replace('.vue', '')
+    if (name) {
+        componentRegistry[name] = componentModules[path]
+    }
+}
+
+// singleton
 let _instance: ReturnType<typeof createCompiler> | null = null
 
 export const useModuleCompiler = () => {
@@ -28,24 +38,8 @@ function createCompiler() {
 
     let debounceTimer: any = null
 
-    // ГЛОБАЛЬНАЯ ИНЪЕКЦИЯ
-    const injectGlobals = () => {
-        const g = window as any
-
-        Object.assign(g, Vue)
-
-        const notifications = useNotifications()
-        const windowManager = useWindowManager()
-        const moduleStore = useModulesStore()
-
-        // теперь это НЕ функции, а готовые объекты
-        g.useNotifications = () => notifications
-        g.useWindowManager = () => windowManager
-        g.useModulesStore = () => moduleStore
-
-        g.MoloInput = MoloInput
-        g.MoloSelect = MoloSelect
-    }
+    // ❌ ВАЖНО: никаких import внутри динамического кода
+    const buildCode = (code: string) => code
 
     const compileModule = async (code: string) => {
         if (!code?.trim()) return
@@ -54,11 +48,10 @@ function createCompiler() {
         compileError.value = null
 
         try {
-            injectGlobals()
+            const finalCode = buildCode(code)
 
-            // 🔥 ВИРТУАЛЬНЫЙ ФАЙЛ
             const files: Record<string, string> = {
-                'dynamic.vue': code + `\n//__${Date.now()}`
+                'dynamic.vue': finalCode + `\n//__${Date.now()}`
             }
 
             const options = {
@@ -74,38 +67,75 @@ function createCompiler() {
                 },
 
                 addStyle(css: string) {
-                    const old = document.getElementById('dynamic-style')
-                    if (old) old.remove()
+                    const id = 'dynamic-style'
+                    let style = document.getElementById(id)
 
-                    const style = document.createElement('style')
-                    style.id = 'dynamic-style'
+                    if (!style) {
+                        style = document.createElement('style')
+                        style.id = id
+                        document.head.appendChild(style)
+                    }
+
                     style.textContent = css
-                    document.head.appendChild(style)
                 },
             }
 
             const mod = await loadModule('dynamic.vue', options)
-
             let component = mod.default || mod
+
+            // =========================
+            // 🔥 CORE FIX: INJECTION
+            // =========================
+
+            const notifications = useNotifications()
+            const windowManager = useWindowManager()
+            const moduleStore = useModulesStore()
+
+            const injectedGlobals = {
+                useNotifications: () => notifications,
+                useWindowManager: () => windowManager,
+                useModulesStore: () => moduleStore
+            }
+
+            // делаем доступными в runtime
+            Object.assign(globalThis, injectedGlobals)
+
+            // =========================
+            // components registry
+            // =========================
 
             component.components = {
                 ...(component.components || {}),
-                MoloInput,
-                MoloSelect
+                ...componentRegistry
+            }
+
+            // =========================
+            // safety wrapper setup
+            // =========================
+
+            const originalSetup = component.setup
+
+            if (originalSetup) {
+                component.setup = (props: any, ctx: any) => {
+                    // обновляем runtime зависимости перед каждым запуском
+                    Object.assign(globalThis, injectedGlobals)
+
+                    return originalSetup(props, ctx)
+                }
             }
 
             compiledComponent.value = markRaw(component)
 
         } catch (err: any) {
             console.error('compile error:', err)
-            compileError.value = err.message || 'Ошибка'
+            compileError.value = err?.message || 'Ошибка компиляции'
             compiledComponent.value = null
         } finally {
             compiling.value = false
         }
     }
 
-    const compileModuleDebounced = (code: string, delay = 500) => {
+    const compileModuleDebounced = (code: string, delay = 400) => {
         if (debounceTimer) clearTimeout(debounceTimer)
 
         debounceTimer = setTimeout(() => {

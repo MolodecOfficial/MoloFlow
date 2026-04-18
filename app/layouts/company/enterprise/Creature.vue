@@ -6,6 +6,8 @@ import {useNotifications} from '~/composables/useNotifications'
 const {openWindow} = useWindowManager()
 const {addNotification} = useNotifications()
 
+
+
 const loading = ref(false)
 
 // Данные формы
@@ -88,7 +90,6 @@ const resetForm = () => {
 
 <template>
   <div class="enterprise-creature">
-    <h1 class="title">Создание предприятия</h1>
     <p class="notice">
       Перед созданием предприятия и внесением его в базу, просьба ознакомиться с нашими
       <a class="tou" @click="openTermsOfUse">условиями пользования</a>!
@@ -254,7 +255,7 @@ const resetForm = () => {
 
       <hr/>
 
-      <button type="submit" class="login" :disabled="loading">
+      <button type="submit" class="action-btn confirm" :disabled="loading">
         <div v-if="loading" class="modern-loader"></div>
         <span v-else>Создать предприятие</span>
       </button>
@@ -271,10 +272,6 @@ const resetForm = () => {
   width: 100%;
   color: white;
   overflow-y: initial;
-}
-
-.title {
-  color: white;
 }
 
 .notice {
@@ -330,32 +327,6 @@ const resetForm = () => {
   gap: 0.5rem;
   font-weight: normal;
   cursor: pointer;
-}
-
-
-
-button.login {
-  padding: 12px 24px;
-  border-radius: 8px;
-  font-size: 1rem;
-  font-weight: 600;
-  cursor: pointer;
-  border: 1px solid #1eef6f;
-  transition: all 0.2s;
-  background: #1eef6f;
-  color: #020b18;
-  width: 100%;
-  margin-bottom: 20px;
-}
-
-button.login:hover:not(:disabled) {
-  background: #138f43;
-  border-color: #138f43;
-}
-
-button.login:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
 }
 
 hr {

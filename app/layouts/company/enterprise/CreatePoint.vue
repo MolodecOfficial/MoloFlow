@@ -111,10 +111,8 @@ async function addPoint() {
 </script>
 
 <template>
-  <h1>Создание новой точки</h1>
-  <hr>
   <div class="form-grid">
-    <h5>Основная информация</h5>
+    <h1>Основная информация</h1>
 
     <MoloInput
         tLabel="Номер точки"
@@ -160,7 +158,7 @@ async function addPoint() {
 
     <!-- Динамические должности -->
     <div class="form-section">
-      <h5>Должности для точки</h5>
+      <h2>Должности для точки</h2>
       <div class="dynamic-list">
         <div class="add-item">
           <MoloInput
@@ -186,7 +184,7 @@ async function addPoint() {
 
     <!-- Динамические отделы -->
     <div class="form-section">
-      <h5>Отделы для точки</h5>
+      <h2>Отделы для точки</h2>
       <div class="dynamic-list">
         <div class="add-item">
           <MoloInput
@@ -215,7 +213,7 @@ async function addPoint() {
     <!-- Контактное лицо -->
     <div class="grid-full">
       <div class="form-section">
-        <h5>Контактное лицо</h5>
+        <h2>Контактное лицо</h2>
         <div class="grid-3">
           <MoloInput tLabel="ФИО"
                      type="text"
@@ -246,7 +244,7 @@ async function addPoint() {
     <!-- Дополнительно -->
     <div class="grid-full">
       <div class="form-section">
-        <h5>Дополнительно</h5>
+        <h2>Дополнительно</h2>
         <div class="grid-2">
           <MoloInput
               tLabel="Площадь (м²)"

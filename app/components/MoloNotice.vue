@@ -1,10 +1,10 @@
 <script setup lang="ts">
 const props = defineProps<{
-  notice_type?: String,
-  notice_title?: String,
-  notice_text?: String,
-  index?: { type: Number, default: 0 },
-  total?: { type: Number, default: 1 }
+  notice_type?: string
+  notice_title?: string
+  notice_text?: string
+  index?: number
+  total?: number
 }>()
 
 const emit = defineEmits(['close']);

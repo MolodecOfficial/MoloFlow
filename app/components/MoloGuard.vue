@@ -107,15 +107,6 @@ onMounted(() => {
   min-height: 100vh;
 }
 
-.loading-spinner {
-  width: 40px;
-  height: 40px;
-  border: 3px solid transparent;
-  border-top: 3px solid #38ef7d;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-}
-
 .loading-text {
   color: #6c757d;
   font-size: 16px;

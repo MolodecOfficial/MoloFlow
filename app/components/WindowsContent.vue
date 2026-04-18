@@ -94,7 +94,6 @@ const findComponent = (): (() => Promise<any>) | null => {
       return filePath === name || filePath.toLowerCase() === name.toLowerCase()
     })
     if (found) {
-      console.log(`Found component at: ${found}`)
       return layoutsContext[found]
     }
   }
@@ -150,8 +149,11 @@ const componentProps = computed(() => ({
   windowId: props.windowId,
   groupId: props.groupId,
   subGroupId: props.subGroupId,
-  windowData: props.windowData
+  windowData: props.windowData,
+  componentName: props.componentName,
 }))
+
+
 </script>
 
 <template>
@@ -163,6 +165,7 @@ const componentProps = computed(() => ({
             v-bind="componentProps"
         />
       </div>
+
     </template>
     <template #fallback>
       <div class="loading-overlay">
@@ -185,15 +188,6 @@ const componentProps = computed(() => ({
   justify-content: center;
   width: 100%;
   height: 100%;
-}
-
-.loading-spinner {
-  width: 40px;
-  height: 40px;
-  border: 3px solid transparent;
-  border-top: 3px solid #38ef7d;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
 }
 
 .error-component {

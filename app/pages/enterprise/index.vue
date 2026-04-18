@@ -2,7 +2,7 @@
 import {useUserStore} from "~~/stores/userStore"
 import {useNotifications} from "~/composables/useNotifications"
 import {useWindowManager} from "~/composables/useWindowManager"
-import logo from '~~/public/logo.svg'
+import logo from '~~/public/logo.ico'
 
 const name = ref('')
 const role = ref('')
@@ -146,6 +146,7 @@ function deleteUser() {
   transform: translate(-50%, -50%);
   opacity: 0.1;
   width: 40%;
+  filter: grayscale(1);
 }
 
 .loading-state {

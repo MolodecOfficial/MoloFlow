@@ -492,7 +492,7 @@ onMounted(() => {
 
 .dropdown-trigger.dropdown-open {
   border-color: var(--half_opacity_border_hover);
-  box-shadow: 0 0 0 2px rgba(56, 239, 125, 0.2);
+  box-shadow: 0 0 0 2px rgba(56, 114, 239, 0.2);
 }
 
 .dropdown-selected {
@@ -536,12 +536,12 @@ onMounted(() => {
 }
 
 .dropdown-item:hover:not(.disabled) {
-  background-color: rgba(56, 239, 125, 0.1);
+  background-color: rgba(56, 120, 239, 0.1);
   color: var(--half_opacity_border_hover);
 }
 
 .dropdown-item.selected {
-  background-color: rgba(56, 239, 125, 0.15);
+  background-color: rgba(56, 129, 239, 0.15);
   color: var(--half_opacity_border_hover);
 }
 
@@ -769,7 +769,7 @@ option {
 }
 
 .new_user:hover {
-  color: #38ef7d;
+  color: var(--borber-color_main);
 }
 
 .qr-container {

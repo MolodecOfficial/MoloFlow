@@ -106,8 +106,8 @@ label {
 }
 
 .select:focus {
-  border-color: #1eef6f;
-  box-shadow: 0 0 0 2px rgba(30, 239, 111, 0.2);
+  border-color: var(--borber-color_main);
+  box-shadow: 0 0 0 2px rgba(30, 103, 239, 0.2);
 }
 
 .select option {

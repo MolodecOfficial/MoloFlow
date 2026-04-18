@@ -414,7 +414,6 @@ const activeSection = ref<string>('input')
   font-size: 18px;
 }
 
-/* Основной контент */
 .documentation-wrapper {
   flex: 1;
   display: flex;
@@ -451,7 +450,6 @@ const activeSection = ref<string>('input')
   color: #ccc;
 }
 
-/* Секции */
 .doc-section {
   animation: fadeIn 0.3s ease;
 }
@@ -576,8 +574,8 @@ const activeSection = ref<string>('input')
 }
 
 .mode-label.active {
-  background-color: #1e6f3f;
-  border-color: #1e6f3f;
+  background-color: var(--border-color_hover);
+  border-color: var(--border-color_hover);
 }
 
 .mode-label input {

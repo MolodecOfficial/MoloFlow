@@ -34,6 +34,13 @@ export interface WindowButtonStyle {
     }
 }
 
+export interface WindowTitleStyle {
+    id: string
+    name: string
+    description: string
+    isFullTitle: boolean
+}
+
 export const windowThemes: WindowTheme[] = [
     {
         id: 'default',
@@ -137,6 +144,23 @@ export const windowButtonStyles: WindowButtonStyle[] = [
     }
 ]
 
+export const windowTitleStyles: WindowTitleStyle[] = [
+    {
+        id: 'full',
+        name: 'Полное название',
+        description: 'Полное название файла вместе с его путём расположения',
+        isFullTitle: true,
+    },
+    {
+        id: 'minimal',
+        name: 'Название окна',
+        description: 'Только название окна и ничего лишнего',
+        isFullTitle: false,
+    }
+
+]
+
 // Ключи для localStorage
 export const THEME_STORAGE_KEY = 'molo_window_theme'
 export const BUTTON_STYLE_STORAGE_KEY = 'molo_button_style'
+export const TITLE_STYLE_STORAGE_KEY = 'molo_title_style'

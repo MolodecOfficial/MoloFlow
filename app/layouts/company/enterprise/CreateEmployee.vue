@@ -304,8 +304,6 @@ watch(() => newEmployee.value.pointId, (newPointId) => {
 </script>
 
 <template>
-  <h1>Новый сотрудник</h1>
-  <hr>
   <div class="mode-selector">
     <button
         class="mode-btn"
@@ -324,7 +322,7 @@ watch(() => newEmployee.value.pointId, (newPointId) => {
   </div>
 
   <div class="form-grid">
-    <h5>Основная информация</h5>
+    <h1>Основная информация</h1>
 
     <template v-if="addMode === 'existing'">
       <div class="user-search">
@@ -435,7 +433,7 @@ watch(() => newEmployee.value.pointId, (newPointId) => {
     </div>
     <hr>
     <div class="form-section">
-      <h5>Контакты</h5>
+      <h2>Контакты</h2>
       <div class="grid-2">
         <div class="phone-input-container">
           <MoloInput

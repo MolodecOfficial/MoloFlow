@@ -31,7 +31,7 @@
 
 /* При наведении на ползунок можно добавить эффект */
 ::-webkit-scrollbar-thumb:hover {
-  background: #38ef7d;
+  background: var(--borber-color_main);
 }
 
 </style>

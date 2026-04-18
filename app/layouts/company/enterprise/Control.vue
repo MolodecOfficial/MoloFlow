@@ -343,8 +343,6 @@ onMounted(() => {
 
 <template>
   <section class="enterprise-management">
-    <h2>Управление предприятием</h2>
-
     <div v-if="isAuthenticated" class="content">
       <!-- Шапка с информацией -->
       <section class="header_content">

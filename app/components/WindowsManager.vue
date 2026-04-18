@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import MoloWindow from './MoloWindow.vue'
-import type { WindowItem } from '~/types/window'
+import type {WindowItem} from '~/types/window'
 
 const props = defineProps<{
   windows?: WindowItem[]
@@ -55,10 +55,12 @@ const restoreWindowWithAnimation = (id: string) => {
         :window-id="window.itemId"
         :group-id="window.groupId"
         :sub-group-id="window.subGroupId"
+        :component-name="window.componentName"
         :window="window"
         :isVisible="true"
         :is-modal="window.isModal"
         :window-data="window.data"
+        :header="window.header"
         @close="closeWindow(window.id)"
         @minimize="minimizeWindow(window.id)"
         @move="(pos) => moveWindow(window.id, pos)"
@@ -67,13 +69,16 @@ const restoreWindowWithAnimation = (id: string) => {
         @mousedown="focusWindow(window.id)"
         class="draggable-window"
     >
+      <template #inner-header>
+        <slot name="inner-header" />
+      </template>
       <template #default="{ refreshKey }">
         <WindowsContent
             :window-id="window.itemId"
             :group-id="window.groupId"
             :sub-group-id="window.subGroupId"
             :key="refreshKey"
-            :component-name="window.componentPath || window.componentName"
+            :component-name="window.componentName"
             :window-data="window.data"
         />
       </template>
@@ -145,8 +150,8 @@ const restoreWindowWithAnimation = (id: string) => {
 }
 
 .minimized-tab {
-  background: rgba(56, 239, 125, 0.1);
-  border: 1px solid rgba(56, 239, 125, 0.3);
+  background: rgba(56, 71, 239, 0.1);
+  border: 1px solid var(--border-color_hover);
   color: rgba(255, 255, 255, 0.9);
   padding: 6px 12px;
   border-radius: 4px;
@@ -157,7 +162,7 @@ const restoreWindowWithAnimation = (id: string) => {
 }
 
 .minimized-tab:hover {
-  background: rgba(56, 239, 125, 0.2);
-  border-color: #38ef7d;
+  background: rgba(56, 114, 239, 0.2);
+  border-color: var(--borber-color_main);
 }
 </style>

@@ -5,7 +5,7 @@ import {useWindowResize} from '~/composables/useWindowResize'
 import {ref, computed, onMounted, onUnmounted} from 'vue'
 import RestoreIcon from '~~/public/min.svg'
 import {useUserStore} from "~~/stores/userStore";
-import {windowThemes, windowButtonStyles, THEME_STORAGE_KEY, BUTTON_STYLE_STORAGE_KEY} from '~~/types/window-themes' // ИЗМЕНЕНО: добавлен импорт windowButtonStyles и BUTTON_STYLE_STORAGE_KEY
+import {windowThemes, windowButtonStyles, windowTitleStyles, TITLE_STYLE_STORAGE_KEY, THEME_STORAGE_KEY, BUTTON_STYLE_STORAGE_KEY} from '~~/types/window-themes' // ИЗМЕНЕНО: добавлен импорт windowButtonStyles и BUTTON_STYLE_STORAGE_KEY
 
 const {addNotification} = useNotifications()
 
@@ -62,7 +62,8 @@ const isMaximizing = ref(false)
 
 // Cостояние для темы и стиля кнопок
 const currentTheme = ref(windowThemes[0])
-const currentButtonStyle = ref(windowButtonStyles[0]) // НОВОЕ: состояние для стиля кнопок
+const currentButtonStyle = ref(windowButtonStyles[0])
+const currentTitleStyle = ref(windowTitleStyles[0])
 
 // Определяем, включен ли полный размер
 const isMaximized = computed(() => props.window.size.isMaximized === true)
@@ -72,6 +73,12 @@ const refreshKey = ref(0)
 function refreshContent() {
   refreshKey.value++ // увеличение ключа пересоздаст содержимое
 }
+
+const displayTitle = computed(() => {
+  return currentTitleStyle.value.isFullTitle
+      ? props.window.fullTitle
+      : props.window.itemTitle
+})
 
 // Функция для минимизации с анимацией
 const minimizeWithAnimation = () => {
@@ -92,6 +99,8 @@ const closeWithAnimation = () => {
   }, 300) // Длительность анимации
 }
 
+
+
 // Функция для минимизации с анимацией
 const maximizeWithAnimation = () => {
   isMaximizing.value = true
@@ -101,6 +110,9 @@ const maximizeWithAnimation = () => {
     isMaximizing.value = false
   }, 300) // Длительность анимации
 }
+
+provide('currentWindowId', props.window?.id)
+
 
 // Используем композаблы для перетаскивания и ресайза
 const {
@@ -120,7 +132,6 @@ const {
 
 const {
   isResizing,
-  resizeHandle,
   handleResizeStart,
   handleResize,
   handleResizeEnd
@@ -187,80 +198,72 @@ const getResizeCursor = (edge: string) => {
 }
 
 const loadTheme = () => {
-  const savedThemeId = localStorage.getItem(THEME_STORAGE_KEY)
-  if (savedThemeId) {
-    const theme = windowThemes.find(t => t.id === savedThemeId)
-    if (theme) {
-      currentTheme.value = theme
-    }
+  const saved = localStorage.getItem(THEME_STORAGE_KEY)
+  if (saved) {
+    const theme = windowThemes.find(t => t.id === saved)
+    if (theme) currentTheme.value = theme
   }
 }
-
-// НОВОЕ: загрузка стиля кнопок
 const loadButtonStyle = () => {
-  const savedButtonId = localStorage.getItem(BUTTON_STYLE_STORAGE_KEY)
-  if (savedButtonId) {
-    const buttonStyle = windowButtonStyles.find(b => b.id === savedButtonId)
-    if (buttonStyle) {
-      currentButtonStyle.value = buttonStyle
-    }
+  const saved = localStorage.getItem(BUTTON_STYLE_STORAGE_KEY)
+  if (saved) {
+    const style = windowButtonStyles.find(s => s.id === saved)
+    if (style) currentButtonStyle.value = style
+  }
+}
+const loadTitleStyle = () => {
+  const saved = localStorage.getItem(TITLE_STYLE_STORAGE_KEY)
+  if (saved) {
+    const style = windowTitleStyles.find(s => s.id === saved)
+    if (style) currentTitleStyle.value = style
   }
 }
 
-const handleThemeChange = (event: CustomEvent) => {
-  currentTheme.value = event.detail
-}
+const handleThemeChange = (e: CustomEvent) => { currentTheme.value = e.detail }
+const handleButtonStyleChange = (e: CustomEvent) => { currentButtonStyle.value = e.detail }
+const handleTitleStyleChange = (e: CustomEvent) => { currentTitleStyle.value = e.detail }
 
-// НОВОЕ: обработчик изменения стиля кнопок
-const handleButtonStyleChange = (event: CustomEvent) => {
-  currentButtonStyle.value = event.detail
-}
+const windowStyles = computed(() => ({
+  '--window-header-bg': currentTheme.value.styles.headerBg,
+  '--window-header-border': currentTheme.value.styles.headerBorder,
+  '--window-header-text': currentTheme.value.styles.headerText,
+  '--window-content-bg': currentTheme.value.styles.contentBg,
+  '--window-content-text': currentTheme.value.styles.contentText,
+  '--window-border-color': currentTheme.value.styles.borderColor,
+  '--window-border-radius': currentTheme.value.styles.borderRadius,
+  '--window-backdrop-blur': currentTheme.value.styles.backdropBlur,
+  '--window-controls-bg': currentTheme.value.styles.controlsBg,
+  '--window-controls-hover': currentTheme.value.styles.controlsHover,
+  '--window-accent': currentTheme.value.styles.accentColor,
+  '--button-controls-border': currentButtonStyle.value.styles.controlsBorder,
+  '--button-button-border': currentButtonStyle.value.styles.buttonBorder,
+  '--button-button-bg': currentButtonStyle.value.styles.buttonBg,
+  '--button-button-hover-bg': currentButtonStyle.value.styles.buttonHoverBg,
+  '--button-button-text-color': currentButtonStyle.value.styles.buttonTextColor,
+  '--button-button-hover-text-color': currentButtonStyle.value.styles.buttonHoverTextColor || currentButtonStyle.value.styles.buttonTextColor,
+  '--button-controls-gap': currentButtonStyle.value.styles.controlsGap,
+  '--button-controls-padding': currentButtonStyle.value.styles.controlsPadding
+}))
 
-// ИЗМЕНЕНО: добавлены стили кнопок
-const windowStyles = computed(() => {
-  const theme = currentTheme.value
-  const buttonStyle = currentButtonStyle.value
-  return {
-    // Стили темы
-    '--window-header-bg': theme.styles.headerBg,
-    '--window-header-border': theme.styles.headerBorder,
-    '--window-header-text': theme.styles.headerText,
-    '--window-content-bg': theme.styles.contentBg,
-    '--window-content-text': theme.styles.contentText,
-    '--window-border-color': theme.styles.borderColor,
-    '--window-border-radius': theme.styles.borderRadius,
-    '--window-backdrop-blur': theme.styles.backdropBlur,
-    '--window-controls-bg': theme.styles.controlsBg,
-    '--window-controls-hover': theme.styles.controlsHover,
-    '--window-accent': theme.styles.accentColor,
+provide('currentWindowId', props.window.id)
 
-    // Стили кнопок
-    '--button-controls-border': buttonStyle.styles.controlsBorder,
-    '--button-button-border': buttonStyle.styles.buttonBorder,
-    '--button-button-bg': buttonStyle.styles.buttonBg,
-    '--button-button-hover-bg': buttonStyle.styles.buttonHoverBg,
-    '--button-button-text-color': buttonStyle.styles.buttonTextColor,
-    '--button-button-hover-text-color': buttonStyle.styles.buttonHoverTextColor || buttonStyle.styles.buttonTextColor,
-    '--button-controls-gap': buttonStyle.styles.controlsGap,
-    '--button-controls-padding': buttonStyle.styles.controlsPadding
-  }
-})
-
-// ИЗМЕНЕНО: добавлены обработчики событий и загрузка стиля кнопок
 onMounted(() => {
   window.addEventListener('theme-changed', handleThemeChange as EventListener)
-  window.addEventListener('button-style-changed', handleButtonStyleChange as EventListener) // НОВОЕ
+  window.addEventListener('button-style-changed', handleButtonStyleChange as EventListener)
+  window.addEventListener('title-style-changed', handleTitleStyleChange as EventListener)
   document.addEventListener('mousemove', handleMouseMove)
   document.addEventListener('mouseup', handleMouseUp)
   loadUserRole()
   loadTheme()
-  loadButtonStyle() // НОВОЕ
+  loadButtonStyle()
+  loadTitleStyle()
 })
 
-// ИЗМЕНЕНО: добавлено удаление обработчика
+
 onUnmounted(() => {
   window.removeEventListener('theme-changed', handleThemeChange as EventListener)
-  window.removeEventListener('button-style-changed', handleButtonStyleChange as EventListener) // НОВОЕ
+  window.removeEventListener('button-style-changed', handleButtonStyleChange as EventListener)
+  window.removeEventListener('title-style-changed', handleTitleStyleChange as EventListener)
   document.removeEventListener('mousemove', handleMouseMove)
   document.removeEventListener('mouseup', handleMouseUp)
 })
@@ -294,7 +297,7 @@ onUnmounted(() => {
     >
       <!-- Заголовок окна -->
       <div class="window-header" @mousedown="handleDragStart">
-        <div class="window-title">{{ window.fullTitle }}</div>
+        <div class="window-title">{{ displayTitle }}</div>
         <div class="header-logger" v-if="role === 'Управляющий'">
           <span>{{ groupId }}</span><span>{{ subGroupId }}</span><span>{{ windowId }}</span>
         </div>
@@ -335,9 +338,10 @@ onUnmounted(() => {
 
 
       <div class="window-content">
-        <div class="window-content-inner">
+        <div class="content">
           <slot :refreshKey="refreshKey" :windowData="windowData"/>
         </div>
+
       </div>
 
       <!-- Ручки для изменения размера (скрываем при максимизации) -->
@@ -472,6 +476,7 @@ onUnmounted(() => {
   flex-shrink: 0;
 }
 
+
 .window-title {
   color: var(--window-header-text, white);
   font-size: 18px;
@@ -563,10 +568,6 @@ onUnmounted(() => {
   box-sizing: border-box;
   flex: 1;
   min-height: 0;
-}
-
-.window-content-inner {
-
 }
 
 .restore-icon {
