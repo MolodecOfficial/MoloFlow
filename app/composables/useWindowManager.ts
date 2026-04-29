@@ -1,6 +1,5 @@
 import { ref } from 'vue'
 import type { WindowItem } from '~/types/window'
-import { menuConfig, moduleConfig, type MenuGroup, type MenuItem } from '~/utils/menuConfig'
 
 const windows = ref<WindowItem[]>([])
 let zIndexCounter = 100
@@ -12,47 +11,94 @@ export interface WindowSizeOptions {
     minHeight?: number
 }
 
-// Поиск пункта меню в указанном списке групп
-function findInGroups(groups: MenuGroup[], groupId: string, itemId: string, subGroupId?: string) {
-    const group = groups.find(g => g.id === groupId)
-    if (!group) return null
+// Кэш заголовков из API
+let menuTitlesCache: Map<string, { groupTitle?: string; itemTitle?: string; subGroupTitle?: string }> | null = null
 
-    if (subGroupId) {
-        const parentItem = group.items.find(item => item.id === subGroupId)
-        if (!parentItem?.items) return null
-        const childItem = parentItem.items.find(item => item.id === itemId)
-        if (!childItem) return null
-        return {
-            groupTitle: group.title,
-            subGroupTitle: parentItem.title,
-            itemTitle: childItem.title,
-            componentName: childItem.componentName,
-            componentPath: childItem.componentPath,
+export function useWindowManager() {
+    const loadMenuTitles = async () => {
+        if (menuTitlesCache) return
+
+        try {
+            // Загружаем все меню без фильтрации по роли, чтобы получить все возможные заголовки
+            const response = await $fetch('/api/menu', { params: { type: 'all' } })
+            menuTitlesCache = new Map()
+
+            // Проходим по всем группам и собираем заголовки
+            for (const group of response as any[]) {
+                if (group.items) {
+                    for (const item of group.items) {
+                        menuTitlesCache.set(item.id, {
+                            groupTitle: group.title,
+                            itemTitle: item.title
+                        })
+
+                        // Сохраняем также подгруппы
+                        if (item.items) {
+                            for (const childItem of item.items) {
+                                menuTitlesCache.set(childItem.id, {
+                                    groupTitle: group.title,
+                                    itemTitle: childItem.title,
+                                    subGroupTitle: item.title
+                                })
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            console.warn('Не удалось загрузить заголовки меню:', error)
+            menuTitlesCache = new Map()
         }
     }
 
-    const item = group.items.find(item => item.id === itemId)
-    if (!item) return null
-    return {
-        groupTitle: group.title,
-        itemTitle: item.title,
-        subGroupTitle: undefined,
-        componentName: item.componentName,
-        componentPath: item.componentPath,
+    const findMenuTitles = (groupId: string, itemId: string, subGroupId?: string) => {
+        if (!menuTitlesCache) return null
+
+        // Сначала ищем по itemId
+        const titles = menuTitlesCache.get(itemId)
+        if (titles) return titles
+
+        // Пробуем найти по groupId
+        for (const [key, value] of menuTitlesCache.entries()) {
+            if (value.groupTitle && key.includes(groupId)) {
+                return value
+            }
+        }
+
+        return null
     }
-}
 
-function findMenuItem(groupId: string, itemId: string, subGroupId?: string) {
-    // Сначала ищем в основном меню
-    const fromMenu = findInGroups(menuConfig, groupId, itemId, subGroupId)
-    if (fromMenu) return fromMenu
+    const formatTitle = (text: string): string => {
+        if (!text) return ''
 
-    // Затем в модулях
-    const fromModules = findInGroups(moduleConfig, groupId, itemId, subGroupId)
-    return fromModules
-}
+        // Словарь перевода ID в читаемые названия
+        const titleMap: Record<string, string> = {
+            'login': 'Войти в предприятие',
+            'register': 'Регистрация предприятия',
+            'control': 'Управление предприятием',
+            'customisation': 'Кастомизация',
+            'confirm': 'Подтверждение',
+            'employee_tasks': 'Мои задачи',
+            'employee_documents': 'Документы',
+            'employee_schedule': 'График работы',
+            'employee_reports': 'Отчеты',
+            'sfd1': 'Движение Денежных Средств',
+            'sfd2': 'Инкассация',
+            'creature': 'Создание модуля',
+            'browser': 'Браузер модулей',
+            'preview': 'Предпоказ модуля',
+            'points': 'Точки',
+            'ProblemPoints': 'Проблемные точки',
+            'ConfigurePoints': 'Конфигурация точки',
+            'termsOfUse': 'Условия пользования',
+            'createPoint': 'Создание точки',
+            'createEmployee': 'Создание сотрудника',
+            'createPlan': 'Создание плана',
+        }
 
-export function useWindowManager() {
+        return titleMap[text] || text
+    }
+
     const openWindow = (
         groupId: string,
         itemId: string,
@@ -61,43 +107,53 @@ export function useWindowManager() {
         isModal: boolean = false,
         componentPath?: string,
         moduleData?: any,
-        data?: any
+        extraData?: any
     ) => {
-        // Пытаемся найти в статическом меню
-        let menuItem = findMenuItem(groupId, itemId, subGroupId)
-
-        // Если это динамический модуль (itemId начинается с dynamic_)
-        let finalComponentName = menuItem?.componentName
-        let finalComponentPath = componentPath || menuItem?.componentPath
-        let finalGroupTitle = menuItem?.groupTitle || groupId
-        let finalSubGroupTitle = menuItem?.subGroupTitle
-        let finalItemTitle = menuItem?.itemTitle || itemId
-
-        if (moduleData) {
-            finalComponentName = 'DynamicModuleLoader'
-            finalComponentPath = 'modules/DynamicModuleLoader'
-            finalItemTitle = moduleData.name || itemId
-            finalGroupTitle = 'Мои модули'
+        // Загружаем заголовки из API при первом вызове
+        if (!menuTitlesCache) {
+            loadMenuTitles()
         }
 
-        // Проверка, не открыто ли уже такое окно (только для немодальных)
+        // Получаем заголовки
+        let groupTitle = formatTitle(groupId)
+        let itemTitle = formatTitle(itemId)
+        let subGroupTitle = subGroupId ? formatTitle(subGroupId) : undefined
+
+        // Пробуем найти лучшие заголовки из кэша API
+        const apiTitles = findMenuTitles(groupId, itemId, subGroupId)
+        if (apiTitles) {
+            if (apiTitles.groupTitle) groupTitle = apiTitles.groupTitle
+            if (apiTitles.itemTitle) itemTitle = apiTitles.itemTitle
+            if (apiTitles.subGroupTitle) subGroupTitle = apiTitles.subGroupTitle
+        }
+
+        // Для модулей используем название из moduleData
+        if (moduleData?.name) {
+            itemTitle = moduleData.name
+            groupTitle = 'Модули'
+        }
+
+        const finalComponentName = componentPath || (moduleData ? 'DynamicModuleLoader' : undefined)
+        const finalComponentPath = componentPath || (moduleData ? 'modules/DynamicModuleLoader' : undefined)
+
+        const fullTitle = subGroupTitle
+            ? `${groupTitle} → ${subGroupTitle} → ${itemTitle}`
+            : `${groupTitle} → ${itemTitle}`
+
+        // Проверка на уже открытое окно
         if (!isModal) {
             const existingWindow = windows.value.find(
                 w =>
                     w.itemId === itemId &&
                     w.groupId === groupId &&
                     w.subGroupId === subGroupId &&
-                    !w.isMinimized,
+                    !w.isMinimized
             )
             if (existingWindow) {
                 focusWindow(existingWindow.id)
                 return
             }
         }
-
-        let fullTitle = finalGroupTitle
-        if (finalSubGroupTitle) fullTitle += ` → ${finalSubGroupTitle}`
-        fullTitle += ` → ${finalItemTitle}`
 
         const defaultSize = {
             width: sizeOptions?.width ?? 600,
@@ -106,17 +162,15 @@ export function useWindowManager() {
             minHeight: sizeOptions?.minHeight ?? 300,
         }
 
-
-
         const newWindow: WindowItem = {
             id: `window_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-            groupTitle: finalGroupTitle,
-            itemTitle: finalItemTitle,
+            groupTitle,
+            itemTitle,
             fullTitle,
             itemId,
             groupId,
             subGroupId,
-            subGroupTitle: finalSubGroupTitle,
+            subGroupTitle,
             componentName: finalComponentName,
             componentPath: finalComponentPath,
             zIndex: ++zIndexCounter,
@@ -132,17 +186,16 @@ export function useWindowManager() {
                 minHeight: defaultSize.minHeight,
                 isMaximized: false,
             },
-            isModal: isModal,
-            data: moduleData || data || null
+            isModal,
+            data: moduleData || extraData || {}
         }
 
         windows.value.push(newWindow)
     }
 
-    const closeWindow = (itemId: string) => {
-        const index = windows.value.findIndex(w => w.id === itemId)
+    const closeWindow = (id: string) => {
+        const index = windows.value.findIndex(w => w.id === id)
         if (index !== -1) windows.value.splice(index, 1)
-
     }
 
     const focusWindow = (id: string) => {
@@ -195,16 +248,9 @@ export function useWindowManager() {
     }
 
     const updateWindowData = (groupId: string, itemId: string, newData: any) => {
-        const win = windows.value.find(
-            w => w.groupId === groupId && w.itemId === itemId
-        )
-
+        const win = windows.value.find(w => w.groupId === groupId && w.itemId === itemId)
         if (!win) return
-
-        win.data = {
-            ...(win.data || {}),
-            ...newData
-        }
+        win.data = { ...(win.data || {}), ...newData }
     }
 
     return {

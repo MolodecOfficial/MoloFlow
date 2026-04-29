@@ -9,7 +9,8 @@ const props = defineProps<{
 }>()
 
 const plans = ref<any[]>([])
-const {addNotification} = useNotifications()
+const {addNotification} = useNotifications('Создание плана')
+const {addLog} = useLogger('Создание плана')
 
 const enterpriseInfo = ref<any>(null)
 const points = ref<any[]>([])
@@ -43,11 +44,14 @@ const newPlan = ref({
 async function loadPoints() {
   if (!enterpriseInfo.value?._id) return
   loading.value.points = true
+  addLog('info', 'Загружаю точки...')
   try {
     const response = await $fetch(`/api/enterprises/${enterpriseInfo.value._id}/points/points`)
     points.value = response.points.filter((p: any) => p.status === 'Активна')
+    addLog('success', 'Точки загружены')
   } catch (error) {
-    addNotification('ERROR_DEFAULT', 'Ошибка загрузки точек')
+    addNotification('error', 'Ошибка загрузки точек')
+    addLog('error', `Ошибка загрузки точек - ${error}`)
   } finally {
     loading.value.points = false
   }
@@ -64,24 +68,25 @@ const availablePoints = computed(() => {
 
 async function addPlan() {
   if (!enterpriseInfo.value?._id) {
-    addNotification('ERROR_DEFAULT', 'Информация о предприятии не найдена')
+    addNotification('warning', 'Информация о предприятии не найдена')
     return
   }
 
   // Валидация
   if (!newPlan.value.date) {
-    addNotification('ERROR_DEFAULT', 'Укажите дату плана')
+    addNotification('warning', 'Укажите дату плана')
     return
   }
 
   // Валидация периода
   if (!newPlan.value.period) {
-    addNotification('ERROR_DEFAULT', 'Укажите период плана')
+    addNotification('warning', 'Укажите период плана')
     return
   }
 
   loading.value.create = true
   try {
+    addLog('Создаем план...')
     // Период теперь передается в теле запроса, а не в URL
     const response = await $fetch(`/api/enterprises/${enterpriseInfo.value._id}/plans/${newPlan.value.period}`, {
       method: 'POST',
@@ -100,8 +105,8 @@ async function addPlan() {
     })
 
     plans.value.unshift(response.plan)
-    addNotification('NOTICE_DEFAULT', 'План успешно создан')
-
+    addNotification('info', 'План успешно создан')
+    addLog('success', 'План успешно создан')
     // Очищаем форму после успешного создания
     newPlan.value = {
       pointId: '',
@@ -116,8 +121,8 @@ async function addPlan() {
       }
     }
   } catch (error: any) {
-    console.error('Error creating plan:', error)
-    addNotification('ERROR_DEFAULT', error.data?.message || error.message || 'Ошибка создания плана')
+    addLog('error', `Ошибка создания плана - ${error}`)
+    addNotification('error', 'Ошибка создания плана')
   } finally {
     loading.value.create = false
   }
@@ -160,12 +165,13 @@ onMounted(() => {
       enterpriseInfo.value = parsed
       loadPoints()
     } catch (e) {
-      console.error('Ошибка парсинга данных предприятия', e)
-      addNotification('ERROR_DEFAULT', 'Ошибка загрузки данных предприятия')
+      addLog('error', `Ошибка парсинга данных предприятия - ${e}`)
+      addNotification('error', 'Ошибка загрузки данных предприятия')
     }
   } else {
+    addLog('warning', 'Не авторизован в предприятии')
     console.warn('Не авторизован в предприятии')
-    addNotification('ERROR_DEFAULT', 'Не авторизован в предприятии')
+    addNotification('warning', 'Не авторизован в предприятии')
   }
 })
 </script>
@@ -253,7 +259,7 @@ onMounted(() => {
     </div>
 
     <button class="action-btn confirm" @click="addPlan">
-      <div v-if="loading.create" class="modern-loader"></div>
+      <MoloLoaders btnLoader v-if="loading.create"/>
       <span v-else>Создать план</span>
     </button>
 

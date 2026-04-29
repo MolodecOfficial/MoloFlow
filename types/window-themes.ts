@@ -44,14 +44,14 @@ export interface WindowTitleStyle {
 export const windowThemes: WindowTheme[] = [
     {
         id: 'default',
-        name: 'Стандартная',
+        name: 'Стандартное стекло',
         description: 'Классическое полупрозрачное окно',
         previewColor: 'rgba(30, 30, 40, 0.7)',
         styles: {
             headerBg: 'var(--half_opacity_bg)',
             headerBorder: 'var(--half_opacity_border)',
             headerText: 'white',
-            contentBg: 'var(--half_opacity_bg)',
+            contentBg: 'rgba(49, 49, 49, 0.02)',
             contentText: 'rgba(255, 255, 255, 0.9)',
             borderColor: 'var(--half_opacity_border)',
             borderRadius: '10px',

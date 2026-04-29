@@ -8,33 +8,39 @@ export interface UseWindowDragOptions {
 
 export function useWindowDrag(options: UseWindowDragOptions) {
     const isDragging = ref(false)
-    const dragStart = ref({ x: 0, y: 0 })
-    const dragPosition = ref(options.initialPosition)
+    const dragOffset = ref({ x: 0, y: 0 })
+    const currentPosition = ref({ x: options.initialPosition.x, y: options.initialPosition.y })
 
     const handleDragStart = (e: MouseEvent) => {
+        const target = e.target as HTMLElement
+        if (target.closest('.window-controls') || target.closest('.resize-handle')) {
+            return
+        }
+
+        e.preventDefault()
+
         isDragging.value = true
-        dragStart.value = {
-            x: e.clientX - dragPosition.value.x,
-            y: e.clientY - dragPosition.value.y
+        dragOffset.value = {
+            x: e.clientX - currentPosition.value.x,
+            y: e.clientY - currentPosition.value.y
         }
     }
 
     const handleDrag = (e: MouseEvent) => {
         if (!isDragging.value) return
 
-        const newX = e.clientX - dragStart.value.x
-        const newY = e.clientY - dragStart.value.y
+        const newX = e.clientX - dragOffset.value.x
+        const newY = e.clientY - dragOffset.value.y
 
-        // Ограничиваем позицию
-        const maxX = window.innerWidth - options.windowSize.width
-        const maxY = window.innerHeight - options.windowSize.height
+        const maxX = Math.max(0, window.innerWidth - options.windowSize.width)
+        const maxY = Math.max(0, window.innerHeight - options.windowSize.height)
 
         const position = {
             x: Math.max(0, Math.min(newX, maxX)),
             y: Math.max(0, Math.min(newY, maxY))
         }
 
-        dragPosition.value = position
+        currentPosition.value = position
         options.onMove(position)
     }
 
@@ -44,7 +50,7 @@ export function useWindowDrag(options: UseWindowDragOptions) {
 
     return {
         isDragging,
-        dragPosition,
+        currentPosition,
         handleDragStart,
         handleDrag,
         handleDragEnd

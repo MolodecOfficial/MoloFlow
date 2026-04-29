@@ -86,6 +86,9 @@ const browserModuleSchema = new mongoose.Schema({
     updatedAt: {
         type: Date,
         default: Date.now
+    },
+    dependencies: {
+
     }
 });
 

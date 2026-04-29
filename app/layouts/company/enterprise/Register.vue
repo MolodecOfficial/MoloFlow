@@ -4,8 +4,8 @@ import {useWindowManager} from '~/composables/useWindowManager'
 import {useNotifications} from '~/composables/useNotifications'
 
 const {openWindow} = useWindowManager()
-const {addNotification} = useNotifications()
-
+const {addNotification} = useNotifications('Создание предприятия')
+const {addLog} = useLogger('Создание предприятия')
 
 
 const loading = ref(false)
@@ -40,6 +40,7 @@ const copyAddress = () => {
 }
 
 const createEnterprise = async () => {
+  addLog('info', 'Отправляю данные на сервер')
   loading.value = true
   try {
     const enterpriseData = {
@@ -61,11 +62,12 @@ const createEnterprise = async () => {
       method: 'POST',
       body: enterpriseData
     })
-
-    addNotification('NOTICE_DEFAULT', response.message)
+    addLog('success', 'Предприятие создано')
+    addNotification('info', response.message)
     resetForm()
   } catch (error: any) {
-    addNotification('ERROR_DEFAULT', error.data?.message || error.message)
+    addNotification('error', 'Ошибка при создании предприятия')
+    addLog('error', `Ошибка при создании предприятия - ${error.data?.message || error.message}`)
   } finally {
     loading.value = false
   }

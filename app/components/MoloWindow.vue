@@ -4,17 +4,14 @@ import {useWindowDrag} from '~/composables/useWindowDrag'
 import {useWindowResize} from '~/composables/useWindowResize'
 import {ref, computed, onMounted, onUnmounted} from 'vue'
 import RestoreIcon from '~~/public/min.svg'
-import {useUserStore} from "~~/stores/userStore";
-import {windowThemes, windowButtonStyles, windowTitleStyles, TITLE_STYLE_STORAGE_KEY, THEME_STORAGE_KEY, BUTTON_STYLE_STORAGE_KEY} from '~~/types/window-themes' // ИЗМЕНЕНО: добавлен импорт windowButtonStyles и BUTTON_STYLE_STORAGE_KEY
-
-const {addNotification} = useNotifications()
+import {useUserStore} from "~~/stores/userStore"
+import {windowThemes, windowButtonStyles, windowTitleStyles, TITLE_STYLE_STORAGE_KEY, THEME_STORAGE_KEY, BUTTON_STYLE_STORAGE_KEY} from '~~/types/window-themes'
 
 const userStore = useUserStore()
 const role = ref('')
 
 const loadUserRole = () => {
   let userRole = ''
-
   if (userStore.userRole) {
     userRole = userStore.userRole
   } else {
@@ -25,7 +22,6 @@ const loadUserRole = () => {
     }
   }
   role.value = userRole
-
 }
 
 const props = defineProps<{
@@ -51,27 +47,22 @@ provide('openWindow', (groupId: string, itemId: string, groupTitle: string, item
   emit('open-window', groupId, itemId, groupTitle, itemTitle)
 })
 
-// Рефы для контейнера
 const containerRef = ref<HTMLElement>()
 const windowRef = ref<HTMLElement>()
 
-// Состояние для анимации
 const isMinimizing = ref(false)
 const isClosing = ref(false)
-const isMaximizing = ref(false)
 
-// Cостояние для темы и стиля кнопок
 const currentTheme = ref(windowThemes[0])
 const currentButtonStyle = ref(windowButtonStyles[0])
 const currentTitleStyle = ref(windowTitleStyles[0])
 
-// Определяем, включен ли полный размер
 const isMaximized = computed(() => props.window.size.isMaximized === true)
 
 const refreshKey = ref(0)
 
 function refreshContent() {
-  refreshKey.value++ // увеличение ключа пересоздаст содержимое
+  refreshKey.value++
 }
 
 const displayTitle = computed(() => {
@@ -80,50 +71,48 @@ const displayTitle = computed(() => {
       : props.window.itemTitle
 })
 
-// Функция для минимизации с анимацией
 const minimizeWithAnimation = () => {
   isMinimizing.value = true
-  // Ждем завершения анимации и эмитим событие
   setTimeout(() => {
     emit('minimize')
     isMinimizing.value = false
-  }, 300) // Длительность анимации
+  }, 300)
 }
 
-// Функция для закрытия с анимацией
 const closeWithAnimation = () => {
   isClosing.value = true
-  // Ждем завершения анимации и эмитим событие
   setTimeout(() => {
     emit('close')
-  }, 300) // Длительность анимации
+  }, 300)
 }
 
-
-
-// Функция для минимизации с анимацией
-const maximizeWithAnimation = () => {
-  isMaximizing.value = true
-  // Ждем завершения анимации и эмитим событие
-  setTimeout(() => {
-    emit('maximize')
-    isMaximizing.value = false
-  }, 300) // Длительность анимации
+const toggleMaximize = () => {
+  emit('maximize')
 }
 
 provide('currentWindowId', props.window?.id)
 
+const windowPosition = ref({
+  x: props.window.position.x,
+  y: props.window.position.y
+})
 
-// Используем композаблы для перетаскивания и ресайза
+const windowSize = ref({
+  width: props.window.size.width,
+  height: props.window.size.height,
+  minWidth: props.window.size.minWidth || 300,
+  minHeight: props.window.size.minHeight || 200
+})
+
 const {
   isDragging,
-  dragPosition,
+  currentPosition: dragPosition,
   handleDragStart,
   handleDrag,
   handleDragEnd
 } = useWindowDrag({
-  initialPosition: props.window.position,
-  windowSize: props.window.size,
+  initialPosition: windowPosition.value,
+  windowSize: windowSize.value,
   onMove: (position) => {
     windowPosition.value = position
     emit('move', position)
@@ -132,13 +121,15 @@ const {
 
 const {
   isResizing,
+  resizeEdge,
   handleResizeStart,
   handleResize,
   handleResizeEnd
 } = useWindowResize({
-  initialSize: props.window.size,
-  position: dragPosition,
+  initialSize: windowSize.value,
+  position: windowPosition,
   onResize: (size) => {
+    windowSize.value = size
     emit('resize', size)
   },
   onMove: (position) => {
@@ -147,10 +138,6 @@ const {
   }
 })
 
-// Объединенная позиция окна
-const windowPosition = ref(props.window.position)
-
-// Объединенные обработчики событий
 const handleMouseMove = (e: MouseEvent) => {
   if (isDragging.value) handleDrag(e)
   if (isResizing.value) handleResize(e)
@@ -161,33 +148,34 @@ const handleMouseUp = () => {
   if (isResizing.value) handleResizeEnd()
 }
 
-// Стили для контейнера
 const containerStyle = computed(() => {
+  const disableTransition = isDragging.value || isResizing.value
+
   if (isMaximized.value) {
     return {
+      zIndex: props.window.zIndex,
       left: '20px',
       top: '20px',
       width: 'calc(100vw - 40px)',
       height: 'calc(100vh - 40px)',
-      zIndex: props.window.zIndex
+      transition: disableTransition ? 'none' : undefined
     }
   }
 
   return {
+    zIndex: props.window.zIndex,
     left: windowPosition.value.x + 'px',
     top: windowPosition.value.y + 'px',
-    width: props.window.size.width + 'px',
-    height: props.window.size.height + 'px',
-    zIndex: props.window.zIndex,
-    minWidth: (props.window.size.minWidth || 300) + 'px',
-    minHeight: (props.window.size.minHeight || 200) + 'px'
+    width: windowSize.value.width + 'px',
+    height: windowSize.value.height + 'px',
+    minWidth: windowSize.value.minWidth + 'px',
+    minHeight: windowSize.value.minHeight + 'px',
+    transition: disableTransition ? 'none' : undefined
   }
 })
 
-// Получаем курсор для края ресайза
 const getResizeCursor = (edge: string) => {
   if (isMaximized.value) return 'default'
-
   const cursors: Record<string, string> = {
     'n': 'ns-resize', 's': 'ns-resize',
     'w': 'ew-resize', 'e': 'ew-resize',
@@ -204,6 +192,7 @@ const loadTheme = () => {
     if (theme) currentTheme.value = theme
   }
 }
+
 const loadButtonStyle = () => {
   const saved = localStorage.getItem(BUTTON_STYLE_STORAGE_KEY)
   if (saved) {
@@ -211,6 +200,7 @@ const loadButtonStyle = () => {
     if (style) currentButtonStyle.value = style
   }
 }
+
 const loadTitleStyle = () => {
   const saved = localStorage.getItem(TITLE_STYLE_STORAGE_KEY)
   if (saved) {
@@ -245,8 +235,6 @@ const windowStyles = computed(() => ({
   '--button-controls-padding': currentButtonStyle.value.styles.controlsPadding
 }))
 
-provide('currentWindowId', props.window.id)
-
 onMounted(() => {
   window.addEventListener('theme-changed', handleThemeChange as EventListener)
   window.addEventListener('button-style-changed', handleButtonStyleChange as EventListener)
@@ -258,7 +246,6 @@ onMounted(() => {
   loadButtonStyle()
   loadTitleStyle()
 })
-
 
 onUnmounted(() => {
   window.removeEventListener('theme-changed', handleThemeChange as EventListener)
@@ -275,10 +262,9 @@ onUnmounted(() => {
       ref="containerRef"
       class="window-container"
       :class="{
-          'maximized': isMaximized,
-          'maximizing': isMaximizing,
-          'minimizing': isMinimizing,
-          'closing': isClosing
+            'maximized': isMaximized,
+            'minimizing': isMinimizing,
+            'closing': isClosing
         }"
       :style="containerStyle"
   >
@@ -286,28 +272,28 @@ onUnmounted(() => {
         ref="windowRef"
         class="window"
         :class="{
-      dragging: isDragging,
-      resizing: isResizing,
-      'maximized': isMaximized
-    }"
+                dragging: isDragging,
+                resizing: isResizing,
+                'maximized': isMaximized
+            }"
         :style="{
-      ...windowStyles,
-      cursor: isDragging ? 'grabbing' : 'default',
-    }"
+                ...windowStyles,
+                cursor: isDragging ? 'grabbing' : 'default',
+            }"
     >
-      <!-- Заголовок окна -->
       <div class="window-header" @mousedown="handleDragStart">
         <div class="window-title">{{ displayTitle }}</div>
         <div class="header-logger" v-if="role === 'Управляющий'">
           <span>{{ groupId }}</span><span>{{ subGroupId }}</span><span>{{ windowId }}</span>
         </div>
         <div class="window-controls">
-          <button class="control-btn refresh" @click="refreshContent">
+          <button class="control-btn refresh" @click="refreshContent" @mousedown.stop>
             ↻
           </button>
           <button
               class="control-btn minimize"
               @click="minimizeWithAnimation"
+              @mousedown.stop
               title="Свернуть"
               v-if="!isModal"
           >
@@ -315,7 +301,8 @@ onUnmounted(() => {
           </button>
           <button
               class="control-btn maximize"
-              @click="maximizeWithAnimation"
+              @click="toggleMaximize"
+              @mousedown.stop
               :title="isMaximized ? 'Восстановить' : 'На весь экран'"
               v-if="!isModal"
           >
@@ -329,6 +316,7 @@ onUnmounted(() => {
           <button
               class="control-btn close"
               @click="closeWithAnimation"
+              @mousedown.stop
               title="Закрыть"
           >
             ×
@@ -336,15 +324,12 @@ onUnmounted(() => {
         </div>
       </div>
 
-
       <div class="window-content">
         <div class="content">
           <slot :refreshKey="refreshKey" :windowData="windowData"/>
         </div>
-
       </div>
 
-      <!-- Ручки для изменения размера (скрываем при максимизации) -->
       <div
           v-if="!isMaximized"
           v-for="edge in ['n', 's', 'w', 'e', 'nw', 'ne', 'sw', 'se']"
@@ -361,6 +346,13 @@ onUnmounted(() => {
 <style scoped>
 .window-container {
   position: absolute;
+  transition: left 0.3s cubic-bezier(0.2, 0.9, 0.4, 1.1),
+  top 0.3s cubic-bezier(0.2, 0.9, 0.4, 1.1),
+  width 0.3s cubic-bezier(0.2, 0.9, 0.4, 1.1),
+  height 0.3s cubic-bezier(0.2, 0.9, 0.4, 1.1);
+}
+
+.window-container:not(.minimizing):not(.closing) {
   animation: slideIn 0.3s ease-out;
 }
 
@@ -374,24 +366,17 @@ onUnmounted(() => {
   width: calc(100vw - 40px);
   height: calc(100vh - 40px);
   z-index: 1;
-
-  & .window-header {
-    cursor: auto;
-  }
 }
 
-/* Анимация минимизации - обратная slideIn */
+.window-container.maximized .window-header {
+  cursor: auto;
+}
+
 .window-container.minimizing {
   animation: slideOut 0.2s ease-in-out forwards;
   pointer-events: none;
 }
 
-.window-container.maximizing {
-  animation: slideOn 0.2s ease-in-out forwards;
-  pointer-events: none;
-}
-
-/* Анимация закрытия - исчезновение */
 .window-container.closing {
   animation: fadeOut 0.2s ease-in forwards;
   pointer-events: none;
@@ -408,15 +393,12 @@ onUnmounted(() => {
   position: relative;
   width: 100%;
   height: 100%;
+  transition: border-radius 0.2s ease;
 }
 
 .window.maximized {
   border-radius: 10px;
   box-shadow: none;
-  display: flex;
-  width: 100%;
-  height: 100%;
-  z-index: 1;
 }
 
 @keyframes slideIn {
@@ -427,17 +409,6 @@ onUnmounted(() => {
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
-  }
-}
-
-@keyframes slideOn {
-  from {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-  to {
-    opacity: 0;
-    transform: translateY(250px) scale(0.95);
   }
 }
 
@@ -476,7 +447,6 @@ onUnmounted(() => {
   flex-shrink: 0;
 }
 
-
 .window-title {
   color: var(--window-header-text, white);
   font-size: 18px;
@@ -504,10 +474,6 @@ onUnmounted(() => {
 
 .header-logger span {
   text-transform: capitalize;
-}
-
-.header-logger span::first-letter {
-  text-transform: uppercase;
 }
 
 .window-controls {
@@ -574,7 +540,7 @@ onUnmounted(() => {
   width: 16px;
   height: 16px;
   object-fit: contain;
-  filter: brightness(0) invert(1); /* Делает SVG белым */
+  filter: brightness(0) invert(1);
   transition: filter 0.2s ease;
 }
 
@@ -582,7 +548,6 @@ onUnmounted(() => {
   filter: brightness(0) invert(0.5) sepia(1) saturate(30) hue-rotate(200deg);
 }
 
-/* Ручки изменения размера */
 .resize-handle {
   position: absolute;
   background: transparent;
@@ -647,24 +612,7 @@ onUnmounted(() => {
 
 .window.dragging,
 .window.resizing {
-  border: 1px solid #888888
-}
-
-.logger {
-  position: absolute;
-  right: 10px;
-
-}
-
-.logger span {
-  display: inline-block;
-  text-transform: capitalize;
-  font-size: 10px;
-}
-
-
-.logger span::first-letter {
-  text-transform: uppercase;
+  border: 1px solid #888888;
 }
 
 @media (max-width: 768px) {

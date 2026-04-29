@@ -108,9 +108,6 @@ const previewStyle = computed(() => {
 
 <template>
   <div class="customisation-container">
-    <h2>Настройте Ваше приложение под себя</h2>
-    <hr>
-
     <div class="info-message">
       <span>На данный момент доступен небольшой набор кастомизации. Больше возможностей будет по мере выхода обновлений</span>
     </div>
@@ -424,6 +421,7 @@ hr {
 
 .title-options {
   display: flex;
+  flex-direction: column;
   gap: 15px;
 }
 

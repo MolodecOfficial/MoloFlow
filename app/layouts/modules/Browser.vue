@@ -1,11 +1,14 @@
 <script setup>
-import { ref, onMounted } from 'vue'
-import { useDebounceFn } from '@vueuse/core'
+import {ref, onMounted} from 'vue'
+import {useDebounceFn} from '@vueuse/core'
 import isOfficial from '~~/public/isOfficial.svg'
+import jsIcon from "~~/public/js.png";
+import tsIcon from "~~/public/ts.png";
+import vueIcon from "~~/public/vue.png";
 
-
-const { openWindow } = useWindowManager()
-const { addNotification } = useNotifications()
+const {openWindow} = useWindowManager()
+const {addNotification} = useNotifications('Браузер')
+const {addLog} = useLogger('Браузер')
 
 const modules = ref([])
 const loading = ref(false)
@@ -33,6 +36,7 @@ const currentEnterprise = ref(null)
 
 const fetchModules = async () => {
   loading.value = true
+  addLog('info', 'Загружаю модули из базы')
   try {
     const params = new URLSearchParams({
       search: searchQuery.value,
@@ -44,9 +48,10 @@ const fetchModules = async () => {
     const data = await $fetch(`/api/browser/modules?${params.toString()}`)
     modules.value = data.modules
     totalPages.value = data.pagination.pages
+    addLog('success', 'Модули из базы загружены')
   } catch (err) {
-    console.error(err)
-    addNotification('ERROR_DEFAULT', 'Ошибка загрузки модулей')
+    addLog('error', `Ошибка загрузки модулей ${err}`)
+    addNotification('error', 'Ошибка загрузки модулей')
   } finally {
     loading.value = false
   }
@@ -61,11 +66,10 @@ const changePage = (newPage) => {
 
 // Импорт модуля в своё предприятие
 const importModule = async (mod) => {
-  // Устанавливаем загрузку для конкретного модуля
   loadingImportMap.value.set(mod._id, true)
-
+  addLog('info', 'Импортирую модуль в предприятие')
   if (!currentEnterprise.value?._id) {
-    addNotification('WARNING_DEFAULT', 'Не удалось определить текущее предприятие')
+    addNotification('warning', 'Не удалось определить текущее предприятие')
     loadingImportMap.value.set(mod._id, false)
     return
   }
@@ -73,14 +77,14 @@ const importModule = async (mod) => {
   try {
     await $fetch(`/api/browser/modules/${mod._id}/import`, {
       method: 'POST',
-      body: { targetEnterpriseId: currentEnterprise.value._id }
+      body: {targetEnterpriseId: currentEnterprise.value._id}
     })
-    addNotification('NOTICE_DEFAULT', `Модуль "${mod.name}" импортирован в ваше предприятие`)
-
+    addNotification('info', `Модуль импортирован в ваше предприятие`)
+    addLog('info', `Модуль "${mod.name}" импортирован в ваше предприятие`)
     window.dispatchEvent(new Event('module-imported'))
-
-    } catch (err) {
-    addNotification('ERROR_DEFAULT', err?.data?.message || 'Ошибка импорта')
+  } catch (err) {
+    addNotification('error', 'Ошибка импорта')
+    addLog('error', `Модуль не импортирован - ${err?.data?.message}`)
   } finally {
     loadingImportMap.value.set(mod._id, false)
   }
@@ -90,13 +94,41 @@ const isLoadingModule = (moduleId) => {
   return loadingImportMap.value.get(moduleId) || false
 }
 
+// Режим редактора с передачей инпутов
+const editorMode = () => {
+  openWindow(
+      'settings',
+      'confirm',
+      null,
+      {width: 450, height: 300, minWidth: 350, minHeight: 220},
+      true,
+      null,
+      null,
+      {
+        type: 'module',
+        onConfirm: async (accessCode) => {
+          // Проверка кода доступа
+          if (accessCode === 'admin123') {
+            addNotification('info', 'Доступ к редактору разрешён')
+          } else {
+            addNotification('error', 'Неверный код доступа')
+            throw new Error('Неверный код доступа')
+          }
+        },
+        message: 'Введите код доступа к режиму редактора',
+        inputPlaceholder: 'Введите код доступа',
+        inputType: 'password'
+      }
+  )
+}
+
 onMounted(() => {
-  // Получаем текущее предприятие из localStorage или из хранилища
   const entData = localStorage.getItem('currentEnterprise')
   if (entData) {
     try {
       currentEnterprise.value = JSON.parse(entData)
-    } catch(e) {}
+    } catch (e) {
+    }
   }
   fetchModules()
 })
@@ -134,11 +166,11 @@ onMounted(() => {
       />
     </aside>
 
+    <button class="action-btn confirm editor" @click="editorMode">Режим редактора</button>
+
     <!-- Правая часть с модулями -->
     <div class="modules-content">
-      <div v-if="loading" class="loading-overlay">
-        <div class="loading-spinner"></div>
-      </div>
+      <MoloLoaders wndLoader v-if="loading"/>
 
       <div v-else-if="modules.length === 0" class="empty">
         Модулей не найдено
@@ -164,7 +196,7 @@ onMounted(() => {
                     class="official-badge"
                     alt="Прошёл проверку"
                 />
-                <span class="badge">{{ mod.format.toUpperCase() }}</span>
+                <span class="badge">{{ mod.format }}</span>
               </section>
             </div>
 
@@ -178,13 +210,24 @@ onMounted(() => {
             <div class="tags">
               <span v-for="tag in mod.tags" :key="tag" class="tag">{{ tag }}</span>
             </div>
+            <details class="advanced-settings">
+              <summary>Установленные модули</summary>
+              <section class="files">
+                <span v-for="file in mod.files" :key="file" class="file">
+                  <img :src="vueIcon" class="file-icon" alt="" v-if="file.format == 'vue'">
+                  <img :src="tsIcon" class="file-icon" alt="" v-else-if="file.format == 'ts'">
+                  <img :src="jsIcon" class="file-icon" alt="" v-else>
+                  <code>{{ file.name }}</code>
+              </span>
+              </section>
 
+            </details>
             <button
                 class="action-btn confirm"
                 @click="importModule(mod)"
                 :disabled="isLoadingModule(mod._id)"
             >
-              <div v-if="isLoadingModule(mod._id)" class="modern-loader"></div>
+              <MoloLoaders btnLoader v-if="isLoadingModule(mod._id)"/>
               <span v-else>Импортировать в своё предприятие</span>
             </button>
           </section>
@@ -210,7 +253,6 @@ onMounted(() => {
   min-height: 100%;
 }
 
-/* Левая панель фильтров - фиксированная ширина */
 .filters-panel {
   width: 280px;
   flex-shrink: 0;
@@ -224,23 +266,20 @@ onMounted(() => {
   overflow-y: auto;
 }
 
-/* Правая область с модулями - занимает всё оставшееся место */
 .modules-content {
   flex: 1;
-  min-width: 0; /* Важно для правильной работы grid */
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 20px;
 }
 
-/* Сетка модулей - горизонтальные карточки в несколько колонн */
 .modules-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
   gap: 20px;
 }
 
-/* Карточка модуля */
 .module-card {
   display: flex;
   flex-direction: row;
@@ -250,7 +289,7 @@ onMounted(() => {
   border: 1px solid #2c2c2c;
   transition: all 0.2s ease;
   gap: 16px;
-  min-width: 0; /* Для предотвращения переполнения */
+  min-width: 0;
 }
 
 .module-card:hover {
@@ -258,7 +297,6 @@ onMounted(() => {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
-/* Логотип модуля */
 .card-logo {
   flex-shrink: 0;
   width: 80px;
@@ -266,7 +304,7 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #2c2c2c;
+  background: transparent;
   border-radius: 12px;
   overflow: hidden;
 }
@@ -276,9 +314,9 @@ onMounted(() => {
   height: 100%;
   object-fit: cover;
   display: block;
+  background: transparent;
 }
 
-/* Информация о модуле */
 .card-info {
   flex: 1;
   min-width: 0;
@@ -359,6 +397,26 @@ onMounted(() => {
   color: #ccc;
 }
 
+.files {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  justify-content: center;
+  padding: 10px 15px;
+}
+
+.file {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.file-icon {
+  display: flex;
+  flex-direction: row;
+  width: 20px;
+}
+
 .action-btn {
   padding: 8px 16px;
   border: none;
@@ -369,8 +427,11 @@ onMounted(() => {
   font-size: 0.85rem;
 }
 
-.action-btn.confirm:hover:not(:disabled) {
-  background: var(--border-color_disabled);
+.action-btn.confirm.editor {
+  position: absolute;
+  top: 90%;
+  transform: translateY(0%);
+  width: 270px;
 }
 
 .action-btn:disabled {
@@ -378,7 +439,6 @@ onMounted(() => {
   cursor: not-allowed;
 }
 
-/* Пагинация */
 .pagination {
   display: flex;
   justify-content: center;
@@ -408,6 +468,86 @@ onMounted(() => {
   cursor: not-allowed;
 }
 
+/* Кастомный аккордеон для details */
+details.advanced-settings {
+  background: var(--half_opacity_bg);
+  border-radius: 12px;
+  padding: 0;
+  margin-bottom: 12px;
+  border: 1px solid var(--half_opacity_border);
+  overflow: hidden;
+  transition: all 0.2s ease;
+  &:hover {
+    border: 1px solid var(--borber-color_main);
+  }
+}
+
+details.advanced-settings[open] {
+  background: #2a2a2a;
+  border-color: #3a6ea5;
+}
+
+/* Стилизация summary — убираем стандартный маркер, добавляем свой */
+details.advanced-settings > summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 18px;
+  font-weight: 600;
+  font-size: 15px;
+  cursor: pointer;
+  list-style: none; /* убираем треугольник в WebKit */
+  user-select: none;
+  transition: background 0.2s;
+}
+
+details.advanced-settings > summary::-webkit-details-marker {
+  display: none; /* убираем треугольник в Chrome/Safari */
+}
+
+details.advanced-settings > summary::before {
+  content: "▶";
+  display: inline-block;
+  font-size: 12px;
+  color: #3a6ea5;
+  transition: transform 0.25s ease;
+  margin-right: 8px;
+}
+
+details.advanced-settings[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+/* Внутреннее содержимое — плавное появление */
+details.advanced-settings > div,
+details.advanced-settings > .details-content {
+  padding: 0 18px 18px 18px;
+  animation: fadeSlideDown 0.25s ease-out;
+}
+
+@keyframes fadeSlideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Альтернативный способ плавного разворота через grid (если хотите анимацию высоты) */
+details.advanced-settings {
+  transition: all 0.3s ease;
+}
+
+details.advanced-settings .dep-tabs,
+details.advanced-settings .dep-list,
+details.advanced-settings .add-dep-form,
+details.advanced-settings .form-row {
+  margin-top: 12px;
+}
+
 @keyframes spin {
   100% {
     transform: rotate(360deg);
@@ -421,14 +561,12 @@ onMounted(() => {
   font-size: 1.1rem;
 }
 
-/* Адаптив для планшетов */
 @media (max-width: 1024px) {
   .modules-grid {
     grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
   }
 }
 
-/* Адаптив для мобильных устройств */
 @media (max-width: 768px) {
   .browser-container {
     flex-direction: column;
@@ -473,7 +611,6 @@ onMounted(() => {
   }
 }
 
-/* Адаптив для очень маленьких экранов */
 @media (max-width: 480px) {
   .filters-panel {
     flex-direction: column;

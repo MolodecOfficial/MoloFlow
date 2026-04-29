@@ -7,7 +7,6 @@ import logo from '~~/public/logo.ico'
 const name = ref('')
 const role = ref('')
 const isLoading = ref(true)
-const hasShownNotifications = ref(false)
 
 const {
   windows,
@@ -22,7 +21,7 @@ const {
 
 const userStore = useUserStore()
 const router = useRouter()
-const {notifications, removeNotification, checkAndShowNotifications} = useNotifications()
+const {notifications, removeNotification} = useNotifications()
 
 onMounted(() => {
   loadUserData()
@@ -47,10 +46,6 @@ const loadUserData = () => {
   name.value = userName
   role.value = userRole
 
-  if (!hasShownNotifications.value) {
-    checkAndShowNotifications(userRole, userName)
-    hasShownNotifications.value = true
-  }
 
   isLoading.value = false
 }
@@ -61,6 +56,8 @@ function deleteUser() {
   localStorage.removeItem('enterprise_token')
   router.push('/')
 }
+
+
 </script>
 
 <template>
@@ -78,6 +75,9 @@ function deleteUser() {
               :total="notifications.length"
               @close="removeNotification(notification.id)"
           />
+      </div>
+      <div class="logger-wrapper">
+          <MoloLogger/>
       </div>
 
       <div v-if="isLoading" class="loading-state">
@@ -121,7 +121,7 @@ function deleteUser() {
 .notifications-wrapper {
   position: fixed;
   right: 15px;
-  bottom: 10px;
+  bottom: 15px;
   display: flex;
   flex-direction: column-reverse;
   gap: 6px;
@@ -132,6 +132,16 @@ function deleteUser() {
 
 .notifications-wrapper > * {
   pointer-events: auto;
+}
+
+.logger-wrapper {
+  position: fixed;
+  left: 20px;
+  bottom: 20px;
+  z-index: 1000;
+
+  /* Новые стили для плавного появления */
+  animation: slideInLeft 0.3s ease-out;
 }
 
 .enterprise-container {

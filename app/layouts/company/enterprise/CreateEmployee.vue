@@ -2,7 +2,8 @@
 import {useNotifications} from '~/composables/useNotifications'
 import {useWindowManager} from '~/composables/useWindowManager'
 
-const {addNotification} = useNotifications()
+const {addNotification} = useNotifications('Создание сотрудника')
+const {addLog} = useLogger('Создание сотрудника')
 const {closeWindow} = useWindowManager()
 const emit = defineEmits<{
   (e: 'employee-added', employee: any): void
@@ -18,77 +19,6 @@ const addMode = ref<'new' | 'existing'>('new')
 const showUserList = ref(false)
 
 const availableRoles = ['Сотрудник', 'Бухгалтер', 'Комплектовщик', 'Управляющий']
-const availableDepartment = ['IT-Отдел', 'Отдел продаж', 'Отдел безопасности', 'Юридический отдел']
-
-// Функция для форматирования телефона
-function formatPhone(value: string) {
-  if (!value) return '+7';
-
-  // Удаляем все нецифровые символы
-  let numbers = value.replace(/\D/g, '');
-
-  // Если номер начинается с 7 или 8, заменяем на +7
-  if (numbers.startsWith('8')) {
-    numbers = '7' + numbers.substring(1);
-  }
-  if (!numbers.startsWith('7')) {
-    numbers = '7' + numbers;
-  }
-
-  // Ограничиваем длину до 11 цифр (включая 7)
-  numbers = numbers.substring(0, 11);
-
-  // Форматируем по маске +7 (XXX) XXX-XX-XX
-  let formatted = '+7';
-  if (numbers.length > 1) {
-    formatted += ' (' + numbers.substring(1, 4);
-  }
-  if (numbers.length >= 5) {
-    formatted += ') ' + numbers.substring(4, 7);
-  }
-  if (numbers.length >= 8) {
-    formatted += '-' + numbers.substring(7, 9);
-  }
-  if (numbers.length >= 10) {
-    formatted += '-' + numbers.substring(9, 11);
-  }
-
-  return formatted;
-}
-
-// Обработчик ввода телефона
-function onPhoneInput(field: 'phone' | 'emergencyPhone', event: Event) {
-  const input = event.target as HTMLInputElement;
-  const cursorPosition = input.selectionStart || 0;
-  const oldValue = newEmployee.value.contacts[field];
-
-  // Форматируем новое значение
-  const newValue = formatPhone(input.value);
-
-  // Вычисляем новую позицию курсора
-  let newCursorPosition = cursorPosition;
-
-  // Если добавились автоматические символы, сдвигаем курсор
-  if (newValue.length > oldValue.length) {
-    newCursorPosition += newValue.length - oldValue.length;
-  }
-
-  // Обновляем значение
-  newEmployee.value.contacts[field] = newValue;
-
-  // Восстанавливаем позицию курсора после обновления DOM
-  nextTick(() => {
-    input.setSelectionRange(newCursorPosition, newCursorPosition);
-  });
-}
-
-// Очистка телефона при фокусе
-function onPhoneFocus(event: Event) {
-  const input = event.target as HTMLInputElement;
-  if (input.value === '+7') {
-    input.setSelectionRange(2, 2);
-  }
-}
 
 const newEmployee = ref({
   name: '',
@@ -146,21 +76,30 @@ const availableDepartments = computed(() => {
 })
 
 async function loadPoints() {
+  addLog('info', 'Загружаю точки...')
   if (!enterpriseInfo.value?._id) return
   try {
     const response = await $fetch(`/api/enterprises/${enterpriseInfo.value._id}/points/points`)
     points.value = response.points
-  } catch {
-    addNotification('ERROR_DEFAULT', 'Ошибка загрузки точек')
+    addLog('success', 'Точки загружены')
+  } catch (e) {
+    addNotification('error', 'Ошибка загрузки точек')
+    addLog('error', `Ошибка загрузки точек - ${e}`)
   }
 }
 
 async function loadUsers() {
+  addLog('info', 'Загружаю сотрудников...')
+
   try {
     const response = await $fetch('/api/users/users')
     users.value = response.users
-  } catch {
-    addNotification('ERROR_DEFAULT', 'Ошибка загрузки пользователей')
+    addLog('success', 'Сотрудники загружены')
+
+  } catch (e) {
+    addNotification('error', 'Ошибка загрузки сотрудников')
+    addLog('error', `Ошибка загрузки сотрудников - ${e}`)
+
   }
 }
 
@@ -213,26 +152,28 @@ function handleSearchFocus() {
 async function addEmployee() {
   if (addMode.value === 'new') {
     if (!newEmployee.value.name || !newEmployee.value.password || !newEmployee.value.position) {
-      addNotification('ERROR_DEFAULT', 'Заполните обязательные поля: Имя, Пароль, Должность')
+      addNotification('warning', 'Заполните обязательные поля: Имя, Пароль, Должность')
       return
     }
   } else {
     if (!selectedUser.value) {
-      addNotification('ERROR_DEFAULT', 'Выберите пользователя из списка')
+      addNotification('warning', 'Выберите пользователя из списка')
       return
     }
     if (!newEmployee.value.position) {
-      addNotification('ERROR_DEFAULT', 'Заполните обязательное поле: Должность')
+      addNotification('warning', 'Заполните обязательное поле: Должность')
       return
     }
   }
 
   if (!enterpriseInfo.value?._id) {
-    addNotification('ERROR_DEFAULT', 'Данные предприятия не загружены')
+    addNotification('warning', 'Данные предприятия не загружены')
     return
   }
 
   try {
+    addLog('info', 'Отправляю данные на сервер...')
+
     loading.value = true
 
     const baseData = {
@@ -258,10 +199,11 @@ async function addEmployee() {
 
     emit('employee-added', response.employee)
     closeWindow()
-    addNotification('NOTICE_DEFAULT', 'Сотрудник успешно добавлен')
+    addNotification('info', 'Сотрудник успешно добавлен')
+    addLog('success', 'СОтрудник успешно добавлен')
   } catch (error: any) {
-    const message = error.response?._data?.message || 'Ошибка добавления сотрудника'
-    addNotification('ERROR_DEFAULT', message)
+    addLog('error', `Ошибка добавления сотрудника - ${error}`)
+    addNotification('error', 'Ошибка добавления сотрудника')
   } finally {
     loading.value = false
   }
@@ -278,10 +220,10 @@ onMounted(() => {
       loadUsers()
       document.addEventListener('click', handleClickOutside)
     } catch {
-      addNotification('ERROR_DEFAULT', 'Ошибка загрузки данных предприятия')
+      addLog('error', 'Ошибка загрузки данных предприятия')
     }
   } else {
-    addNotification('ERROR_DEFAULT', 'Не авторизован в предприятии')
+    addLog('warning', 'Не авторизован в предприятии')
   }
 })
 
@@ -440,14 +382,13 @@ watch(() => newEmployee.value.pointId, (newPointId) => {
               lRequired
               iRequired
               tLabel="Телефон"
-              type="tel"
+              phone
               placeholder="+7 (987) 587-20-07"
               :modelValue="newEmployee.contacts.phone"
               @update:modelValue="(val) => {
                 newEmployee.contacts.phone = val;
               }"
               @input="(e) => onPhoneInput('phone', e)"
-              @focus="onPhoneFocus"
               maxLength="18"
           />
         </div>
@@ -456,14 +397,13 @@ watch(() => newEmployee.value.pointId, (newPointId) => {
               lRequired
               iRequired
               tLabel="Экстренный телефон"
-              type="tel"
+              phone
               placeholder="+7 (987) 587-20-07"
               :modelValue="newEmployee.contacts.emergencyPhone"
               @update:modelValue="(val) => {
                 newEmployee.contacts.emergencyPhone = val;
               }"
               @input="(e) => onPhoneInput('emergencyPhone', e)"
-              @focus="onPhoneFocus"
               maxlength="18"
           />
         </div>
@@ -471,7 +411,7 @@ watch(() => newEmployee.value.pointId, (newPointId) => {
     </div>
 
     <button class="action-btn confirm" @click="addEmployee" :disabled="loading">
-      <div v-if="loading" class="modern-loader"></div>
+      <MoloLoaders btnLoader v-if="loading"/>
       <span v-else>Сохранить сотрудника</span>
     </button>
   </div>

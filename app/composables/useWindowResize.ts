@@ -9,125 +9,98 @@ export interface UseWindowResizeOptions {
 
 export function useWindowResize(options: UseWindowResizeOptions) {
     const isResizing = ref(false)
-    const resizeHandle = ref<string | null>(null)
-    const resizeStart = ref({ x: 0, y: 0, width: 0, height: 0, posX: 0, posY: 0 })
+    const resizeEdge = ref<string>('')
+
+    const startState = ref({
+        mouseX: 0,
+        mouseY: 0,
+        width: 0,
+        height: 0,
+        x: 0,
+        y: 0
+    })
+
+    const currentSize = ref({
+        width: options.initialSize.width,
+        height: options.initialSize.height
+    })
+
+    const currentPosition = ref({
+        x: options.position.x,
+        y: options.position.y
+    })
+
+    const minWidth = options.initialSize.minWidth || 300
+    const minHeight = options.initialSize.minHeight || 200
 
     const handleResizeStart = (e: MouseEvent, edge: string) => {
-        isResizing.value = true
-        resizeHandle.value = edge
-        resizeStart.value = {
-            x: e.clientX,
-            y: e.clientY,
-            width: options.initialSize.width,
-            height: options.initialSize.height,
-            posX: options.position.x,
-            posY: options.position.y
-        }
-
         e.preventDefault()
         e.stopPropagation()
+
+        isResizing.value = true
+        resizeEdge.value = edge
+
+        startState.value = {
+            mouseX: e.clientX,
+            mouseY: e.clientY,
+            width: currentSize.value.width,
+            height: currentSize.value.height,
+            x: currentPosition.value.x,
+            y: currentPosition.value.y
+        }
     }
 
     const handleResize = (e: MouseEvent) => {
-        if (!isResizing.value || !resizeHandle.value) return
+        if (!isResizing.value || !resizeEdge.value) return
 
-        const deltaX = e.clientX - resizeStart.value.x
-        const deltaY = e.clientY - resizeStart.value.y
-        const edge = resizeHandle.value
+        const deltaX = e.clientX - startState.value.mouseX
+        const deltaY = e.clientY - startState.value.mouseY
+        const edge = resizeEdge.value
 
-        // Минимальные и максимальные размеры
-        const minWidth = options.initialSize.minWidth || 300
-        const minHeight = options.initialSize.minHeight || 200
+        let newWidth = startState.value.width
+        let newHeight = startState.value.height
+        let newX = startState.value.x
+        let newY = startState.value.y
+
         const maxWidth = window.innerWidth - 20
         const maxHeight = window.innerHeight - 20
 
-        // Расчет новых размеров и позиции
-        const result = calculateResize(edge, deltaX, deltaY, {
-            width: resizeStart.value.width,
-            height: resizeStart.value.height,
-            x: resizeStart.value.posX,
-            y: resizeStart.value.posY,
-            minWidth,
-            minHeight,
-            maxWidth,
-            maxHeight
-        })
-
-        // Применяем ограничения позиции
-        const maxX = window.innerWidth - result.width
-        const maxY = window.innerHeight - result.height
-        result.x = Math.max(0, Math.min(result.x, maxX))
-        result.y = Math.max(0, Math.min(result.y, maxY))
-
-        // Эмитим события
-        options.onResize({ width: result.width, height: result.height })
-        if (result.x !== options.position.x || result.y !== options.position.y) {
-            options.onMove({ x: result.x, y: result.y })
+        if (edge.includes('e')) {
+            newWidth = Math.min(maxWidth, Math.max(minWidth, startState.value.width + deltaX))
         }
+        if (edge.includes('w')) {
+            const possibleWidth = startState.value.width - deltaX
+            newWidth = Math.min(maxWidth, Math.max(minWidth, possibleWidth))
+            newX = startState.value.x + (startState.value.width - newWidth)
+        }
+        if (edge.includes('s')) {
+            newHeight = Math.min(maxHeight, Math.max(minHeight, startState.value.height + deltaY))
+        }
+        if (edge.includes('n')) {
+            const possibleHeight = startState.value.height - deltaY
+            newHeight = Math.min(maxHeight, Math.max(minHeight, possibleHeight))
+            newY = startState.value.y + (startState.value.height - newHeight)
+        }
+
+        currentSize.value = { width: newWidth, height: newHeight }
+        currentPosition.value = { x: newX, y: newY }
+
+        options.onResize({ width: newWidth, height: newHeight })
+        options.onMove({ x: newX, y: newY })
     }
 
     const handleResizeEnd = () => {
         isResizing.value = false
-        resizeHandle.value = null
+        resizeEdge.value = ''
     }
 
     return {
         isResizing,
-        resizeHandle,
+        resizeEdge,
+        currentSize,
+        currentPosition,
         handleResizeStart,
         handleResize,
         handleResizeEnd
     }
-}
-
-function calculateResize(
-    edge: string,
-    deltaX: number,
-    deltaY: number,
-    params: any
-) {
-    let { width, height, x, y } = params
-
-    switch (edge) {
-        case 'n':
-            height = clamp(params.height - deltaY, params.minHeight, params.maxHeight)
-            y = params.y + (params.height - height)
-            break
-        case 's':
-            height = clamp(params.height + deltaY, params.minHeight, params.maxHeight)
-            break
-        case 'w':
-            width = clamp(params.width - deltaX, params.minWidth, params.maxWidth)
-            x = params.x + (params.width - width)
-            break
-        case 'e':
-            width = clamp(params.width + deltaX, params.minWidth, params.maxWidth)
-            break
-        case 'nw':
-            width = clamp(params.width - deltaX, params.minWidth, params.maxWidth)
-            height = clamp(params.height - deltaY, params.minHeight, params.maxHeight)
-            x = params.x + (params.width - width)
-            y = params.y + (params.height - height)
-            break
-        case 'ne':
-            width = clamp(params.width + deltaX, params.minWidth, params.maxWidth)
-            height = clamp(params.height - deltaY, params.minHeight, params.maxHeight)
-            y = params.y + (params.height - height)
-            break
-        case 'sw':
-            width = clamp(params.width - deltaX, params.minWidth, params.maxWidth)
-            height = clamp(params.height + deltaY, params.minHeight, params.maxHeight)
-            x = params.x + (params.width - width)
-            break
-        case 'se':
-            width = clamp(params.width + deltaX, params.minWidth, params.maxWidth)
-            height = clamp(params.height + deltaY, params.minHeight, params.maxHeight)
-            break
-    }
-
-    return { width, height, x, y }
-}
-
-function clamp(value: number, min: number, max: number) {
-    return Math.max(min, Math.min(value, max))
 }

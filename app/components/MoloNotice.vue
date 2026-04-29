@@ -23,7 +23,7 @@ const getIcon = computed(() => {
   switch(props.notice_type) {
     case 'error':
       return '/error.svg';
-    case 'danger':
+    case 'warning':
       return '/danger.svg';
     case 'notice':
       return '/notice.svg';
@@ -36,7 +36,7 @@ const getAccentColor = computed(() => {
   switch(props.notice_type) {
     case 'error':
       return '#F44336';
-    case 'danger':
+    case 'warning':
       return '#FF9800';
     case 'notice':
       return '#2196F3';

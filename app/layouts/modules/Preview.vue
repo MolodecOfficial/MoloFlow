@@ -1,7 +1,6 @@
 <script setup lang="ts">
-import {ref, watch} from 'vue'
-import {useModuleCompiler} from '~/composables/useModuleCompiler'
-
+import { ref, watch, nextTick } from 'vue'
+import { useModuleCompiler } from '~/composables/useModuleCompiler'
 
 const props = defineProps<{
   windowData?: any
@@ -16,26 +15,32 @@ const {
   compiledComponent,
   compiling,
   compileError,
-  compileModuleDebounced
+  compileModule
 } = useModuleCompiler()
 
-// 🔥 ТОЛЬКО КОД
+// Сброс и загрузка при изменении кода или файлов
 watch(
-    () => props.windowData?.code,
-    (code) => {
-      if (!code) return
+    () => [props.windowData?.code, props.windowData?.files],
+    async ([newCode, newFiles]) => {
+      if (!newCode) {
+        loading.value = false
+        return
+      }
 
-      loading.value = false
+      loading.value = true
       error.value = null
-      currentModuleName.value =
-          props.windowData?.moduleName || 'Без названия'
+      currentModuleName.value = props.windowData?.moduleName || 'Без названия'
 
-      compileModuleDebounced(code)
+      // Принудительно увеличиваем ключ, чтобы компонент пересоздался
+      renderKey.value++
+
+      await compileModule(newCode as string, (newFiles as any[]) || [])
+      loading.value = false
     },
-    { immediate: true }
+    { immediate: true, deep: true }
 )
 
-// ошибки
+// Отслеживаем ошибки компиляции
 watch(compileError, (err) => {
   if (err) error.value = err
 })
@@ -51,10 +56,12 @@ watch(compileError, (err) => {
     <div class="preview-content">
       <div v-if="loading" class="loading-state">
         <div class="spinner"></div>
+        <span>Загрузка модуля...</span>
       </div>
 
       <div v-else-if="compiling" class="compiling-state">
         <div class="spinner"></div>
+        <span>Компиляция...</span>
       </div>
 
       <div v-else-if="error" class="error-state">
@@ -65,59 +72,88 @@ watch(compileError, (err) => {
         <component :is="compiledComponent" :key="renderKey" />
       </div>
 
-      <div v-else class="loading-overlay">
-        <div class="loading-spinner"></div>
+      <div v-else class="empty-state">
+        Нет модуля для отображения
       </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-.module-name {
-  top: 70px;
-  position: absolute;
-  right: 10px;
-  width: fit-content;
+.preview-window {
   display: flex;
-  font-size: 10px;
-  background: rgba(0, 0, 0, 0.3);
-  padding: 4px 10px;
-  border-radius: 12px;
-  color: rgba(255, 255, 255, 0.7);
-  letter-spacing: 0.5px;
-  white-space: nowrap;
-  backdrop-filter: blur(2px);
-  border: 1px solid var(--half_opacity_border);
-  font-weight: 500;
-  gap: 8px;
-  transition: all 0.15s ease;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  flex-direction: column;
+  height: 100%;
+  overflow: auto;
 }
 
-.loading-overlay {
+.preview-header {
+  position: relative;
   display: flex;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.module-name {
+  border: 1px solid var(--half_opacity_border);
+  font-size: 11px;
+  background: rgba(0, 0, 0, 0.5);
+  padding: 4px 10px;
+  border-radius: 16px;
+  color: #ccc;
+}
+
+.compiling-dot {
+  width: 8px;
+  height: 8px;
+  background: #ffaa00;
+  border-radius: 50%;
+  display: inline-block;
+  margin-left: 8px;
+  animation: pulse 1s infinite;
+}
+
+.preview-content {
+  flex: 1;
+  overflow: auto;
+}
+
+.loading-state, .compiling-state, .error-state, .empty-state {
+  display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  width: 100%;
   height: 100%;
+  gap: 12px;
+  text-align: center;
 }
 
-.loading-spinner {
+.spinner {
   width: 40px;
   height: 40px;
-  border: 3px solid transparent;
-  border-top: 3px solid #38ef7d;
+  border: 3px solid #3c3c3c;
+  border-top-color: #3a6ea5;
   border-radius: 50%;
-  animation: spin 1s linear infinite;
+  animation: spin 0.8s linear infinite;
+}
+
+.error-state pre {
+  background: #2a1e1e;
+  color: #ffaaaa;
+  padding: 12px;
+  border-radius: 8px;
+  overflow: auto;
+  max-width: 90%;
+  white-space: pre-wrap;
+  font-size: 12px;
 }
 
 @keyframes spin {
-  0% {
-    transform: rotate(0deg);
-  }
-  100% {
-    transform: rotate(360deg);
-  }
+  to { transform: rotate(360deg); }
 }
 
+@keyframes pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
 </style>

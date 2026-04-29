@@ -53,6 +53,7 @@ const restoreWindowWithAnimation = (id: string) => {
         v-for="window in windows.filter(w => !w.isMinimized)"
         :key="window.id"
         :window-id="window.itemId"
+        :unique-window-id="window.id"
         :group-id="window.groupId"
         :sub-group-id="window.subGroupId"
         :component-name="window.componentName"
@@ -80,6 +81,7 @@ const restoreWindowWithAnimation = (id: string) => {
             :key="refreshKey"
             :component-name="window.componentName"
             :window-data="window.data"
+            :enterprise-id="window.enterpriseId"
         />
       </template>
     </MoloWindow>

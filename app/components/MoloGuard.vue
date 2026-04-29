@@ -76,7 +76,6 @@ onMounted(() => {
       <div class="loading-spinner"></div>
       <span class="loading-text">Проверка доступа...</span>
     </div>
-
     <!-- После загрузки показываем либо контент, либо запрет -->
     <div v-else-if="hasAccess">
       <slot />

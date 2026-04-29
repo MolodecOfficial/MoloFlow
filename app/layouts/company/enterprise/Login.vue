@@ -2,6 +2,7 @@
 import {ref} from 'vue'
 import {useWindowManager} from '~/composables/useWindowManager'
 import {useNotifications} from '~/composables/useNotifications'
+import {useLogger} from '~/composables/useLogger'
 
 const props = defineProps<{
   groupId?: string
@@ -10,7 +11,8 @@ const props = defineProps<{
 }>()
 
 const {openWindow, closeWindow} = useWindowManager()
-const {addNotification} = useNotifications()
+const {addNotification} = useNotifications('Вход в предприятие')
+const {addLog} = useLogger('Вход в предприятие')
 
 // Состояния
 const loading = ref(false)
@@ -22,14 +24,12 @@ const keypass = ref('')
 // Вход в предприятие
 const handleLogin = async () => {
   if (!inn.value || !keypass.value) {
-    addNotification('NOTICE_DEFAULT', 'Заполните все поля')
+    addNotification('warning', 'Заполните все поля')
     return
   }
-
   loading.value = true
-
   try {
-    // Запрос к бекенду
+    addLog('info', 'Отправляю данные на сервер...')
     const response = await $fetch('/api/enterprises/login', {
       method: 'POST',
       body: {
@@ -42,10 +42,9 @@ const handleLogin = async () => {
     localStorage.setItem('currentEnterprise', JSON.stringify(response.enterprise))
     localStorage.setItem('enterprise_token', response.token)
 
-    // Диспатчим событие для обновления меню
     window.dispatchEvent(new Event('enterprise-login'))
 
-    addNotification('NOTICE_DEFAULT', 'Успешный вход в предприятие!')
+    addNotification('info', 'Успешный вход в предприятие!')
 
     if (props.windowId) {
       closeWindow(props.windowId)
@@ -61,11 +60,11 @@ const handleLogin = async () => {
       )
     }, 50)
   } catch (error: any) {
-    console.error('Ошибка входа:', error)
-    addNotification('ERROR_DEFAULT', error.data?.message || 'Ошибка входа')
+    addLog('error', `Ошибка входа - ${error.data?.message}`)
+    addNotification('error', 'Ошибка входа')
   } finally {
     loading.value = false
-
+    addLog('success', 'Успешный вход в прдеприятие')
   }
 }
 
@@ -77,8 +76,7 @@ async function deleteToken() {
 
     // Диспатчим событие для обновления меню
     window.dispatchEvent(new Event('enterprise-logout'))
-
-    addNotification('NOTICE_DEFAULT', 'Токены удалены')
+    addNotification('info', 'Токены удалены')
   } finally {
     deleting.value = false
   }
@@ -117,7 +115,7 @@ async function deleteToken() {
           :disabled="loading"
       >
         <span v-if="!loading">Войти</span>
-        <div v-else class="loader"></div>
+        <MoloLoaders btnLoader v-else/>
       </button>
     </form>
     <button
@@ -126,7 +124,7 @@ async function deleteToken() {
         :disabled="deleting"
     >
       <span v-if="!deleting">Удалить токены</span>
-      <div v-else class="loader"></div>
+      <MoloLoaders wndLoader v-else/>
     </button>
   </div>
 </template>
@@ -202,19 +200,4 @@ input::placeholder {
   cursor: not-allowed;
 }
 
-.loader {
-  width: 18px;
-  height: 18px;
-  border: 2px solid rgba(0, 0, 0, 0.1);
-  border-radius: 50%;
-  border-top-color: #020b18;
-  animation: spin 0.8s linear infinite;
-  margin: 0 auto;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
 </style>

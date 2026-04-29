@@ -1,27 +1,50 @@
 import mongoose from "mongoose";
 
+const globalForMongo = globalThis as unknown as {
+    mongoosePromise?: Promise<typeof mongoose>;
+};
+
 export default defineNitroPlugin(async (nitroApp) => {
     const config = useRuntimeConfig();
     const uri = config.mongodb;
 
-    console.log("🧩 Плагин Mongoose успешно загружен!");
-    console.log("🔍 Проверяю MongoDB URI:", uri ? "Найден!" : "Утерян");
-
     if (!uri) {
-        console.error("❌ Утерян MONGODB_URI в .env или nuxt.config.ts");
+        console.error("❌ MONGODB_URI не задан в .env или nuxt.config.ts");
         return;
     }
 
+    // Если уже есть активное соединение (readyState === 1), просто выходим без логов
     if (mongoose.connection.readyState === 1) {
-        console.log("✅ MongoDB успешно запущен!");
         return;
     }
 
-    console.log("🔌 Подключаюсь к MongoDB...");
+    // Если подключение уже в процессе (readyState === 2), тоже ничего не делаем
+    if (mongoose.connection.readyState === 2) {
+        return;
+    }
+
+    if (!globalForMongo.mongoosePromise) {
+        console.log("⇆ Устанавливаю подключение к MongoDB...");
+        globalForMongo.mongoosePromise = mongoose.connect(uri);
+    } else {
+
+        const isDisconnected = mongoose.connection.readyState === 0 || mongoose.connection.readyState === 3;
+        if (isDisconnected) {
+            console.log("↺ Переподключение к MongoDB...");
+        } else {
+            // Если соединение активно или устанавливается — молчим
+            return;
+        }
+    }
+
     try {
-        await mongoose.connect(uri);
-        console.log("✅  MongoDB успешно подключен!");
+        await globalForMongo.mongoosePromise;
+        if (mongoose.connection.readyState === 1) {
+            console.log("✓ MongoDB успешно подключена");
+        }
     } catch (error: any) {
-        console.error("❌ MongoDB неожиданно отключился:", error.message);
+        console.error("Ошибка подключения к MongoDB:", error.message);
+        // Сбрасываем кеш, чтобы при следующем вызове попробовать снова
+        globalForMongo.mongoosePromise = undefined;
     }
 });

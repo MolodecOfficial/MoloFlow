@@ -1,140 +1,118 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { useModuleCompiler } from '~~/app/composables/useModuleCompiler'
-import { executeScript } from '~~/app/composables/useScriptCompiler'
+import { ref, watch, onMounted, onUnmounted } from 'vue'
+import { useModuleCompiler } from '~/composables/useModuleCompiler'
 
 const props = defineProps<{
-  windowId: string
-  groupId: string
-  subGroupId?: string
-  windowData?: any
+  moduleData?: any
+  moduleName?: string
+  additionalFiles?: any[]
 }>()
+
+const emit = defineEmits(['loaded', 'error', 'moduleEvent'])
 
 const {
   compiledComponent,
   compileModule,
+  compiling,
   compileError,
-  compiling
-} = useModuleCompiler()
+  reset,
+  activeKey
+} = useModuleCompiler() // 💥 FIX
 
-const loading = ref(true)
-const error = ref<string | null>(null)
-const scriptResult = ref<any>(null)
-const enterpriseInfo = ref<any>(null)
+const error = ref<Error | null>(null)
 
-onMounted(async () => {
-  try {
-    // 👉 получаем предприятие
-    const data = localStorage.getItem('currentEnterprise')
-    if (data) {
-      enterpriseInfo.value = JSON.parse(data)
-    }
+async function loadModule() {
+  if (!props.moduleData?.code) {
+    error.value = new Error('Нет кода')
+    return
+  }
 
-    const moduleId = props.windowData?._id
+  await compileModule(
+      props.moduleData.code,
+      props.additionalFiles || []
+  )
+}
 
-    if (!moduleId || !enterpriseInfo.value?._id) {
-      throw new Error('Нет ID модуля или предприятия')
-    }
+watch(compiledComponent, (c) => {
+  if (c) emit('loaded', true)
+})
 
-    // 👉 загружаем модуль
-    const response = await $fetch(
-        `/api/enterprises/${enterpriseInfo.value._id}/dynamicModules/${moduleId}`
-    )
-
-    const code = response.module.code
-    const format = response.module.format
-
-    if (format === 'vue') {
-      await compileModule(code)
-    } else {
-      const result = await executeScript(code, format, {
-        onError: (err) => console.error('[Module Error]', err)
-      })
-
-      scriptResult.value = result
-
-      // если вернули Vue компонент
-      if (result && typeof result === 'object' && (result.render || result.setup)) {
-        compiledComponent.value = result
-      }
-    }
-
-  } catch (err: any) {
-    console.error('Ошибка загрузки модуля:', err)
-    error.value = err.message || 'Ошибка загрузки'
-  } finally {
-    loading.value = false
+watch(compileError, (e) => {
+  if (e) {
+    error.value = new Error(e)
+    emit('error', e)
   }
 })
+
+onMounted(loadModule)
+onUnmounted(reset)
 </script>
 
 <template>
-  <div class="dynamic-module-container">
+  <div class="dynamic-module-loader">
 
-    <!-- ⏳ загрузка -->
-    <div v-if="loading || compiling" class="loading">
-      <div class="loading-spinner"></div>
-    </div>
+    <div v-if="error">{{ error.message }}</div>
 
-    <div v-else-if="error" class="error">
-      <span>{{ error }}</span>
-    </div>
+    <div v-else-if="compiling">loading...</div>
 
-    <div v-else-if="compileError" class="error">
-      <pre>{{ compileError }}</pre>
-    </div>
-
-    <div v-else-if="compiledComponent" class="module-content">
-      <component :is="compiledComponent" />
-    </div>
-
-    <div v-else-if="scriptResult" class="script-result">
-      <div class="result-header">
-        <span>Модуль выполнен</span>
-      </div>
-      <pre class="result-content">
-{{ JSON.stringify(scriptResult, null, 2) }}
-      </pre>
-    </div>
-
-    <!-- 🤷 fallback -->
-    <div v-else class="module-content">
-      Нет данных для отображения
-    </div>
+    <component
+        v-else-if="compiledComponent"
+        :is="compiledComponent"
+        :key="activeKey"
+        @module-event="(e:any)=>emit('moduleEvent', e)"
+    />
 
   </div>
 </template>
 
 <style scoped>
-.dynamic-module-container {
+.dynamic-module-loader {
+  width: 100%;
   height: 100%;
-  overflow: auto;
+  min-height: 200px;
 }
 
-.loading,
-.error {
+.module-loading {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  height: 100%;
+  gap: 16px;
+  padding: 40px;
+  color: #888;
+}
+
+.module-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 40px;
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.1);
+  border-radius: 8px;
+}
+
+.module-error button {
+  margin-top: 8px;
+  padding: 4px 12px;
+  cursor: pointer;
+  background: #3a6ea5;
   color: white;
+  border: none;
+  border-radius: 4px;
 }
 
-.error {
-  color: #fa5252;
+.modern-loader {
+  width: 40px;
+  height: 40px;
+  border: 3px solid #3c3c3c;
+  border-top-color: #3a6ea5;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
 }
 
-.module-content {
-  color: white;
-}
-
-.script-result {
-  padding: 10px;
-  color: #fff;
-}
-
-.result-header {
-  font-weight: bold;
-  margin-bottom: 10px;
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 </style>

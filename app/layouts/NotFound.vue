@@ -160,7 +160,7 @@ const debugInfo = computed(() => ({
   width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 10px;
   overflow: hidden;
 }
 

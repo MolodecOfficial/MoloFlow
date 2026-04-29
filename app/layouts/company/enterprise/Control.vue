@@ -6,7 +6,8 @@ const props = defineProps<{
 }>()
 
 const {openWindow} = useWindowManager()
-const {addNotification} = useNotifications()
+const {addNotification} = useNotifications('Управление предприятием')
+const {addLog} = useLogger('Управление предприятием')
 
 // Состояния
 const isAuthenticated = ref(false)
@@ -164,13 +165,16 @@ function createPlan() {
 async function loadPoints() {
   if (!enterpriseInfo.value?._id) return
   loading.value.points = true
+  addLog('info', 'Загружаю точки...')
   try {
     const response = await $fetch(`/api/enterprises/${enterpriseInfo.value._id}/points/points`)
     points.value = response.points
     stats.value.totalPoints = response.total
     stats.value.activePoints = response.points.filter((p: any) => p.status === 'Активна').length
+    addLog('success', 'Точки загружены')
   } catch (error) {
-    addNotification('ERROR_DEFAULT', 'Ошибка загрузки точек')
+    addLog('error', `Ошибка загрузки точек - ${error}`)
+    addNotification('error', 'Ошибка загрузки точек')
   } finally {
     loading.value.points = false
   }
@@ -179,13 +183,18 @@ async function loadPoints() {
 async function loadEmployees() {
   if (!enterpriseInfo.value?._id) return
   loading.value.employees = true
+  addLog('info', 'Загружаю сотрудников...')
+
   try {
     const response = await $fetch(`/api/enterprises/${enterpriseInfo.value._id}/employees/employees`)
     employees.value = response.employees
     stats.value.totalEmployees = response.stats.total
     stats.value.activeEmployees = response.stats.active
+    addLog('success', 'Сортудники загружены')
+
   } catch (error) {
-    addNotification('ERROR_DEFAULT', 'Ошибка загрузки сотрудников')
+    addLog('error', `Ошибка загрузки сотрудников - ${error}`)
+    addNotification('error', 'Ошибка загрузки сотрудников')
   } finally {
     loading.value.employees = false
   }
@@ -193,11 +202,12 @@ async function loadEmployees() {
 
 async function deleteEmployee(employee: any) {
   if (employee.userId?.role === 'Управляющий' && employees.value.filter(e => e.userId?.role === 'Управляющий').length === 1) {
-    addNotification('DANGER_DEFAULT', 'Нельзя удалить единственного владельца точки');
+    addNotification('warning', 'Нельзя удалить единственного владельца точки');
     return;
   }
 
   const employeeDelete = async () => {
+    addLog('info', 'Удаляем сотрудника...')
     try {
       // Используем правильный URL с ID сотрудника
       await $fetch(`/api/enterprises/${enterpriseInfo.value._id}/employees/${employee._id}`, {
@@ -212,16 +222,17 @@ async function deleteEmployee(employee: any) {
       stats.value.activeEmployees = employees.value.filter(e => e.status === 'Активен').length;
 
       // Показываем уведомление об успехе
-      addNotification('NOTICE_DEFAULT', `Сотрудник "${employee.userId?.name || employee.name}" успешно удален`);
+      addNotification('info', `Сотрудник успешно удален`);
+      addLog('info', `Сотрудник "${employee.userId?.name || employee.name}" успешно удален`);
     } catch (error: any) {
-      console.error('Ошибка при удалении сотрудника:', error);
+      addLog('error', `Ошибка при удалениии сотрудника - ${error}`)
 
       if (error.response?.status === 404) {
-        addNotification('ERROR_DEFAULT', 'Сотрудник не найден');
+        addNotification('error', 'Сотрудник не найден');
       } else if (error.response?.status === 403) {
-        addNotification('ERROR_DEFAULT', 'У вас нет прав на удаление сотрудника');
+        addNotification('error', 'У вас нет прав на удаление сотрудника');
       } else {
-        addNotification('ERROR_DEFAULT', error.message || 'Ошибка при удалении сотрудника');
+        addLog('error', `Ошибка при удалении сотрудника - ${error.message}` );
       }
       throw error;
     }
@@ -245,6 +256,7 @@ async function deleteEmployee(employee: any) {
 }
 
 async function deletePoint(point: any) {
+  addLog('info', 'Удаляем точку...')
 
   const pointDelete = async () => {
     try {
@@ -256,16 +268,17 @@ async function deletePoint(point: any) {
       stats.value.totalPoints = points.value.length;
       stats.value.activePoints = points.value.filter(p => p.status === 'Активна').length;
 
-      addNotification('NOTICE_DEFAULT', `Точка "${point.name}" успешно удалена`);
+      addNotification('info', `Точка успешно удалена`);
+      addLog('info', `Точка "${point.name}" успешно удалена`);
     } catch (error: any) {
       if (error.response?.status === 404) {
-        addNotification('ERROR_DEFAULT', 'Точка не найдена');
+        addNotification('error', 'Точка не найдена');
       } else if (error.response?.status === 403) {
-        addNotification('ERROR_DEFAULT', 'У вас нет прав на удаление точки');
+        addNotification('error', 'У вас нет прав на удаление точки');
       } else if (error.response?.status === 409) {
-        addNotification('ERROR_DEFAULT', error.response._data?.message || 'Невозможно удалить точку с привязанными данными');
+        addLog('error', `Ошибка при удалении точки - ${error.response._data?.message}`);
       } else {
-        addNotification('ERROR_DEFAULT', error.message || 'Ошибка при удалении точки');
+        addLog('error', `Ошибка при удалении точки - ${error.message}`);
       }
       throw error;
     }
@@ -289,6 +302,7 @@ async function deletePoint(point: any) {
 }
 
 async function loadPlans() {
+  addLog('info', 'Загружаю планы...')
   if (!enterpriseInfo.value?._id) return
   loading.value.plans = true
   try {
@@ -299,8 +313,10 @@ async function loadPlans() {
     stats.value.totalPlanProfit = response.totals.planProfit
     stats.value.totalActualProfit = response.totals.actualProfit
     stats.value.profitDifference = response.differences.profit
+    addLog('success', 'Планы загружены')
   } catch (error) {
-    addNotification('ERROR_DEFAULT', 'Ошибка загрузки планов')
+    addNotification('error', 'Ошибка загрузки планов')
+    addLog('error', `Ошибка загрузки планов - ${error}`)
   } finally {
     loading.value.plans = false
   }
@@ -332,11 +348,11 @@ onMounted(() => {
       loadEmployees()
       loadPlans()
     } catch (e) {
-      console.error('Ошибка парсинга данных предприятия', e)
-      addNotification('ERROR_DEFAULT', 'Ошибка загрузки данных предприятия')
+      addLog('error', `Ошибка парсинга данных предприятия - ${e}`)
+      addNotification('error', 'Ошибка загрузки данных предприятия')
     }
   } else {
-    console.warn('Не авторизован в предприятии')
+    addLog('warning', `Не авторизован в предприятии`)
   }
 })
 </script>
@@ -475,11 +491,7 @@ onMounted(() => {
           </div>
 
           <!-- Таблица точек -->
-          <div v-if="loading.points" class="loading">
-            <div class="loading-overlay">
-              <div class="loading-spinner"></div>
-            </div>
-          </div>
+          <MoloLoaders wndLoader v-if="loading.points"/>
 
           <div v-else-if="filteredPoints.length === 0" class="empty-state">
             Нет точек для отображения
@@ -570,11 +582,7 @@ onMounted(() => {
           </div>
 
           <!-- Таблица сотрудников -->
-          <div v-if="loading.employees" class="loading">
-            <div class="loading-overlay">
-              <div class="loading-spinner"></div>
-            </div>
-          </div>
+          <MoloLoaders wndLoader v-if="loading.employees"/>
 
           <div v-else-if="filteredEmployees.length === 0" class="empty-state">
             Нет сотрудников для отображения
@@ -653,12 +661,7 @@ onMounted(() => {
             </div>
           </div>
 
-          <!-- Таблица планов -->
-          <div v-if="loading.plans" class="loading">
-            <div class="loading-overlay">
-              <div class="loading-spinner"></div>
-            </div>
-          </div>
+          <MoloLoaders wndLoader v-if="loading.plans"/>
 
           <div v-else-if="plans.length === 0" class="empty-state">
             Нет созданных планов

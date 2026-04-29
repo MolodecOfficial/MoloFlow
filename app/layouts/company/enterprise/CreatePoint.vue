@@ -1,5 +1,6 @@
 <script setup lang="ts">
-const {addNotification} = useNotifications()
+const {addNotification} = useNotifications('Создание точки')
+const {addLog} = useLogger("Создание точки")
 const {closeWindow} = useWindowManager()
 
 const emit = defineEmits<{
@@ -72,24 +73,24 @@ onMounted(() => {
     try {
       enterpriseInfo.value = JSON.parse(data)
     } catch (e) {
-      console.error('Ошибка парсинга данных предприятия', e)
+      addLog('error', `Ошибка парсинга данных предприятия - ${e}`)
     }
   }
 })
 
 async function addPoint() {
   if (!enterpriseInfo.value?._id) {
-    addNotification('ERROR_DEFAULT', 'Данные предприятия не загружены')
+    addNotification('warning', 'Данные предприятия не загружены')
     return
   }
 
   if (!newPoint.value.name || !newPoint.value.region || !newPoint.value.city || !newPoint.value.address) {
-    addNotification('ERROR_DEFAULT', 'Заполните все обязательные поля')
+    addNotification('warning', 'Заполните все обязательные поля')
     return
   }
 
   if (!newPoint.value.contactPerson.name || !newPoint.value.contactPerson.phone || !newPoint.value.contactPerson.email) {
-    addNotification('ERROR_DEFAULT', 'Заполните поля о контактной информации')
+    addNotification('warning', 'Заполните поля о контактной информации')
     return
   }
 
@@ -101,9 +102,11 @@ async function addPoint() {
     })
     emit('point-added', response.point)
     closeWindow()
-    addNotification('NOTICE_DEFAULT', 'Точка успешно добавлена')
+    addNotification('info', 'Точка успешно добавлена')
+    addLog('success', 'Точка успешно добавлена')
   } catch (error: any) {
-    addNotification('ERROR_DEFAULT', error.data?.message || 'Ошибка добавления точки')
+    addLog('error', `Ошибка добавления точки - ${error.data?.message}`)
+    addNotification('error',  'Ошибка добавления точки')
   } finally {
     loading.value = false
   }
@@ -262,7 +265,7 @@ async function addPoint() {
       </div>
     </div>
     <button class="action-btn confirm" @click="addPoint" :disabled="loading">
-      <div v-if="loading" class="modern-loader"></div>
+      <MoloLoaders btnLoader v-if="loading"/>
       <span v-else>Сохранить точку</span>
     </button>
   </div>

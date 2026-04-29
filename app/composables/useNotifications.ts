@@ -1,48 +1,51 @@
 import { ref } from 'vue'
-import notificationsConfig from '~~/data/notifications.json'
 
-const config = notificationsConfig
+// Типы уведомлений (только 3 типа)
+export const noticeTypes = ['info', 'warning', 'error'] as const
+export type NoticeType = typeof noticeTypes[number]
 
-// Глобальное хранилище
-const globalNotifications = {
-    notifications: ref<any[]>([]),
-    nextId: ref(1)
+export interface NoticeEntry {
+    id: number
+    type: NoticeType
+    title?: string
+    text: string
+    source?: string
 }
 
-// Флаг для предотвращения повторного вызова
-let isCheckingNotifications = false
+// Глобальное хранилище
+export const globalNotifications = {
+    notifications: ref<NoticeEntry[]>([]),
+    nextId: ref(1),
+}
 
-export function useNotifications() {
-    const addNotification = (key: string, dynamicText?: string) => {
-        const data: any = config.notifications[key]
-        if (!data) return false
+export function useNotifications(source?: string) {
 
-        if (data.single) {
-            const shownKey = `notification_shown_${key}`
-            if (localStorage.getItem(shownKey)) {
-                return false
-            }
-            localStorage.setItem(shownKey, 'true')
+    // ПРОСТАЯ функция добавления уведомления
+    const addNotification = (type: NoticeType, text: string, title?: string) => {
+        // Определяем источник
+        const moduleSource = source || getCallerSource()
+
+        // Формируем заголовок (если не передан - используем стандартный)
+        let finalTitle = title || getDefaultTitle(type)
+
+        // Добавляем источник к заголовку
+        if (moduleSource) {
+            finalTitle = `[${moduleSource}] ${finalTitle}`
         }
 
-        const notificationText = dynamicText || data.text
-
-        const existing = globalNotifications.notifications.value.find(n =>
-            n.title === data.title && n.text === data.text
-        )
-
-        if (existing) {
-            return false
-        }
-
-        const newNotification = {
+        // Создаём уведомление
+        const newNotification: NoticeEntry = {
             id: globalNotifications.nextId.value++,
-            type: data.type,
-            title: data.title,
-            text: notificationText
+            type,
+            title: finalTitle,
+            text,
+            source: moduleSource
         }
-        
+
+        // Добавляем в начало
         globalNotifications.notifications.value.unshift(newNotification)
+
+
         return true
     }
 
@@ -54,34 +57,34 @@ export function useNotifications() {
         globalNotifications.notifications.value = []
     }
 
-    const checkAndShowNotifications = (role: string, userId?: string) => {
-        // Предотвращаем повторный вызов
-        if (isCheckingNotifications) {
-            console.log('Уведомления уже проверяются')
-            return
-        }
-
-        isCheckingNotifications = true
-
-        try {
-            const roleNotifications = config.conditions.userBased.roles[role as keyof typeof config.conditions.userBased.roles]
-            if (roleNotifications) {
-                roleNotifications.forEach(key => addNotification(key))
-            }
-
-        } finally {
-            // Сбрасываем флаг с задержкой
-            setTimeout(() => {
-                isCheckingNotifications = false
-            }, 100)
-        }
-    }
-
     return {
         notifications: globalNotifications.notifications,
         addNotification,
         removeNotification,
-        clearNotifications,
-        checkAndShowNotifications
+        clearNotifications
     }
+}
+
+function getDefaultTitle(type: NoticeType): string {
+    switch (type) {
+        case 'info': return 'Информация о выполнении'
+        case 'warning': return 'Предупреждение'
+        case 'error': return 'Ошибка'
+        default: return 'Уведомление'
+    }
+}
+
+// Простая функция для получения источника
+function getCallerSource(): string {
+    const stack = new Error().stack?.split('\n') || []
+
+    for (let i = 3; i < stack.length; i++) {
+        const line = stack[i]
+        const match = line.match(/(\w+\.vue)/)
+        if (match) {
+            return match[1].replace('.vue', '')
+        }
+    }
+
+    return ''
 }
