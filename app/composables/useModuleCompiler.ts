@@ -12,7 +12,8 @@ import { useModulesStore } from '~~/stores/moduleStore'
 // Глобальная регистрация компонентов из папки components
 const componentModules = import.meta.glob('~~/app/components/**/*.vue')
 const { addLog } = useLogger('Внутренний компилятор')
-// Кэш загруженных компонентов
+
+// Кэш загруженных компонентов (глобальный, его можно оставить общим)
 let loadedComponents: Record<string, any> | null = null
 let loadingPromise: Promise<Record<string, any>> | null = null
 
@@ -40,21 +41,36 @@ async function loadAllComponents() {
     return loadingPromise
 }
 
-let _instance: any = null
-
-export const useModuleCompiler = () => {
-    if (!_instance) _instance = createCompiler()
-    return _instance
-}
-
 function normalizePath(p: string) {
     return p.replace(/^\.\//, '').replace(/\\/g, '/')
 }
 
-// Функция для конвертации ES модуля в CommonJS
+// Функция для оборачивания JS/TS кода с инъекцией глобалов
+function wrapWithGlobals(code: string, filename: string): string {
+    const wrapped = `
+// Обёртка для доступа к глобалам
+const __globals__ = (typeof window !== 'undefined' && window.__moduleGlobals__) || {};
+
+// Проксируем функции через глобалы
+const useLogger = __globals__.useLogger || (() => { console.warn('useLogger not available'); return { addLog: () => {} }; });
+const useNotifications = __globals__.useNotifications || (() => { console.warn('useNotifications not available'); return { addNotification: () => {} }; });
+const useWindowManager = __globals__.useWindowManager || (() => ({}));
+const useModulesStore = __globals__.useModulesStore || (() => ({}));
+
+// Оригинальный код
+${code}
+
+// Экспортируем всё, что было в module.exports
+if (typeof module !== 'undefined' && module.exports) {
+    if (typeof exports !== 'undefined') {
+        Object.assign(exports, module.exports);
+    }
+}
+`
+    return wrapped
+}
+
 function convertESModuleToCommonJS(code: string, filename: string): string {
-    // Простая конвертация export const xxx = ... -> const xxx = ...; exports.xxx = xxx
-    // Для сложных случаев используем Babel
     try {
         const result = babel.transform(code, {
             presets: ['es2015', 'typescript'],
@@ -63,35 +79,47 @@ function convertESModuleToCommonJS(code: string, filename: string): string {
         })
         return result.code || code
     } catch (e) {
-        // Fallback: ручная конвертация
         let converted = code
-
-        // Заменяем export const name = value -> const name = value; exports.name = name
         converted = converted.replace(/export\s+const\s+(\w+)\s*=\s*([^;]+);?/g, (_, name, value) => {
             return `const ${name} = ${value}; exports.${name} = ${name};`
         })
-
-        // Заменяем export function name() {} -> function name() {}; exports.name = name
         converted = converted.replace(/export\s+function\s+(\w+)\s*\(([^)]*)\)\s*{/g, (_, name, params) => {
             return `function ${name}(${params}) {; exports.${name} = ${name};`
         })
-
-        // Заменяем export default value -> module.exports.default = value
         converted = converted.replace(/export\s+default\s+([^;]+);?/g, (_, value) => {
             return `module.exports.default = ${value};`
         })
-
         return converted
     }
 }
 
+// 🔥 ГЛАВНОЕ: убираем синглтон, теперь каждый вызов useModuleCompiler создаёт новый экземпляр
+export const useModuleCompiler = () => {
+    return createCompiler() // ← больше нет синглтона
+}
+
 function createCompiler() {
+    // Каждый экземпляр имеет свои реактивные переменные
     const compiledComponent = shallowRef<any>(null)
     const compiling = ref(false)
     const compileError = ref<string | null>(null)
     const activeKey = ref(0)
 
     let debounceTimer: any = null
+    let instanceId = Math.random().toString(36).substring(7) // уникальный ID для отладки
+
+    // Создаём глобалы для инъекции в JS/TS файлы
+    const createGlobalInjections = () => {
+        const windowManager = useWindowManager()
+        const moduleStore = useModulesStore()
+
+        return {
+            useLogger: (s?: string) => useLogger(s),
+            useNotifications: (s?: string) => useNotifications(s),
+            useWindowManager: () => windowManager,
+            useModulesStore: () => moduleStore
+        }
+    }
 
     const compileModule = async (code: string, filesList: any[] = []) => {
         if (!code?.trim()) {
@@ -102,8 +130,16 @@ function createCompiler() {
         compiling.value = true
         compileError.value = null
 
+        addLog('info', `Компилятор начал компиляцию файла...`)
+
         try {
-            // Ждём загрузки всех компонентов
+            // Инжектим глобалы в window для доступа из JS/TS модулей
+            const globalInjections = createGlobalInjections()
+            if (typeof window !== 'undefined') {
+                // Используем уникальный ключ для каждого модуля? Нет, лучше единый объект
+                (window as any).__moduleGlobals__ = globalInjections
+            }
+
             const componentRegistry = await loadAllComponents()
 
             const files: Record<string, string> = {}
@@ -118,12 +154,15 @@ function createCompiler() {
                     filePath += `.${ext}`
                 }
 
-                // Если это JS или TS файл с ES модулями - конвертируем в CommonJS
                 if (file.format === 'js' || file.format === 'ts' || filePath.endsWith('.js') || filePath.endsWith('.ts')) {
+                    let processedCode = fileCode
+
                     if (fileCode.includes('export') || fileCode.includes('import')) {
-                        // addLog('warning', `Конвертирую ES модуль в CommonJS...: ${filePath}`)
-                        fileCode = convertESModuleToCommonJS(fileCode, filePath)
+                        processedCode = convertESModuleToCommonJS(fileCode, filePath)
                     }
+
+                    processedCode = wrapWithGlobals(processedCode, filePath)
+                    fileCode = processedCode
                 }
 
                 files[filePath] = fileCode
@@ -131,11 +170,7 @@ function createCompiler() {
                 files[baseName] = fileCode
                 const withoutExt = filePath.replace(/\.(js|ts|vue)$/, '')
                 files[withoutExt] = fileCode
-                addLog('success', `Модуль сконвертирован в CommonJS: ${filePath}`)
-
             }
-
-            // addLog('info', `Доступные файлы для модуля: ${Object.keys(files)}`)
 
             const options = {
                 moduleCache: { vue: Vue },
@@ -157,12 +192,9 @@ function createCompiler() {
 
                     for (const v of variants) {
                         if (files[v]) {
-                            // addLog('info', `Найден файл для модуля: ${v}`)
-
                             return files[v]
                         }
                     }
-                    // addLog('error', `Файл не найден: ${url}`)
                     throw new Error(`Файл не найден: ${url}`)
                 },
 
@@ -187,39 +219,29 @@ function createCompiler() {
 
             const mod = await loadModule('dynamic.vue', options)
             let component = mod.default || mod
-            // addLog('success', `Модуль загружен, экспорты: ${Object.keys(mod)}`)
 
-            // Подмешиваем реальные компоненты (не промисы!)
             component.components = {
                 ...(component.components || {}),
                 ...componentRegistry
             }
 
-            const windowManager = useWindowManager()
-            const moduleStore = useModulesStore()
-
-            const injectedGlobals = {
-                useNotifications: () => useNotifications(),
-                useLogger: (s?: string) => useLogger(s),
-                useWindowManager: () => windowManager,
-                useModulesStore: () => moduleStore
-            }
-
             const originalSetup = component.setup
             if (originalSetup) {
                 component.setup = (props: any, ctx: any) => {
-                    Object.assign(globalThis, injectedGlobals)
+                    Object.assign(globalThis, globalInjections)
                     return originalSetup(props, ctx)
                 }
             } else {
-                Object.assign(globalThis, injectedGlobals)
+                Object.assign(globalThis, globalInjections)
             }
 
             activeKey.value++
             compiledComponent.value = markRaw(component)
 
+            addLog('success', `Компиляция закончена`)
+
         } catch (e: any) {
-            // addLog('error', `Ошибка компилятора: ${e}`)
+            addLog('error', `Ошибка компилятора - ${e}`)
             compileError.value = e.message || 'Ошибка компиляции модуля'
             compiledComponent.value = null
         } finally {
@@ -233,6 +255,7 @@ function createCompiler() {
     }
 
     const reset = () => {
+        addLog('warning', 'Перезагрузка компилятора')
         compiledComponent.value = null
         compileError.value = null
         activeKey.value++

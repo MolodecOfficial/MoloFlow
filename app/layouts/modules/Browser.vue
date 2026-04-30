@@ -19,6 +19,7 @@ const sortBy = ref('downloads')
 const page = ref(1)
 const totalPages = ref(1)
 const limit = 12
+const hasEditorAccess = ref(false)  // ← переименовал для ясности
 
 const formats = [
   {label: 'Javascript', value: 'js'},
@@ -94,42 +95,93 @@ const isLoadingModule = (moduleId) => {
   return loadingImportMap.value.get(moduleId) || false
 }
 
+// Открыть редактор модулей
+const openModuleEditor = () => {
+  openWindow(
+      'modules',
+      'creature',
+      null,
+      { width: 1200, height: 800, minWidth: 800, minHeight: 600 },
+      false,
+      'modules/creature'
+  )
+}
+
 // Режим редактора с передачей инпутов
 const editorMode = () => {
   openWindow(
       'settings',
       'confirm',
       null,
-      {width: 450, height: 300, minWidth: 350, minHeight: 220},
+      { width: 450, height: 300, minWidth: 350, minHeight: 220 },
       true,
       null,
       null,
       {
-        type: 'module',
-        onConfirm: async (accessCode) => {
-          // Проверка кода доступа
+        type: 'access',
+        message: 'Введите код доступа к режиму редактора',
+        fields: [
+          {
+            key: 'accessCode',
+            type: 'text',
+            label: 'Код доступа',
+            placeholder: 'Введите код доступа',
+            required: true
+          }
+        ],
+        onConfirm: async (payload) => {
+          // Получаем код доступа (поддерживаем оба формата)
+          const accessCode = typeof payload === 'string' ? payload : payload?.accessCode
+
+          addLog('info', `Проверка кода доступа...`)
+
           if (accessCode === 'admin123') {
-            addNotification('info', 'Доступ к редактору разрешён')
+            // Сохраняем доступ в localStorage
+            localStorage.setItem('editor_access', accessCode)
+            hasEditorAccess.value = true
+            addNotification('success', 'Доступ к редактору разрешён')
+            addLog('success', 'Режим редактора активирован')
+
+            // Открываем редактор
+            openModuleEditor()
           } else {
+            addLog('warning', `Неверный код доступа: ${accessCode}`)
             addNotification('error', 'Неверный код доступа')
             throw new Error('Неверный код доступа')
           }
-        },
-        message: 'Введите код доступа к режиму редактора',
-        inputPlaceholder: 'Введите код доступа',
-        inputType: 'password'
+        }
       }
   )
 }
 
+// Выключить режим редактора
+const disableEditor = () => {
+  localStorage.removeItem('editor_access')
+  hasEditorAccess.value = false
+  addLog('info', 'Режим редактора деактивирован')
+  addNotification('info', 'Режим редактора выключен')
+}
+
+// Проверить доступ при монтировании
 onMounted(() => {
   const entData = localStorage.getItem('currentEnterprise')
   if (entData) {
     try {
       currentEnterprise.value = JSON.parse(entData)
     } catch (e) {
+      console.error('Error parsing enterprise data', e)
     }
   }
+
+  // Проверяем доступ к редактору
+  const savedAccess = localStorage.getItem('editor_access')
+  if (savedAccess === 'admin123') {
+    hasEditorAccess.value = true
+    addLog('success', 'Доступ к редактированию разрешён')
+  } else {
+    addLog('warning', 'Нет доступа к редактированию модулей в браузере...')
+  }
+
   fetchModules()
 })
 </script>
@@ -166,7 +218,21 @@ onMounted(() => {
       />
     </aside>
 
-    <button class="action-btn confirm editor" @click="editorMode">Режим редактора</button>
+    <!-- Кнопка редактора -->
+    <div class="editor-control">
+      <button
+          v-if="!hasEditorAccess"
+          class="action-btn confirm editor-btn"
+          @click="editorMode"
+      >
+        Режим редактора
+      </button>
+      <div v-else class="editor-active">
+        <span class="editor-badge">Режим редактора активен</span>
+        <button class="action-btn close" @click="disableEditor">Выключить</button>
+        <button class="action-btn confirm" @click="openModuleEditor">Создать модуль</button>
+      </div>
+    </div>
 
     <!-- Правая часть с модулями -->
     <div class="modules-content">
@@ -178,13 +244,23 @@ onMounted(() => {
 
       <div v-else class="modules-grid">
         <div v-for="mod in modules" :key="mod._id" class="module-card">
-          <div class="card-logo">
-            <img
-                :src="mod.previewImage || '/default-module.png'"
-                :alt="mod.name"
-                class="logo"
-            />
-          </div>
+          <section class="card-logo-import">
+            <div class="card-logo">
+              <img
+                  :src="mod.previewImage || '/default-module.png'"
+                  :alt="mod.name"
+                  class="logo"
+              />
+            </div>
+            <button
+                class="action-btn confirm importMod"
+                @click="importModule(mod)"
+                :disabled="isLoadingModule(mod._id)"
+            >
+              <MoloLoaders btnLoader v-if="isLoadingModule(mod._id)"/>
+              <span v-else>Импорт</span>
+            </button>
+          </section>
 
           <section class="card-info">
             <div class="card-header">
@@ -210,26 +286,20 @@ onMounted(() => {
             <div class="tags">
               <span v-for="tag in mod.tags" :key="tag" class="tag">{{ tag }}</span>
             </div>
-            <details class="advanced-settings">
-              <summary>Установленные модули</summary>
-              <section class="files">
-                <span v-for="file in mod.files" :key="file" class="file">
-                  <img :src="vueIcon" class="file-icon" alt="" v-if="file.format == 'vue'">
-                  <img :src="tsIcon" class="file-icon" alt="" v-else-if="file.format == 'ts'">
-                  <img :src="jsIcon" class="file-icon" alt="" v-else>
-                  <code>{{ file.name }}</code>
-              </span>
-              </section>
 
-            </details>
-            <button
-                class="action-btn confirm"
-                @click="importModule(mod)"
-                :disabled="isLoadingModule(mod._id)"
-            >
-              <MoloLoaders btnLoader v-if="isLoadingModule(mod._id)"/>
-              <span v-else>Импортировать в своё предприятие</span>
-            </button>
+            <section class="import">
+              <details class="advanced-settings" v-if="mod.files?.length">
+                <summary>Файлы модуля</summary>
+                <section class="files">
+                  <span v-for="file in mod.files" :key="file.path" class="file">
+                    <img :src="vueIcon" class="file-icon" alt="" v-if="file.format == 'vue'">
+                    <img :src="tsIcon" class="file-icon" alt="" v-else-if="file.format == 'ts'">
+                    <img :src="jsIcon" class="file-icon" alt="" v-else>
+                    <code>{{ file.name }}</code>
+                  </span>
+                </section>
+              </details>
+            </section>
           </section>
         </div>
       </div>
@@ -259,11 +329,13 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 20px;
-  position: sticky;
-  top: 20px;
+  padding: 10px 20px;
   align-self: flex-start;
   max-height: calc(100vh - 40px);
   overflow-y: auto;
+  border-radius: 10px;
+  background: var(--half_opacity_bg);
+  border: 1px solid var(--half_opacity_border);
 }
 
 .modules-content {
@@ -283,10 +355,10 @@ onMounted(() => {
 .module-card {
   display: flex;
   flex-direction: row;
-  background: #1e1e1e;
+  background: var(--half_opacity_bg);
   border-radius: 12px;
   padding: 16px;
-  border: 1px solid #2c2c2c;
+  border: 1px solid var(--half_opacity_border);
   transition: all 0.2s ease;
   gap: 16px;
   min-width: 0;
@@ -307,6 +379,12 @@ onMounted(() => {
   background: transparent;
   border-radius: 12px;
   overflow: hidden;
+}
+
+.card-logo-import {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
 }
 
 .logo {
@@ -412,31 +490,51 @@ onMounted(() => {
 }
 
 .file-icon {
-  display: flex;
-  flex-direction: row;
   width: 20px;
 }
 
-.action-btn {
+.import {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Контрол редактора */
+.editor-control {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+}
+
+.editor-btn {
+  background: #3a6ea5;
+  color: white;
+  padding: 10px 20px;
+  font-size: 14px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+}
+
+.editor-btn:hover {
+  background: #4a7eb5;
+  transform: scale(1.02);
+}
+
+.editor-active {
+  background: var(--half_opacity_bg);
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  backdrop-filter: blur(10px);
   padding: 8px 16px;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  font-weight: 500;
-  transition: all 0.2s;
-  font-size: 0.85rem;
+  border-radius: 10px;
+  border: 1px solid var(--half_opacity_border);
 }
 
-.action-btn.confirm.editor {
-  position: absolute;
-  top: 90%;
-  transform: translateY(0%);
-  width: 270px;
-}
-
-.action-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+.editor-badge {
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .pagination {
@@ -477,9 +575,10 @@ details.advanced-settings {
   border: 1px solid var(--half_opacity_border);
   overflow: hidden;
   transition: all 0.2s ease;
-  &:hover {
-    border: 1px solid var(--borber-color_main);
-  }
+}
+
+details.advanced-settings:hover {
+  border: 1px solid var(--borber-color_main);
 }
 
 details.advanced-settings[open] {
@@ -487,7 +586,6 @@ details.advanced-settings[open] {
   border-color: #3a6ea5;
 }
 
-/* Стилизация summary — убираем стандартный маркер, добавляем свой */
 details.advanced-settings > summary {
   display: flex;
   align-items: center;
@@ -496,13 +594,13 @@ details.advanced-settings > summary {
   font-weight: 600;
   font-size: 15px;
   cursor: pointer;
-  list-style: none; /* убираем треугольник в WebKit */
+  list-style: none;
   user-select: none;
   transition: background 0.2s;
 }
 
 details.advanced-settings > summary::-webkit-details-marker {
-  display: none; /* убираем треугольник в Chrome/Safari */
+  display: none;
 }
 
 details.advanced-settings > summary::before {
@@ -518,7 +616,6 @@ details.advanced-settings[open] > summary::before {
   transform: rotate(90deg);
 }
 
-/* Внутреннее содержимое — плавное появление */
 details.advanced-settings > div,
 details.advanced-settings > .details-content {
   padding: 0 18px 18px 18px;
@@ -533,24 +630,6 @@ details.advanced-settings > .details-content {
   to {
     opacity: 1;
     transform: translateY(0);
-  }
-}
-
-/* Альтернативный способ плавного разворота через grid (если хотите анимацию высоты) */
-details.advanced-settings {
-  transition: all 0.3s ease;
-}
-
-details.advanced-settings .dep-tabs,
-details.advanced-settings .dep-list,
-details.advanced-settings .add-dep-form,
-details.advanced-settings .form-row {
-  margin-top: 12px;
-}
-
-@keyframes spin {
-  100% {
-    transform: rotate(360deg);
   }
 }
 
@@ -609,23 +688,9 @@ details.advanced-settings .form-row {
     white-space: normal;
     word-break: break-word;
   }
-}
 
-@media (max-width: 480px) {
-  .filters-panel {
-    flex-direction: column;
-  }
-
-  .filters-panel > * {
-    min-width: auto;
-  }
-
-  .modules-grid {
-    gap: 16px;
-  }
-
-  .module-card {
-    padding: 12px;
+  .editor-control {
+    bottom: 80px;
   }
 }
 </style>

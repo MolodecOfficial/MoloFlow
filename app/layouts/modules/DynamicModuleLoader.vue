@@ -17,7 +17,8 @@ const {
   compileError,
   reset,
   activeKey
-} = useModuleCompiler() // 💥 FIX
+} = useModuleCompiler()
+const { addLog } = useLogger('Динамический загрузчик')
 
 const error = ref<Error | null>(null)
 
@@ -26,7 +27,7 @@ async function loadModule() {
     error.value = new Error('Нет кода')
     return
   }
-
+  addLog('info', 'Начинаю загрузку модуля...')
   await compileModule(
       props.moduleData.code,
       props.additionalFiles || []
@@ -34,7 +35,11 @@ async function loadModule() {
 }
 
 watch(compiledComponent, (c) => {
-  if (c) emit('loaded', true)
+  if (c) {
+    addLog('success', 'Загрузка модуля закончена')
+
+    emit('loaded', true)
+  }
 })
 
 watch(compileError, (e) => {
@@ -45,23 +50,22 @@ watch(compileError, (e) => {
 })
 
 onMounted(loadModule)
-onUnmounted(reset)
+onUnmounted(() => {
+  addLog('error', 'Загрузчик размонтируется, перезагружаю компилятор...')
+  reset()
+})
 </script>
 
 <template>
   <div class="dynamic-module-loader">
-
     <div v-if="error">{{ error.message }}</div>
-
     <div v-else-if="compiling">loading...</div>
-
     <component
         v-else-if="compiledComponent"
         :is="compiledComponent"
         :key="activeKey"
         @module-event="(e:any)=>emit('moduleEvent', e)"
     />
-
   </div>
 </template>
 
@@ -70,49 +74,5 @@ onUnmounted(reset)
   width: 100%;
   height: 100%;
   min-height: 200px;
-}
-
-.module-loading {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 16px;
-  padding: 40px;
-  color: #888;
-}
-
-.module-error {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 16px;
-  padding: 40px;
-  color: #ef4444;
-  background: rgba(239, 68, 68, 0.1);
-  border-radius: 8px;
-}
-
-.module-error button {
-  margin-top: 8px;
-  padding: 4px 12px;
-  cursor: pointer;
-  background: #3a6ea5;
-  color: white;
-  border: none;
-  border-radius: 4px;
-}
-
-.modern-loader {
-  width: 40px;
-  height: 40px;
-  border: 3px solid #3c3c3c;
-  border-top-color: #3a6ea5;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
 }
 </style>

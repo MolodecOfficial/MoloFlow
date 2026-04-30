@@ -727,14 +727,11 @@ watch(newFilePath, (val) => {
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
 watch(() => formData.value.code, (code) => {
   if (!previewWindowId.value) return
-  if (debounceTimer) clearTimeout(debounceTimer)
-  debounceTimer = setTimeout(() => {
-    updateWindowData('modules', previewWindowId.value!, {
-      moduleName: formData.value.name,
-      code,
-      isEditing: isEditing.value
-    })
-  }, 300)
+  updateWindowData('modules', previewWindowId.value!, {
+    moduleName: formData.value.name,
+    code,
+    isEditing: isEditing.value
+  })
 })
 
 watch(showDocumentation, async () => {
@@ -1286,6 +1283,8 @@ onUnmounted(() => {
   & .file-logo {
     display: flex;
     gap: 10px;
+    text-align: center;
+    align-items: center;
   }
 }
 
