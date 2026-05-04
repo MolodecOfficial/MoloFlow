@@ -9,8 +9,6 @@ export default defineEventHandler(async (event) => {
             match?.[1] ||
             (getQuery(event).enterpriseId as string);
 
-        console.log('[GET Modules] enterpriseId:', enterpriseId);
-
         if (!enterpriseId) {
             throw createError({
                 statusCode: 400,

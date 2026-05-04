@@ -6,6 +6,7 @@ const props = defineProps<{
   moduleData?: any
   moduleName?: string
   additionalFiles?: any[]
+  dependencies?: Record<string, string>
 }>()
 
 const emit = defineEmits(['loaded', 'error', 'moduleEvent'])
@@ -30,7 +31,8 @@ async function loadModule() {
   addLog('info', 'Начинаю загрузку модуля...')
   await compileModule(
       props.moduleData.code,
-      props.additionalFiles || []
+      props.additionalFiles || [],
+      props.dependencies || {}
   )
 }
 

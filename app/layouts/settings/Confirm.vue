@@ -24,8 +24,8 @@ const props = defineProps<{
 
 const emit = defineEmits(['close'])
 
-const { addNotification } = useNotifications()
-const { addLog } = useLogger()
+const { addNotification } = useNotifications('Подтверждение')
+const { addLog } = useLogger('Подтверждение')
 
 const isLoading = ref(false)
 
@@ -88,7 +88,7 @@ const handleConfirm = async () => {
       payload[field.key] = extractValue(payload[field.key], field.optionValue)
     }
   }
-  addLog('success', `Действие выполнено ${payload}`)
+  addLog('success', `Действие подтверждено`)
 
   isLoading.value = true
   try {

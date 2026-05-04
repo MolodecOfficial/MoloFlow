@@ -21,6 +21,9 @@ const totalPages = ref(1)
 const limit = 12
 const hasEditorAccess = ref(false)  // ← переименовал для ясности
 
+const activeTooltip = ref(null)
+
+
 const formats = [
   {label: 'Javascript', value: 'js'},
   {label: 'TypeScript', value: 'ts'},
@@ -34,6 +37,18 @@ const sorts = [
 ]
 
 const currentEnterprise = ref(null)
+
+
+const showTooltip = (moduleId) => {
+  activeTooltip.value = moduleId
+  // Автоматически скрыть через 3 секунды
+  setTimeout(() => {
+    if (activeTooltip.value === moduleId) {
+      activeTooltip.value = null
+    }
+  }, 3000)
+}
+
 
 const fetchModules = async () => {
   loading.value = true
@@ -222,7 +237,7 @@ onMounted(() => {
     <div class="editor-control">
       <button
           v-if="!hasEditorAccess"
-          class="action-btn confirm editor-btn"
+          class="action-btn"
           @click="editorMode"
       >
         Режим редактора
@@ -252,15 +267,44 @@ onMounted(() => {
                   class="logo"
               />
             </div>
-            <button
-                class="action-btn confirm importMod"
-                @click="importModule(mod)"
-                :disabled="isLoadingModule(mod._id)"
-            >
-              <MoloLoaders btnLoader v-if="isLoadingModule(mod._id)"/>
-              <span v-else>Импорт</span>
-            </button>
-          </section>
+            <section class="buttons-active">
+              <div class="files-tooltip-container">
+                <button
+                    v-if="mod.files?.length"
+                    class="action-btn confirm"
+                    @click="showTooltip(mod._id)"
+                >
+                  📁
+                </button>
+
+                <Transition name="tooltip">
+                  <div v-if="activeTooltip === mod._id" class="files-tooltip">
+                    <div class="tooltip-content">
+                      <div v-for="file in mod.files" :key="file.path" class="tooltip-file">
+                        <img :src="vueIcon" class="file-icon" alt="" v-if="file.format == 'vue'">
+                        <img :src="tsIcon" class="file-icon" alt="" v-else-if="file.format == 'ts'">
+                        <img :src="jsIcon" class="file-icon" alt="" v-else>
+                        <code>{{ file.name }}</code>
+                      </div>
+                    </div>
+                  </div>
+                </Transition>
+              </div>
+
+              <button
+                  class="action-btn confirm importMod"
+                  @click="importModule(mod)"
+                  :disabled="isLoadingModule(mod._id)"
+              >
+                <MoloLoaders btnLoader v-if="isLoadingModule(mod._id)"/>
+                <span v-else>Импорт</span>
+              </button>
+
+            </section>
+
+
+            </section>
+
 
           <section class="card-info">
             <div class="card-header">
@@ -277,7 +321,7 @@ onMounted(() => {
             </div>
 
             <p class="description">{{ mod.description || 'Нет описания' }}</p>
-
+            <hr>
             <div class="stats">
               <span>⬇️ {{ mod.stats?.downloads || 0 }}</span>
               <span>⭐ {{ mod.stats?.ratings?.average || 0 }} ({{ mod.stats?.ratings?.count || 0 }})</span>
@@ -286,20 +330,6 @@ onMounted(() => {
             <div class="tags">
               <span v-for="tag in mod.tags" :key="tag" class="tag">{{ tag }}</span>
             </div>
-
-            <section class="import">
-              <details class="advanced-settings" v-if="mod.files?.length">
-                <summary>Файлы модуля</summary>
-                <section class="files">
-                  <span v-for="file in mod.files" :key="file.path" class="file">
-                    <img :src="vueIcon" class="file-icon" alt="" v-if="file.format == 'vue'">
-                    <img :src="tsIcon" class="file-icon" alt="" v-else-if="file.format == 'ts'">
-                    <img :src="jsIcon" class="file-icon" alt="" v-else>
-                    <code>{{ file.name }}</code>
-                  </span>
-                </section>
-              </details>
-            </section>
           </section>
         </div>
       </div>
@@ -353,6 +383,7 @@ onMounted(() => {
 }
 
 .module-card {
+  position: relative;
   display: flex;
   flex-direction: row;
   background: var(--half_opacity_bg);
@@ -376,15 +407,17 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: transparent;
   border-radius: 12px;
   overflow: hidden;
+  background: #1e1e1e;
+  border: 1px solid var(--half_opacity_border);
 }
 
 .card-logo-import {
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
 }
 
 .logo {
@@ -475,28 +508,51 @@ onMounted(() => {
   color: #ccc;
 }
 
-.files {
+.buttons-active {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  justify-content: center;
-  padding: 10px 15px;
+  align-items: start;
+  width: 100%;
 }
 
-.file {
+
+.files-tooltip {
+  position: absolute;
+  left: 70px;
+  z-index: 100;
+  min-width: 200px;
+}
+
+.tooltip-content {
+  background: #1e1e1e;
+  border: 1px solid var(--half_opacity_border);
+  border-radius: 8px;
+  padding: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.tooltip-file {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+  padding: 6px;
+  font-size: 0.8rem;
+}
+
+.tooltip-enter-active,
+.tooltip-leave-active {
+  transition: all 0.2s ease-in-out;
+}
+
+.tooltip-enter-from,
+.tooltip-leave-to {
+  opacity: 0;
+  transform: translateY(8px);
 }
 
 .file-icon {
   width: 20px;
-}
-
-.import {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
 }
 
 /* Контрол редактора */
@@ -506,21 +562,8 @@ onMounted(() => {
   left: 50%;
   transform: translateX(-50%);
   z-index: 100;
+  width: fit-content;
 }
-
-.editor-btn {
-  background: #3a6ea5;
-  color: white;
-  padding: 10px 20px;
-  font-size: 14px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
-}
-
-.editor-btn:hover {
-  background: #4a7eb5;
-  transform: scale(1.02);
-}
-
 .editor-active {
   background: var(--half_opacity_bg);
   display: flex;

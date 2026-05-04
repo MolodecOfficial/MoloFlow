@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 
-// Подсхема для файла зависимости
+// Единая подсхема для всех файлов модуля (и клиентских, и серверных)
 const moduleFileSchema = new mongoose.Schema({
     name: {
         type: String,
@@ -8,7 +8,7 @@ const moduleFileSchema = new mongoose.Schema({
     },
     path: {
         type: String,
-        required: true  // например: "components/Button.vue", "utils/api.ts"
+        required: true  // например: "components/Button.vue", "utils/api.ts", "server/ping.ts"
     },
     format: {
         type: String,
@@ -18,6 +18,10 @@ const moduleFileSchema = new mongoose.Schema({
     code: {
         type: String,
         default: ''
+    },
+    isServerFile: {
+        type: Boolean,
+        default: false  // true - серверный файл, false - клиентский
     },
     size: {
         type: Number,
@@ -75,10 +79,15 @@ const dynamicModuleSchema = new mongoose.Schema({
         default: 1
     },
 
-    // НОВОЕ: Файлы модуля (компоненты, утилиты и т.д.)
+    // Единый массив для всех файлов (клиентские + серверные)
     files: {
         type: [moduleFileSchema],
         default: []
+    },
+
+    hasServerCode: {
+        type: Boolean,
+        default: false
     },
 
     // Поля для глобального браузера
@@ -163,6 +172,8 @@ dynamicModuleSchema.index({ isOfficial: -1, 'stats.downloads': -1 });
 
 dynamicModuleSchema.pre('save', function(next) {
     this.updatedAt = new Date();
+    this.hasServerCode = this.files?.some((file: any) => file.isServerFile) || false;
+
     // Обновляем дату для каждого файла
     if (this.files) {
         this.files.forEach((file: any) => {
@@ -189,6 +200,16 @@ dynamicModuleSchema.methods.getDependenciesObject = function() {
     return deps;
 };
 
+// Получение только клиентских файлов
+dynamicModuleSchema.methods.getClientFiles = function() {
+    return (this.files || []).filter((file: any) => !file.isServerFile);
+};
+
+// Получение только серверных файлов
+dynamicModuleSchema.methods.getServerFiles = function() {
+    return (this.files || []).filter((file: any) => file.isServerFile);
+};
+
 // Метод для получения дерева файлов
 dynamicModuleSchema.methods.getFileTree = function() {
     const tree: any = {};
@@ -199,7 +220,8 @@ dynamicModuleSchema.methods.getFileTree = function() {
         path: `${this.fileName}.${this.format}`,
         format: this.format,
         code: this.code,
-        isMain: true
+        isMain: true,
+        isServerFile: false
     };
 
     tree[mainFile.path] = mainFile;
@@ -212,7 +234,8 @@ dynamicModuleSchema.methods.getFileTree = function() {
                 path: file.path,
                 format: file.format,
                 code: file.code,
-                isMain: false
+                isMain: false,
+                isServerFile: file.isServerFile
             };
         }
     }

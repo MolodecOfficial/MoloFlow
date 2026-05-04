@@ -20,8 +20,8 @@ const {
 
 // Сброс и загрузка при изменении кода или файлов
 watch(
-    () => [props.windowData?.code, props.windowData?.files],
-    async ([newCode, newFiles]) => {
+    () => [props.windowData?.code, props.windowData?.files, props.windowData?.dependencies],
+    async ([newCode, newFiles, newDeps]) => {
       if (!newCode) {
         loading.value = false
         return
@@ -34,7 +34,7 @@ watch(
       // Принудительно увеличиваем ключ, чтобы компонент пересоздался
       renderKey.value++
 
-      await compileModule(newCode as string, (newFiles as any[]) || [])
+      await compileModule(newCode as string, (newFiles as any[]) || [], newDeps || {})
       loading.value = false
     },
     { immediate: true, deep: true }

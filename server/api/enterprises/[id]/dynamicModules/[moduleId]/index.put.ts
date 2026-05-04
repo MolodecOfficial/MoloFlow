@@ -1,7 +1,6 @@
 import { DynamicModule } from '~~/server/models/dynamicModules.model';
 
 export default defineEventHandler(async (event) => {
-    // ПРАВИЛЬНО: получаем оба параметра из URL
     const enterpriseId = getRouterParam(event, 'id');        // enterpriseId
     const moduleId = getRouterParam(event, 'moduleId');      // moduleId
 

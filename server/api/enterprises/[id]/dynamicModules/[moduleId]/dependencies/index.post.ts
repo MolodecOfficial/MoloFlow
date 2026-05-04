@@ -2,7 +2,7 @@ import { DynamicModule } from '~~/server/models/dynamicModules.model';
 
 export default defineEventHandler(async (event) => {
     const moduleId = getRouterParam(event, 'moduleId');
-    const enterpriseId = getRouterParam(event, 'enterpriseId');
+    const enterpriseId = getRouterParam(event, 'id');
     const body = await readBody(event);
     const { action, packageName, version, packageType = 'dependencies' } = body;
 
@@ -17,7 +17,7 @@ export default defineEventHandler(async (event) => {
 
     const module = await DynamicModule.findOne({ _id: moduleId, enterpriseId });
     if (!module) {
-        throw createError({ statusCode: 404, message: 'Module not found' });
+        throw createError({ statusCode: 404, message: 'Модуль не найден' });
     }
 
     // Инициализируем Map если их нет
@@ -26,7 +26,7 @@ export default defineEventHandler(async (event) => {
 
     if (action === 'add') {
         if (!packageName) {
-            throw createError({ statusCode: 400, message: 'packageName is required' });
+            throw createError({ statusCode: 400, message: 'Имя зависиомсти обязательно' });
         }
 
         const targetMap = packageType === 'devDependencies' ? module.devDependencies : module.dependencies;
@@ -42,14 +42,14 @@ export default defineEventHandler(async (event) => {
         return {
             success: true,
             [packageType]: result,
-            message: `Package ${packageName} added successfully`
+            message: `Зависимость ${packageName} успешно добавлена`
         };
     }
 
     if (action === 'remove') {
         const targetMap = packageType === 'devDependencies' ? module.devDependencies : module.dependencies;
         if (!targetMap.has(packageName)) {
-            throw createError({ statusCode: 404, message: 'Package not found' });
+            throw createError({ statusCode: 404, message: 'Зависимость не найдена' });
         }
 
         targetMap.delete(packageName);
@@ -64,9 +64,9 @@ export default defineEventHandler(async (event) => {
         return {
             success: true,
             [packageType]: result,
-            message: `Package ${packageName} removed successfully`
+            message: `Зависимость ${packageName} удалена успешно`
         };
     }
 
-    throw createError({ statusCode: 400, message: 'Invalid action. Use "add" or "remove"' });
+    throw createError({ statusCode: 400, message: 'Непонятное действие. Используйте существующие.' });
 });

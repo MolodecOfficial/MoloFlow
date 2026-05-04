@@ -6,6 +6,7 @@ import logo from '~~/public/logo.ico'
 
 const name = ref('')
 const role = ref('')
+const enterpriseName = ref('')
 const isLoading = ref(true)
 
 const {
@@ -21,7 +22,12 @@ const {
 
 const userStore = useUserStore()
 const router = useRouter()
-const {notifications, removeNotification} = useNotifications()
+const {notifications, removeNotification} = useNotifications('Главная страница')
+const { addLog } = useLogger()
+
+useHead({
+  title: computed(() => `Предприятие - ${enterpriseName.value || 'Загрузка...'}`)
+})
 
 onMounted(() => {
   loadUserData()
@@ -35,19 +41,36 @@ const loadUserData = () => {
     userName = userStore.userName
     userRole = userStore.userRole
   } else {
+    const storageEnterprise = localStorage.getItem('currentEnterprise')
+    if (storageEnterprise) {
+      try {
+        const enterprise = JSON.parse(storageEnterprise)
+        enterpriseName.value = enterprise.enterpriseName || 'Без названия'
+      } catch (e) {
+        enterpriseName.value = 'Ошибка загрузки'
+      }
+    }
+
     const storageUser = localStorage.getItem('user')
     if (storageUser) {
-      const user = JSON.parse(storageUser)
-      userName = user.name || 'Гость'
-      userRole = user.role || 'Пользователь'
+      try {
+        const user = JSON.parse(storageUser)
+        userName = user.name || 'Гость'
+        userRole = user.role || 'Пользователь'
+      } catch (e) {
+        console.error('Ошибка парсинга user:', e)
+        userName = 'Гость'
+        userRole = 'Пользователь'
+      }
     }
   }
 
   name.value = userName
   role.value = userRole
-
-
   isLoading.value = false
+
+  // ✅ Логируем после загрузки данных
+  addLog('info', `Название предприятия - ${enterpriseName.value}`)
 }
 
 function deleteUser() {
@@ -56,10 +79,7 @@ function deleteUser() {
   localStorage.removeItem('enterprise_token')
   router.push('/')
 }
-
-
 </script>
-
 <template>
   <MoloGuard :allowedRoles="['Управляющий', 'Сотрудник', 'Пользователь']">
     <div class="enterprise-container">

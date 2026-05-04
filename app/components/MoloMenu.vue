@@ -202,8 +202,8 @@ const getLockMessage = () => {
 const getWindowSizeOptions = (itemId: string): WindowSizeOptions | undefined => {
   const presets: Record<string, WindowSizeOptions> = {
     login: { width: 400, height: 450, minWidth: 350, minHeight: 400 },
-    creature: { width: 800, height: 650, minWidth: 500, minHeight: 600 },
-    register: { width: 800, height: 650, minWidth: 500, minHeight: 600 },
+    creature: { width: 1000, height: 650, minWidth: 500, minHeight: 600 },
+    register: { width: 1000, height: 650, minWidth: 500, minHeight: 600 },
     notFound: { width: 700, height: 650, minWidth: 500, minHeight: 600 },
     browser: { width: 800, height: 650, minWidth: 500, minHeight: 600 },
     customisation: { width: 800, height: 650, minWidth: 500, minHeight: 600 },

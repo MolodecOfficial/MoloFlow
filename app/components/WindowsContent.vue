@@ -168,7 +168,8 @@ const componentProps = computed(() => {
       moduleName: props.windowData?.name || '',
       moduleData: props.windowData,
       enterpriseId: props.enterpriseId || getEnterpriseIdFromLocal(),
-      additionalFiles: moduleFiles.value      // ← ключевое: передаём файлы
+      additionalFiles: moduleFiles.value,
+      dependencies: props.windowData?.dependencies || {}
     }
   }
   return {

@@ -19,6 +19,7 @@ export default defineEventHandler(async (event) => {
         path: file.path,
         format: file.format,
         code: file.code || '',
+        isServerFile: file.isServerFile || false,
         createdAt: file.createdAt,
         updatedAt: file.updatedAt
     }));
