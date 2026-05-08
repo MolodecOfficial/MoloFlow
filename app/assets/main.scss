@@ -18,53 +18,19 @@ body {
 }
 
 :root {
-  --half_opacity_border_hover: #2196F3;
-  --half_opacity_border_disabled: #0d3f67;
-  --half_opacity_botton-border: rgba(255, 255, 255, 0.28);
-  --half_opacity_right-border: rgba(255, 255, 255, 0.1);
+  --half_opacity_border_disabled: rgba(94, 94, 94, 0.47);
+  --half_opacity_border_hover: rgba(255, 255, 255, 0.07);
   --half_opacity_border: rgba(255, 255, 255, 0.12);
   --half_opacity_bg: rgba(245, 245, 245, 0.03);
   --borber-color_main: #2196F3;
   --border-color_hover: #0f5abd;
   --border-color_disabled: #0e436b;
 }
-
-.action-btn {
-  padding: 6px 16px;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-weight: 600;
-  transition: all 0.2s;
-  background: #2c2c2c;
-  color: white;
-}
-
-.action-btn:hover:not(:disabled) {
-  background: #3c3c3c;
-}
-
 .action-btn:disabled {
   opacity: 0.5;
-  cursor: not-allowed;
 }
 
-.action-btn.confirm {
-  padding: 6px 16px;
-  background: var(--borber-color_main);
-  color: #020b18;
-  border: none;
-  border-radius: 4px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
-  &.action-btn:hover {
-    background: var(--border-color_hover);
-  }
-  &.action-btn:disabled {
-    background: var(--border-color_disabled);
-  }
-}
+
 
 .action-btn.danger {
   padding: 6px 16px;

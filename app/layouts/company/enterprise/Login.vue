@@ -109,23 +109,23 @@ async function deleteToken() {
         />
       </div>
       <hr>
-      <button
+      <MoloButton
           type="submit"
           class="login-btn"
           :disabled="loading"
       >
         <span v-if="!loading">Войти</span>
         <MoloLoaders btnLoader v-else/>
-      </button>
+      </MoloButton>
     </form>
-    <button
+    <MoloButton
         class="login-btn"
         @click="deleteToken"
         :disabled="deleting"
     >
       <span v-if="!deleting">Удалить токены</span>
       <MoloLoaders wndLoader v-else/>
-    </button>
+    </MoloButton>
   </div>
 </template>
 
@@ -158,26 +158,6 @@ label {
   color: rgba(255, 255, 255, 0.9);
 }
 
-input {
-  background-color: var(--half_opacity_bg);
-  border: 1px solid var(--half_opacity_border);
-  border-radius: 6px;
-  padding: 10px 12px;
-  color: white;
-  font-size: 0.95rem;
-  transition: all 0.2s;
-  outline: none;
-}
-
-input:focus {
-  border-color: #1eef6f;
-  box-shadow: 0 0 0 2px rgba(30, 239, 111, 0.2);
-}
-
-input::placeholder {
-  color: rgba(255, 255, 255, 0.3);
-}
-
 .login-btn {
   margin-top: 0.5rem;
   padding: 12px;
@@ -186,13 +166,13 @@ input::placeholder {
   font-weight: 600;
   cursor: pointer;
   border: none;
-  background: #1eef6f;
+  background: var(--borber-color_main);
   color: #020b18;
   transition: all 0.2s;
 }
 
 .login-btn:hover:not(:disabled) {
-  background: #15b050;
+  background: var(--border-color_hover);
 }
 
 .login-btn:disabled {

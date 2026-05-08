@@ -116,7 +116,7 @@ const openModuleEditor = () => {
       'modules',
       'creature',
       null,
-      { width: 1200, height: 800, minWidth: 800, minHeight: 600 },
+      {width: 1200, height: 800, minWidth: 800, minHeight: 600},
       false,
       'modules/creature'
   )
@@ -128,7 +128,7 @@ const editorMode = () => {
       'settings',
       'confirm',
       null,
-      { width: 450, height: 300, minWidth: 350, minHeight: 220 },
+      {width: 450, height: 300, minWidth: 350, minHeight: 220},
       true,
       null,
       null,
@@ -235,17 +235,17 @@ onMounted(() => {
 
     <!-- Кнопка редактора -->
     <div class="editor-control">
-      <button
+      <MoloButton
           v-if="!hasEditorAccess"
           class="action-btn"
           @click="editorMode"
       >
         Режим редактора
-      </button>
+      </MoloButton>
       <div v-else class="editor-active">
         <span class="editor-badge">Режим редактора активен</span>
-        <button class="action-btn close" @click="disableEditor">Выключить</button>
-        <button class="action-btn confirm" @click="openModuleEditor">Создать модуль</button>
+        <MoloButton class="close" @click="disableEditor">Выключить</MoloButton>
+        <MoloButton class="confirm" @click="openModuleEditor">Создать модуль</MoloButton>
       </div>
     </div>
 
@@ -269,13 +269,13 @@ onMounted(() => {
             </div>
             <section class="buttons-active">
               <div class="files-tooltip-container">
-                <button
+                <MoloButton
                     v-if="mod.files?.length"
                     class="action-btn confirm"
                     @click="showTooltip(mod._id)"
                 >
-                  📁
-                </button>
+                  Файлы
+                </MoloButton>
 
                 <Transition name="tooltip">
                   <div v-if="activeTooltip === mod._id" class="files-tooltip">
@@ -291,19 +291,16 @@ onMounted(() => {
                 </Transition>
               </div>
 
-              <button
+              <MoloButton
                   class="action-btn confirm importMod"
                   @click="importModule(mod)"
                   :disabled="isLoadingModule(mod._id)"
               >
                 <MoloLoaders btnLoader v-if="isLoadingModule(mod._id)"/>
                 <span v-else>Импорт</span>
-              </button>
-
+              </MoloButton>
             </section>
-
-
-            </section>
+          </section>
 
 
           <section class="card-info">
@@ -335,7 +332,7 @@ onMounted(() => {
       </div>
 
       <div class="pagination" v-if="totalPages > 1">
-        <button :disabled="page === 1" @click="changePage(page - 1)">←</button>
+        <MoloButton :disabled="page === 1" @click="changePage(page - 1)">←</MoloButton>
         <span>Страница {{ page }} из {{ totalPages }}</span>
         <button :disabled="page === totalPages" @click="changePage(page + 1)">→</button>
       </div>
@@ -564,6 +561,7 @@ onMounted(() => {
   z-index: 100;
   width: fit-content;
 }
+
 .editor-active {
   background: var(--half_opacity_bg);
   display: flex;

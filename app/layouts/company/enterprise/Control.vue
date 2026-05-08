@@ -389,34 +389,34 @@ onMounted(() => {
 
       <!-- Навигация по вкладкам -->
       <div class="tabs">
-        <button
+        <MoloButton
             class="tab-btn"
             :class="{ active: activeTab === 'overview' }"
             @click="activeTab = 'overview'"
         >
           Обзор
-        </button>
-        <button
+        </MoloButton>
+        <MoloButton
             class="tab-btn"
             :class="{ active: activeTab === 'points' }"
             @click="activeTab = 'points'"
         >
           Точки
-        </button>
-        <button
+        </MoloButton>
+        <MoloButton
             class="tab-btn"
             :class="{ active: activeTab === 'employees' }"
             @click="activeTab = 'employees'"
         >
           Сотрудники
-        </button>
-        <button
+        </MoloButton>
+        <MoloButton
             class="tab-btn"
             :class="{ active: activeTab === 'plans' }"
             @click="activeTab = 'plans'"
         >
           Планы и факты
-        </button>
+        </MoloButton>
       </div>
 
       <!-- Контент вкладок -->
@@ -460,9 +460,9 @@ onMounted(() => {
         <div v-if="activeTab === 'points'" class="tab-content">
           <div class="content-header">
             <h3>Управление точками</h3>
-            <button class="action-btn confirm" @click="createPoint">
+            <MoloButton class="confirm" @click="createPoint">
               + Добавить точку
-            </button>
+            </MoloButton>
           </div>
 
           <!-- Фильтры -->
@@ -533,12 +533,12 @@ onMounted(() => {
                 </td>
                 <td>{{ formatDate(point.openingDate) }}</td>
                 <td class="actions">
-                  <button class="icon-btn" @click="editPoint(point)" title="Редактировать">
+                  <MoloButton class="icon-btn" @click="editPoint(point)" title="Редактировать">
                     ✏️
-                  </button>
-                  <button class="icon-btn" @click="deletePoint(point)" title="Удалить">
+                  </MoloButton>
+                  <MoloButton class="icon-btn" @click="deletePoint(point)" title="Удалить">
                     🗑️
-                  </button>
+                  </MoloButton>
                 </td>
               </tr>
               </tbody>
@@ -550,9 +550,9 @@ onMounted(() => {
         <div v-if="activeTab === 'employees'" class="tab-content">
           <div class="content-header">
             <h3>Управление сотрудниками</h3>
-            <button class="action-btn confirm" @click="createEmployee">
+            <MoloButton class="confirm" @click="createEmployee">
               + Добавить сотрудника
-            </button>
+            </MoloButton>
           </div>
 
           <!-- Фильтры -->
@@ -616,12 +616,12 @@ onMounted(() => {
               </span>
                 </td>
                 <td class="actions">
-                  <button class="icon-btn" @click="editEmployee(emp)" title="Редактировать">
+                  <MoloButton class="icon-btn" @click="editEmployee(emp)" title="Редактировать">
                     ✏️
-                  </button>
-                  <button class="icon-btn" @click="deleteEmployee(emp)" title="Удалить">
+                  </MoloButton>
+                  <MoloButton class="icon-btn" @click="deleteEmployee(emp)" title="Удалить">
                     🗑️
-                  </button>
+                  </MoloButton>
                 </td>
               </tr>
               </tbody>
@@ -633,9 +633,9 @@ onMounted(() => {
         <div v-if="activeTab === 'plans'" class="tab-content">
           <div class="content-header">
             <h3>Планы и факты</h3>
-            <button class="action-btn confirm" @click="createPlan">
+            <MoloButton class="action-btn confirm" @click="createPlan">
               + Создать план
-            </button>
+            </MoloButton>
           </div>
 
           <!-- Сводка по планам -->
@@ -697,12 +697,12 @@ onMounted(() => {
                   </div>
                 </td>
                 <td class="actions">
-                  <button class="icon-btn" @click="editPlan(plan)" title="Редактировать">
+                  <MoloButton class="icon-btn" @click="editPlan(plan)" title="Редактировать">
                     ✏️
-                  </button>
-                  <button class="icon-btn" @click="deletePlan(plan)" title="Удалить">
+                  </MoloButton>
+                  <MoloButton class="icon-btn" @click="deletePlan(plan)" title="Удалить">
                     🗑️
-                  </button>
+                  </MoloButton>
                 </td>
               </tr>
               </tbody>
@@ -715,7 +715,7 @@ onMounted(() => {
     <div v-else class="not-authorized">
       <p>Вы не авторизованы в предприятии</p>
       <p>Пожалуйста,
-        <button class="login-btn" @click="notAuth">войдите</button>
+        <MoloButton class="confirm" @click="notAuth">войдите</MoloButton>
         сначала
       </p>
     </div>
@@ -741,22 +741,6 @@ h2 {
   background: rgba(255, 80, 80, 0.1);
   border-radius: 8px;
   border: 1px solid rgba(255, 80, 80, 0.3);
-}
-
-.login-btn {
-  margin-top: 0.5rem;
-  padding: 5px 10px;
-  border-radius: 6px;
-  font-weight: 600;
-  cursor: pointer;
-  border: none;
-  background: #1eef6f;
-  color: #020b18;
-  transition: all 0.2s;
-}
-
-.login-btn:hover:not(:disabled) {
-  background: #15b050;
 }
 
 .content {
@@ -816,47 +800,11 @@ h2 {
   color: #ff6b6b;
 }
 
-.data-table-wrapper {
-  overflow-x: auto;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-.data-table {
-  width: 100%;
-  border-collapse: collapse;
-  min-width: 800px;
-}
-
-.data-table th {
-  text-align: left;
-  padding: 14px 12px;
-  background: rgba(255, 255, 255, 0.03);
-  color: rgba(255, 255, 255, 0.8);
-  font-weight: 600;
-  font-size: 13px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  white-space: nowrap;
-}
-
-.data-table td {
-  padding: 12px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-  font-size: 13px;
-  color: rgba(255, 255, 255, 0.9);
-}
-
-.data-table tr:hover td {
-  background: rgba(30, 239, 111, 0.03);
-}
-
-/* Специфичные стили для разных типов данных */
 .point-name,
 .employee-name,
 .plan-point {
   font-weight: 600;
-  color: #1eef6f;
+  color: var(--borber-color_main);
 }
 
 .address {
@@ -869,8 +817,8 @@ h2 {
   display: inline-block;
   padding: 2px 8px;
   border-radius: 12px;
-  background: rgba(30, 239, 111, 0.1);
-  color: #1eef6f;
+  background: rgba(30, 96, 239, 0.1);
+  color: var(--borber-color_main);
   font-size: 11px;
   white-space: nowrap;
 }
@@ -937,7 +885,7 @@ h2 {
 }
 
 .icon-btn:hover {
-  background: rgba(30, 239, 111, 0.2);
+  background: rgba(30, 145, 239, 0.2);
   transform: scale(1.05);
 }
 
@@ -989,23 +937,6 @@ h2 {
   color: #ff6b6b;
 }
 
-/* Загрузка и пустые состояния */
-.loading, .empty-state {
-  text-align: center;
-  padding: 40px;
-  color: rgba(255, 255, 255, 0.5);
-}
-
-.loading-spinner {
-  width: 40px;
-  height: 40px;
-  border: 3px solid transparent;
-  border-top: 3px solid #38ef7d;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-  margin: 0 auto;
-}
-
 @keyframes spin {
   0% {
     transform: rotate(0deg);
@@ -1023,8 +954,8 @@ h2 {
 }
 
 .tab-btn {
-  background: rgba(56, 239, 125, 0.1);
-  border: 1px solid rgba(56, 239, 125, 0.3);
+  background: rgba(56, 163, 239, 0.1);
+  border: 1px solid rgba(56, 93, 239, 0.3);
   color: rgba(255, 255, 255, 0.9);
   padding: 6px 12px;
   border-radius: 4px;
@@ -1035,13 +966,13 @@ h2 {
 }
 
 .tab-btn:hover {
-  background: rgba(56, 239, 125, 0.2);
-  border-color: #38ef7d;
+  background: rgba(56, 93, 239, 0.2);
+  border-color: var(--borber-color_main);
 }
 
 .tab-btn.active {
-  color: #4f9d5a;
-  background: rgba(30, 239, 111, 0.1);
+  color: #6496ff;
+  background: rgba(30, 103, 239, 0.1);
 }
 
 .main_content {
@@ -1091,7 +1022,7 @@ h2 {
 .stat-main {
   font-size: 32px;
   font-weight: 600;
-  color: #1eef6f;
+  color: var(--borber-color_main);
   line-height: 1.2;
 }
 
@@ -1140,12 +1071,12 @@ h2 {
 }
 
 .table tr:hover td {
-  background: rgba(30, 239, 111, 0.03);
+  background: rgba(30, 58, 239, 0.03);
 }
 
 .point-name {
   font-weight: 600;
-  color: #1eef6f;
+  color: var(--borber-color_main);
 }
 
 .address {
@@ -1159,7 +1090,7 @@ h2 {
   padding: 2px 8px;
   border-radius: 12px;
   background: rgba(30, 239, 111, 0.1);
-  color: #1eef6f;
+  color: var(--borber-color_main);
   font-size: 11px;
   white-space: nowrap;
 }
@@ -1189,7 +1120,7 @@ h2 {
 }
 
 .icon-btn:hover {
-  background: rgba(30, 239, 111, 0.2);
+  background: rgba(30, 121, 239, 0.2);
   transform: scale(1.05);
 }
 
@@ -1239,10 +1170,6 @@ h2 {
 .status.уволен {
   background: rgba(255, 80, 80, 0.1);
   color: #ff6b6b;
-}
-
-.employees-table, .plans-table {
-  overflow-x: auto;
 }
 
 table {
@@ -1342,22 +1269,6 @@ tr:hover td {
   font-size: 10px;
   color: #020b18;
   font-weight: 600;
-}
-
-.loading, .empty-state {
-  text-align: center;
-  padding: 40px;
-  color: rgba(255, 255, 255, 0.5);
-}
-
-
-.loading-spinner {
-  width: 40px;
-  height: 40px;
-  border: 3px solid transparent;
-  border-top: 3px solid #38ef7d;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
 }
 
 @keyframes spin {

@@ -257,10 +257,10 @@ const resetForm = () => {
 
       <hr/>
 
-      <button type="submit" class="action-btn confirm" :disabled="loading">
+      <MoloButton type="submit" class="confirm" :disabled="loading">
         <div v-if="loading" class="modern-loader"></div>
         <span v-else>Создать предприятие</span>
-      </button>
+      </MoloButton>
     </form>
   </div>
 </template>

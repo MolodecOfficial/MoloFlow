@@ -461,7 +461,7 @@ onMounted(() => {
 
 .selected-module {
   font-size: 18px;
-  color: var(--half_opacity_border_hover);
+  color: var(--borber-color_main);
   font-weight: 500;
 }
 
@@ -487,11 +487,11 @@ onMounted(() => {
 
 .dropdown-trigger:hover {
   background-color: rgba(255, 255, 255, 0.15);
-  border-color: var(--half_opacity_border_hover);
+  border-color: var(--borber-color_main);
 }
 
 .dropdown-trigger.dropdown-open {
-  border-color: var(--half_opacity_border_hover);
+  border-color: var(--borber-color_main);
   box-shadow: 0 0 0 2px rgba(56, 114, 239, 0.2);
 }
 
@@ -520,7 +520,6 @@ onMounted(() => {
   margin-top: 4px;
   overflow: hidden;
   z-index: 2;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
 }
 
 .dropdown-item {
@@ -537,12 +536,12 @@ onMounted(() => {
 
 .dropdown-item:hover:not(.disabled) {
   background-color: rgba(56, 120, 239, 0.1);
-  color: var(--half_opacity_border_hover);
+  color: var(--borber-color_main);
 }
 
 .dropdown-item.selected {
   background-color: rgba(56, 129, 239, 0.15);
-  color: var(--half_opacity_border_hover);
+  color: var(--borber-color_main);
 }
 
 .dropdown-item.disabled {
@@ -671,7 +670,7 @@ option {
   display: block;
   transition: 0.3s ease;
   font-size: 12px;
-  color: var(--half_opacity_border_hover);
+  color: var(--borber-color_main);
 }
 
 .form__field:required, .form__field:invalid {
@@ -680,7 +679,7 @@ option {
 
 .back-to-login {
   background: transparent;
-  border: 1px solid var(--half_opacity_border);
+  border: 1px solid var(--borber-color_main);
   color: rgba(255, 255, 255, 0.7);
   padding: 8px;
   border-radius: 4px;
@@ -691,7 +690,7 @@ option {
 }
 
 .back-to-login:hover:not(:disabled) {
-  border-color: var(--half_opacity_border_hover);
+  border-color: var(--borber-color_main);
   color: white;
 }
 
@@ -750,7 +749,7 @@ option {
 }
 
 .login-btn:hover:not(:disabled) {
-  border-color: var(--half_opacity_border_hover);
+  border-color: var(--borber-color_main);
 }
 
 .login-btn:disabled {
@@ -840,7 +839,7 @@ option {
 }
 
 .back-to-login:hover:not(:disabled) {
-  border-color: var(--half_opacity_border_hover);
+  border-color: var(--borber-color_main);
   color: white;
 }
 

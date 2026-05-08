@@ -247,13 +247,13 @@ watch(() => newEmployee.value.pointId, (newPointId) => {
 
 <template>
   <div class="mode-selector">
-    <button
+    <MoloButton
         class="mode-btn"
         :class="{ active: addMode === 'new' }"
         @click="addMode = 'new'; clearSelectedUser()"
     >
       Новый пользователь
-    </button>
+    </MoloButton>
     <button
         class="mode-btn"
         :class="{ active: addMode === 'existing' }"
@@ -410,10 +410,10 @@ watch(() => newEmployee.value.pointId, (newPointId) => {
       </div>
     </div>
 
-    <button class="action-btn confirm" @click="addEmployee" :disabled="loading">
+    <MoloButton class="confirm" @click="addEmployee" :disabled="loading">
       <MoloLoaders btnLoader v-if="loading"/>
       <span v-else>Сохранить сотрудника</span>
-    </button>
+    </MoloButton>
   </div>
 </template>
 
@@ -450,14 +450,14 @@ watch(() => newEmployee.value.pointId, (newPointId) => {
 }
 
 .mode-btn:hover {
-  background: rgba(30, 239, 111, 0.1);
-  border-color: #1eef6f;
+  background: rgba(30, 128, 239, 0.1);
+  border-color: var(--borber-color_main);
 }
 
 .mode-btn.active {
-  background: #1eef6f;
+  background: var(--borber-color_main);
   color: #020b18;
-  border-color: #1eef6f;
+  border-color: var(--borber-color_main);
 }
 
 .user-search {
@@ -466,14 +466,14 @@ watch(() => newEmployee.value.pointId, (newPointId) => {
 }
 
 .edit-choice {
-  border: 1px solid #2e7247;
+  border: 1px solid var(--border-color_hover);
   border-radius: 4px;
   background-color: var(--half_opacity_bg);
   padding: 6px 12px;
   color: grey;
   transition: all 0.2s ease-in-out;
   &:hover {
-    border: 1px solid var(--half_opacity_border_hover);
+    border: 1px solid var(--border-color_hover);
     color: lightgrey;
   }
 }
@@ -519,12 +519,12 @@ watch(() => newEmployee.value.pointId, (newPointId) => {
 }
 
 .user-item:hover {
-  background: rgba(30, 239, 111, 0.1);
+  background: rgba(30, 128, 239, 0.1);
 }
 
 .user-item.selected {
-  background: rgba(30, 239, 111, 0.2);
-  border-left: 3px solid #1eef6f;
+  background: var(--border-color_hover);
+  border-left: 3px solid var(--borber-color_main);
 }
 
 .user-name {
@@ -542,8 +542,8 @@ watch(() => newEmployee.value.pointId, (newPointId) => {
 }
 
 .selected-user-info {
-  background: rgba(30, 239, 111, 0.05);
-  border: 1px solid rgba(30, 239, 111, 0.2);
+  background: rgba(30, 103, 239, 0.05);
+  border: 1px solid rgba(30, 145, 239, 0.2);
   border-radius: 4px;
   padding: 15px;
   margin-bottom: 15px;
@@ -551,7 +551,7 @@ watch(() => newEmployee.value.pointId, (newPointId) => {
 
 .selected-user-info h5 {
   margin: 0 0 10px 0;
-  color: #1eef6f;
+  color: var(--borber-color_main);
 }
 
 .selected-user-info p {

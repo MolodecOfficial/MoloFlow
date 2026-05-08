@@ -132,10 +132,10 @@ const handleCancel = () => emit('close')
   <hr />
 
   <div class="confirm-actions">
-    <button class="action-btn" @click="handleCancel">Отмена</button>
-    <button class="action-btn confirm" @click="handleConfirm" :disabled="isLoading">
+    <MoloButton class="action-btn" @click="handleCancel">Отмена</MoloButton>
+    <MoloButton class="confirm" @click="handleConfirm" :disabled="isLoading">
       {{ isLoading ? 'Выполнение...' : 'Подтвердить' }}
-    </button>
+    </MoloButton>
   </div>
 </template>
 

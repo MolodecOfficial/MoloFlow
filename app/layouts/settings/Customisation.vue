@@ -236,7 +236,7 @@ const previewStyle = computed(() => {
           <div class="demo-content">
             <p>Так будет выглядеть ваше окно</p>
             <p>Текст и элементы интерфейса</p>
-            <button class="demo-accent-btn">Кнопка</button>
+            <MoloButton class="confirm">Кнопка</MoloButton>
           </div>
         </div>
       </div>

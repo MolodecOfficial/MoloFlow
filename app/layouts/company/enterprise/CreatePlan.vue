@@ -258,10 +258,10 @@ onMounted(() => {
       </div>
     </div>
 
-    <button class="action-btn confirm" @click="addPlan">
+    <MoloButton class="confirm" @click="addPlan">
       <MoloLoaders btnLoader v-if="loading.create"/>
       <span v-else>Создать план</span>
-    </button>
+    </MoloButton>
 
     <div v-if="newPlan.metrics.revenue > 0 || newPlan.metrics.expenses > 0" class="preview-info">
       <p>Предварительный расчет:</p>

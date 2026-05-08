@@ -66,16 +66,16 @@ const activeSection = ref<string>('input')
         <h4>Содержание</h4>
       </div>
       <div class="nav-items">
-        <button
+        <MoloButton
             v-for="section in sections"
             :key="section.id"
-            class="nav-item"
+            class="confirm"
             :class="{ active: activeSection === section.id }"
             @click="activeSection = section.id"
         >
           <span class="nav-icon">{{ section.icon }}</span>
           <code>{{ section.title }}</code>
-        </button>
+        </MoloButton>
       </div>
     </div>
 

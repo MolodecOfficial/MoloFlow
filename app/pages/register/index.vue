@@ -386,7 +386,7 @@ async function registerUser() {
 }
 
 .back:hover {
-  color: var(--half_opacity_border_hover);
+  color: var(--borber-color_main);
 }
 
 body {

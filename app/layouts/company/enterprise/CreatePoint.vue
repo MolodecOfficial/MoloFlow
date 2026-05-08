@@ -172,13 +172,13 @@ async function addPoint() {
               v-model="newPosition"
               @keyup.enter="addPosition"
           />
-          <button type="button" class="add-btn" @click="addPosition">+ Добавить</button>
+          <MoloButton type="button" class="add-btn" @click="addPosition">+ Добавить</MoloButton>
         </div>
 
         <div v-if="newPoint.positions.length > 0" class="items-list">
           <div v-for="(position, idx) in newPoint.positions" :key="idx" class="item-tag">
             <span>{{ position }}</span>
-            <button type="button" class="remove-btn" @click="removePosition(idx)">×</button>
+            <MoloButton type="button" class="remove-btn" @click="removePosition(idx)">×</MoloButton>
           </div>
         </div>
         <div v-else class="empty-hint">Добавьте хотя бы одну должность</div>
@@ -198,13 +198,13 @@ async function addPoint() {
               v-model="newDepartment"
               @keyup.enter="addDepartment"
           />
-          <button type="button" class="add-btn" @click="addDepartment">+ Добавить</button>
+          <MoloButton type="button" class="add-btn" @click="addDepartment">+ Добавить</MoloButton>
         </div>
 
         <div v-if="newPoint.departments.length > 0" class="items-list">
           <div v-for="(dept, idx) in newPoint.departments" :key="idx" class="item-tag">
             <span>{{ dept }}</span>
-            <button type="button" class="remove-btn" @click="removeDepartment(idx)">×</button>
+            <MoloButton type="button" class="remove-btn" @click="removeDepartment(idx)">×</MoloButton>
           </div>
         </div>
         <div v-else class="empty-hint">Добавьте хотя бы один отдел</div>
@@ -264,10 +264,10 @@ async function addPoint() {
         </div>
       </div>
     </div>
-    <button class="action-btn confirm" @click="addPoint" :disabled="loading">
+    <MoloButton class="confirm" @click="addPoint" :disabled="loading">
       <MoloLoaders btnLoader v-if="loading"/>
       <span v-else>Сохранить точку</span>
-    </button>
+    </MoloButton>
   </div>
 </template>
 
@@ -300,8 +300,8 @@ async function addPoint() {
 }
 
 .address-preview {
-  background: rgba(30, 239, 111, 0.05);
-  border: 1px solid rgba(30, 239, 111, 0.2);
+  background: rgba(30, 103, 239, 0.05);
+  border: 1px solid rgba(30, 103, 239, 0.2);
   border-radius: 4px;
   padding: 10px;
   margin: 5px 0;
@@ -320,7 +320,7 @@ async function addPoint() {
 }
 
 .preview-value {
-  color: #1eef6f;
+  color: var(--borber-color_main);
 }
 
 .form-section h5 {
@@ -348,9 +348,9 @@ async function addPoint() {
 
 .add-btn {
   padding: 10px 20px;
-  background: rgba(30, 239, 111, 0.1);
-  border: 1px solid rgba(30, 239, 111, 0.3);
-  color: #1eef6f;
+  background: rgba(30, 121, 239, 0.1);
+  border: 1px solid var(--border-color_hover);
+  color: var(--borber-color_main);
   border-radius: 4px;
   cursor: pointer;
   font-size: 14px;
@@ -358,7 +358,7 @@ async function addPoint() {
 }
 
 .add-btn:hover {
-  background: rgba(30, 239, 111, 0.2);
+  background: rgba(30, 114, 239, 0.2);
 }
 
 .items-list {

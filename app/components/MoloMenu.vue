@@ -615,7 +615,7 @@ onUnmounted(() => {
 }
 
 .action-list:hover {
-  border-color: var(--half_opacity_border_hover);
+  border-color: var(--border-color_hover);
 }
 
 .action-list.locked {
@@ -654,7 +654,7 @@ onUnmounted(() => {
 
 .group-header:hover {
   background-color: rgba(56, 114, 239, 0.1);
-  color: var(--half_opacity_border_hover);
+  color: var(--border-color_hover);
 }
 
 .group-title {
@@ -666,7 +666,7 @@ onUnmounted(() => {
 }
 
 .group-header:hover .group-title {
-  color: var(--half_opacity_border_hover);
+  color: var(--border-color_hover);
 }
 
 .group-indicator {
@@ -675,7 +675,7 @@ onUnmounted(() => {
 }
 
 .menu-group:hover .group-indicator {
-  color: var(--half_opacity_border_hover);
+  color: var(--border-color_hover);
   transform: rotate(180deg);
 }
 
@@ -734,11 +734,11 @@ onUnmounted(() => {
 }
 
 .link.is-parent:hover {
-  color: var(--half_opacity_border_hover);
+  color: var(--border-color_hover);
 }
 
 .link.is-leaf:hover {
-  color: var(--half_opacity_border_hover);
+  color: var(--border-color_hover);
 }
 
 .item-title {
@@ -787,7 +787,7 @@ onUnmounted(() => {
 }
 
 .child-link:hover {
-  color: var(--half_opacity_border_hover);
+  color: var(--border-color_hover);
 }
 
 .empty-menu {
@@ -851,7 +851,7 @@ onUnmounted(() => {
 }
 
 .modules-list:hover {
-  border-color: var(--half_opacity_border_hover);
+  border-color: var(--border-color_hover);
 }
 
 .modules-list.locked {
@@ -879,7 +879,7 @@ onUnmounted(() => {
 }
 
 .restart-btn:hover {
-  color: var(--half_opacity_border_hover);
+  color: var(--border-color_hover);
   transform: rotate(-360deg);
 }
 
