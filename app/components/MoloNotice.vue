@@ -138,7 +138,7 @@ const getAccentColor = computed(() => {
 .notice {
   display: flex;
   align-items: center;
-  background: rgb(28, 28, 28);
+  background: var(--half_opacity_bg);
   backdrop-filter: blur(10px);
   padding: 16px;
   gap: 16px;

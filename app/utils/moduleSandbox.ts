@@ -1,151 +1,187 @@
-// server/utils/moduleSandbox.ts
-import { exec } from 'child_process';
-import { promisify } from 'util';
-import fs from 'fs/promises';
-import path from 'path';
-import { fileURLToPath } from 'url';
+// app/utils/moduleSandbox.ts
+import fs from 'fs/promises'
+import path from 'path'
+import { exec } from 'child_process'
+import { createError } from 'h3'
+import { DynamicModule } from '~~/server/models/dynamicModules.model'
 
-const execAsync = promisify(exec);
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const MODULES_ROOT = path.join(process.cwd(), '.data', 'isolated-modules');
+const ROOT = path.join(process.cwd(), '.data', 'isolated-modules')
 
-// Простой логгер для сервера (не используем useLogger)
-const serverLogger = {
-    info: (msg: string) => console.log(`[ModuleSandbox] ℹ️ ${msg}`),
-    error: (msg: string) => console.error(`[ModuleSandbox] ❌ ${msg}`),
-    success: (msg: string) => console.log(`[ModuleSandbox] ✅ ${msg}`)
-};
-
-async function ensureDirectories() {
-    await fs.mkdir(MODULES_ROOT, { recursive: true });
+async function ensureDir(dir: string) {
+    await fs.mkdir(dir, { recursive: true })
 }
 
 export class ModuleSandbox {
-    private moduleDir: string;
-    private nodeModulesDir: string;
-    private moduleId: string;
-    private enterpriseId: string;
-    private module: any;
+    private dir: string
+    private module: any
 
-    constructor(moduleId: string, enterpriseId: string) {
-        this.moduleId = moduleId;
-        this.enterpriseId = enterpriseId;
-        this.moduleDir = path.join(MODULES_ROOT, enterpriseId, moduleId);
-        this.nodeModulesDir = path.join(this.moduleDir, 'node_modules');
+    constructor(private moduleId: string, private enterpriseId: string) {
+        this.dir = path.join(ROOT, enterpriseId, moduleId)
     }
 
     async prepare() {
-        await ensureDirectories();
-        await fs.mkdir(this.moduleDir, { recursive: true });
-
-        // Динамический импорт модели (избегаем циклических зависимостей)
-        const { DynamicModule } = await import('~~/server/models/dynamicModules.model');
-        this.module = await DynamicModule.findById(this.moduleId);
-
-        if (!this.module) {
-            serverLogger.error(`Module ${this.moduleId} not found`);
-            throw new Error(`Module ${this.moduleId} not found`);
+        await ensureDir(this.dir)
+        this.module = await DynamicModule.findById(this.moduleId)
+        if (!this.module) throw new Error('Module not found')
+        await this.ensurePackageJson()
+        try {
+            await fs.access(path.join(this.dir, 'node_modules'))
+        } catch {
+            await this.installDependencies()
         }
-
-        return await this.installDependencies();
+        return this
     }
 
-    private async installDependencies() {
-        // Получаем зависимости из Map или обычного объекта
+    private async ensurePackageJson() {
         const deps = this.module.dependencies instanceof Map
             ? Object.fromEntries(this.module.dependencies)
-            : (this.module.dependencies || {});
+            : (this.module.dependencies || {})
 
-        const hasDeps = Object.keys(deps).length > 0;
-
-        const pkgJson = {
+        const pkg = {
             name: `module-${this.moduleId}`,
-            version: this.module.version || '1.0.0',
-            type: "module",
-            dependencies: deps,
-            devDependencies: this.module.devDependencies instanceof Map
-                ? Object.fromEntries(this.module.devDependencies)
-                : (this.module.devDependencies || {})
-        };
+            private: true,
+            dependencies: deps
+        }
+        await fs.writeFile(path.join(this.dir, 'package.json'), JSON.stringify(pkg, null, 2))
+    }
 
-        const pkgPath = path.join(this.moduleDir, 'package.json');
-        await fs.writeFile(pkgPath, JSON.stringify(pkgJson, null, 2));
+    async installDependencies() {
+        return new Promise<void>((resolve, reject) => {
+            exec('npm install --legacy-peer-deps', { cwd: this.dir }, (error, stdout, stderr) => {
+                if (error) {
+                    console.error(`npm install failed:`, stderr)
+                    reject(new Error(`Failed to install dependencies: ${stderr}`))
+                } else {
+                    console.log(`Dependencies installed for module ${this.moduleId}`)
+                    resolve()
+                }
+            })
+        })
+    }
 
-        const lockFile = path.join(this.moduleDir, '.installed');
-        const isInstalled = await fs.access(lockFile).then(() => true).catch(() => false);
+    async reinstallDependencies() {
+        // Полностью удаляем ВСЁ кроме package.json
+        const itemsToDelete = ['node_modules', 'package-lock.json', 'server', 'exec']
 
-        if (hasDeps && !isInstalled) {
-            serverLogger.info(`Installing dependencies for module ${this.moduleId}`);
-
+        for (const item of itemsToDelete) {
             try {
-                await execAsync(`npm install --omit=dev --ignore-scripts --no-audit --no-fund`, {
-                    cwd: this.moduleDir,
-                    env: { ...process.env, NODE_ENV: 'production' }
-                });
-
-                await fs.writeFile(lockFile, Date.now().toString());
-                serverLogger.success(`Dependencies installed for module ${this.moduleId}`);
-            } catch (error: any) {
-                serverLogger.error(`Failed to install dependencies: ${error.message}`);
-                throw new Error(`Failed to install dependencies: ${error.message}`);
+                await fs.rm(path.join(this.dir, item), { recursive: true, force: true })
+            } catch (e) {
+                // Игнорируем ошибки если папки нет
             }
         }
 
-        return this;
+        await this.installDependencies()
     }
 
-    async loadServerModule() {
-        if (!this.module.serverEntry) {
-            return null;
+    async executeFile(fileName: string, data: any = {}) {
+        const file = this.module.files?.find((f: any) =>
+                f.isServerFile && (
+                    f.name === fileName ||
+                    f.path === fileName ||
+                    f.name === `${fileName}.ts` ||
+                    f.name === `${fileName}.js`
+                )
+        )
+
+        if (!file) {
+            throw createError({ statusCode: 404, message: `Server file not found: ${fileName}` })
         }
 
-        const entryPath = path.join(this.moduleDir, this.module.serverEntry);
-        try {
-            await fs.access(entryPath);
+        const timestamp = Date.now()
+        const execDir = path.join(this.dir, 'exec', `run-${timestamp}`)
+        await ensureDir(execDir)
 
-            // Создаем песочницу для require
-            const self = this;
-            const sandboxRequire = function(modulePath: string) {
-                try {
-                    const moduleFullPath = require.resolve(modulePath, { paths: [self.nodeModulesDir] });
-                    return require(moduleFullPath);
-                } catch {
-                    return require(modulePath);
+        // Создаём package.json с "type": "module" для поддержки ESM
+        await fs.writeFile(
+            path.join(execDir, 'package.json'),
+            JSON.stringify({ type: 'module' })
+        )
+
+        // Используем .mjs расширение
+        const execFile = path.join(execDir, 'script.mjs')
+
+        // Проверяем, использует ли код import или require
+        const hasImports = file.code?.includes('import ')
+
+        let wrappedCode
+
+        if (hasImports) {
+            // ESM код - оставляем как есть
+            wrappedCode = `
+${file.code || ''}
+
+const context = ${JSON.stringify({ data })};
+
+if (typeof main === 'function') {
+  try {
+    const result = await main(context);
+    process.stdout.write(JSON.stringify({ success: true, result }));
+  } catch (error) {
+    process.stderr.write(error.message || 'Unknown error');
+    process.exit(1);
+  }
+} else {
+  process.stdout.write(JSON.stringify({ success: true, warning: 'No main function' }));
+}
+`
+        } else {
+            // CJS код с require
+            wrappedCode = `
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+
+${file.code || ''}
+
+const context = ${JSON.stringify({ data })};
+
+if (typeof main === 'function') {
+  try {
+    const result = await main(context);
+    process.stdout.write(JSON.stringify({ success: true, result }));
+  } catch (error) {
+    process.stderr.write(error.message || 'Unknown error');
+    process.exit(1);
+  }
+} else {
+  process.stdout.write(JSON.stringify({ success: true, warning: 'No main function' }));
+}
+`
+        }
+
+        await fs.writeFile(execFile, wrappedCode, 'utf-8')
+
+        return new Promise((resolve, reject) => {
+            exec(`node "${execFile}"`, {
+                cwd: execDir,
+                timeout: 30000,
+                env: {
+                    ...process.env,
+                    NODE_PATH: path.join(this.dir, 'node_modules')
                 }
-            };
+            }, async (error, stdout, stderr) => {
+                await fs.rm(execDir, { recursive: true, force: true }).catch(() => {})
 
-            const moduleContent = await fs.readFile(entryPath, 'utf-8');
-            const moduleExports = {};
-            const moduleWrapper = new Function('require', 'exports', 'module', '__dirname', '__filename', moduleContent);
-            moduleWrapper(sandboxRequire, moduleExports, { exports: moduleExports }, this.moduleDir, entryPath);
+                if (error || stderr) {
+                    const errMsg = stderr || error?.message || 'Unknown error'
+                    console.error('[ModuleSandbox] Error:', errMsg)
+                    reject(createError({ statusCode: 500, message: errMsg.trim() }))
+                    return
+                }
 
-            return moduleExports;
-        } catch (error) {
-            serverLogger.error(`Failed to load server entry: ${error}`);
-            return null;
-        }
-    }
-
-    async getClientBundleUrl() {
-        if (this.module && this.module.clientBundlePath) {
-            return `/api/modules/${this.moduleId}/client-bundle`;
-        }
-        return null;
-    }
-
-    async cleanup() {
-        serverLogger.info(`Cleanup for module ${this.moduleId}`);
+                try {
+                    const parsed = JSON.parse(stdout)
+                    resolve(parsed.result || parsed)
+                } catch {
+                    resolve({ success: true, output: stdout })
+                }
+            })
+        })
     }
 }
 
-const sandboxCache = new Map<string, ModuleSandbox>();
-
-export async function getModuleSandbox(moduleId: string, enterpriseId: string): Promise<ModuleSandbox> {
-    const cacheKey = `${enterpriseId}:${moduleId}`;
-    if (!sandboxCache.has(cacheKey)) {
-        const sandbox = new ModuleSandbox(moduleId, enterpriseId);
-        await sandbox.prepare();
-        sandboxCache.set(cacheKey, sandbox);
-    }
-    return sandboxCache.get(cacheKey)!;
+export async function getModuleSandbox(moduleId: string, enterpriseId: string) {
+    const sandbox = new ModuleSandbox(moduleId, enterpriseId)
+    await sandbox.prepare()
+    return sandbox
 }

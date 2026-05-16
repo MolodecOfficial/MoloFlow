@@ -1,48 +1,48 @@
+<!-- components/modules/preview.vue -->
 <script setup lang="ts">
-import { ref, watch, nextTick } from 'vue'
-import { useModuleCompiler } from '~/composables/useModuleCompiler'
+import {computed, ref, watch} from 'vue'
+import {useModuleCompiler} from '~/composables/useModuleCompiler'
 
-const props = defineProps<{
-  windowData?: any
-}>()
-
+const props = defineProps<{ windowData?: any }>()
 const loading = ref(true)
 const error = ref<string | null>(null)
 const currentModuleName = ref('')
 const renderKey = ref(0)
 
-const {
-  compiledComponent,
-  compiling,
-  compileError,
-  compileModule
-} = useModuleCompiler()
+const moduleId = computed(() => props.windowData?.moduleId || '')
+const {compiledComponent, compiling, compileError, compileModule, reset} = useModuleCompiler()
 
-// Сброс и загрузка при изменении кода или файлов
+async function rebuild() {
+  const code = props.windowData?.code
+  if (!code || !String(code).trim()) {
+    reset()
+    loading.value = false
+    error.value = 'Нет кода для предпросмотра'
+    return
+  }
+
+  loading.value = true
+  error.value = null
+  currentModuleName.value = props.windowData?.moduleName || 'Без названия'
+
+  await compileModule(
+      code,
+      props.windowData?.files || [],
+      props.windowData?.dependencies || {},
+      moduleId.value
+  )
+  renderKey.value++
+  loading.value = false
+}
+
 watch(
-    () => [props.windowData?.code, props.windowData?.files, props.windowData?.dependencies],
-    async ([newCode, newFiles, newDeps]) => {
-      if (!newCode) {
-        loading.value = false
-        return
-      }
-
-      loading.value = true
-      error.value = null
-      currentModuleName.value = props.windowData?.moduleName || 'Без названия'
-
-      // Принудительно увеличиваем ключ, чтобы компонент пересоздался
-      renderKey.value++
-
-      await compileModule(newCode as string, (newFiles as any[]) || [], newDeps || {})
-      loading.value = false
-    },
-    { immediate: true, deep: true }
+    () => [props.windowData?.code, props.windowData?.files, props.windowData?.dependencies, props.windowData?.moduleId],
+    rebuild,
+    {immediate: true, deep: true}
 )
 
-// Отслеживаем ошибки компиляции
 watch(compileError, (err) => {
-  if (err) error.value = err
+  error.value = err
 })
 </script>
 
@@ -52,34 +52,21 @@ watch(compileError, (err) => {
       <span class="module-name">{{ currentModuleName }}</span>
       <span v-if="compiling" class="compiling-dot"></span>
     </div>
-
     <div class="preview-content">
-      <div v-if="loading" class="loading-state">
-        <div class="spinner"></div>
-        <span>Загрузка модуля...</span>
-      </div>
-
-      <div v-else-if="compiling" class="compiling-state">
-        <div class="spinner"></div>
-        <span>Компиляция...</span>
-      </div>
-
+      <div v-if="loading">Загрузка...</div>
       <div v-else-if="error" class="error-state">
         <pre>{{ error }}</pre>
       </div>
-
       <div v-else-if="compiledComponent" class="component-wrapper">
-        <component :is="compiledComponent" :key="renderKey" />
+        <component :is="compiledComponent" :key="renderKey" :module-id="moduleId"/>
       </div>
-
-      <div v-else class="empty-state">
-        Нет модуля для отображения
-      </div>
+      <div v-else>Нет модуля для отображения</div>
     </div>
   </div>
 </template>
 
 <style scoped>
+/* стили без изменений */
 .preview-window {
   display: flex;
   flex-direction: column;
@@ -118,25 +105,6 @@ watch(compileError, (err) => {
   overflow: auto;
 }
 
-.loading-state, .compiling-state, .error-state, .empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  gap: 12px;
-  text-align: center;
-}
-
-.spinner {
-  width: 40px;
-  height: 40px;
-  border: 3px solid #3c3c3c;
-  border-top-color: #3a6ea5;
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-
 .error-state pre {
   background: #2a1e1e;
   color: #ffaaaa;
@@ -148,12 +116,12 @@ watch(compileError, (err) => {
   font-size: 12px;
 }
 
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
 @keyframes pulse {
-  0%, 100% { opacity: 0.4; }
-  50% { opacity: 1; }
+  0%, 100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 </style>

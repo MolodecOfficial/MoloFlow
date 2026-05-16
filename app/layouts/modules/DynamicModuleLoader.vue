@@ -1,12 +1,11 @@
+<!-- components/modules/DynamicModuleLoader.vue -->
 <script setup lang="ts">
 import { ref, watch, onMounted, onUnmounted } from 'vue'
 import { useModuleCompiler } from '~/composables/useModuleCompiler'
 
 const props = defineProps<{
   moduleData?: any
-  moduleName?: string
-  additionalFiles?: any[]
-  dependencies?: Record<string, string>
+  moduleId?: string
 }>()
 
 const emit = defineEmits(['loaded', 'error', 'moduleEvent'])
@@ -19,62 +18,64 @@ const {
   reset,
   activeKey
 } = useModuleCompiler()
-const { addLog } = useLogger('Динамический загрузчик')
 
-const error = ref<Error | null>(null)
+const error = ref<string | null>(null)
 
 async function loadModule() {
-  if (!props.moduleData?.code) {
-    error.value = new Error('Нет кода')
+  error.value = null
+  const data = props.moduleData || {}
+  const code = data.code || ''
+  const files = data.files || []
+  const deps = data.dependencies || {}
+
+  if (!code.trim()) {
+    error.value = 'Нет кода модуля'
+    emit('error', error.value)
     return
   }
-  addLog('info', 'Начинаю загрузку модуля...')
-  await compileModule(
-      props.moduleData.code,
-      props.additionalFiles || [],
-      props.dependencies || {}
-  )
+
+  await compileModule(code, files, deps, props.moduleId || data._id)
 }
 
-watch(compiledComponent, (c) => {
-  if (c) {
-    addLog('success', 'Загрузка модуля закончена')
+watch(
+    () => [props.moduleData?.code, props.moduleData?.files, props.moduleData?.dependencies, props.moduleId],
+    () => loadModule(),
+    { deep: true }
+)
 
-    emit('loaded', true)
-  }
+watch(compiledComponent, (comp) => {
+  if (comp) emit('loaded', true)
 })
 
-watch(compileError, (e) => {
-  if (e) {
-    error.value = new Error(e)
-    emit('error', e)
+watch(compileError, (err) => {
+  if (err) {
+    error.value = err
+    emit('error', err)
   }
 })
 
 onMounted(loadModule)
-onUnmounted(() => {
-  addLog('error', 'Загрузчик размонтируется, перезагружаю компилятор...')
-  reset()
-})
+onUnmounted(() => reset())
 </script>
 
 <template>
   <div class="dynamic-module-loader">
-    <div v-if="error">{{ error.message }}</div>
-    <div v-else-if="compiling">loading...</div>
+    <div v-if="error" class="error">{{ error }}</div>
+    <div v-else-if="compiling" class="loading">Загрузка модуля...</div>
     <component
         v-else-if="compiledComponent"
         :is="compiledComponent"
         :key="activeKey"
-        @module-event="(e:any)=>emit('moduleEvent', e)"
+        :module-id="props.moduleId"
+        @module-event="(e: any) => emit('moduleEvent', e)"
     />
+    <div v-else class="empty">Модуль не загружен</div>
   </div>
 </template>
 
 <style scoped>
-.dynamic-module-loader {
-  width: 100%;
-  height: 100%;
-  min-height: 200px;
-}
+.dynamic-module-loader { padding: 10px; }
+.error { color: red; }
+.loading { color: #aaa; }
+.empty { color: #666; }
 </style>

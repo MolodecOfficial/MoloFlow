@@ -1,4 +1,5 @@
-import { Menu } from '~~/server/models/menu.model';
+// server/api/menu/init.post.ts
+import {Menu} from '~~/server/models/menu.model';
 
 export default defineEventHandler(async (event) => {
     try {
@@ -12,9 +13,7 @@ export default defineEventHandler(async (event) => {
             };
         }
 
-        // Полное меню со всеми пунктами
         const fullMenu: any[] = [
-            // Группа "Панель"
             {
                 id: 'dashboard',
                 title: 'Панель',
@@ -26,6 +25,7 @@ export default defineEventHandler(async (event) => {
                     {
                         id: 'employee_tasks',
                         title: 'Мои задачи',
+                        type: 'item',
                         requiredRole: ['Сотрудник', 'Управляющий'],
                         isActive: true,
                         componentName: 'dashboardEmployeeTasks'
@@ -33,6 +33,7 @@ export default defineEventHandler(async (event) => {
                     {
                         id: 'employee_documents',
                         title: 'Документы',
+                        type: 'item',
                         requiredRole: ['Сотрудник', 'Управляющий'],
                         isActive: true,
                         componentName: 'dashboardEmployeeDocuments'
@@ -40,19 +41,19 @@ export default defineEventHandler(async (event) => {
                     {
                         id: 'employee_schedule',
                         title: 'График работы',
+                        type: 'item',
                         requiredRole: ['Сотрудник', 'Управляющий'],
-                        isActive: true,
+                        isActive: true
                     },
                     {
                         id: 'employee_reports',
                         title: 'Отчеты',
+                        type: 'item',
                         requiredRole: ['Сотрудник', 'Управляющий'],
-                        isActive: true,
-                    },
+                        isActive: true
+                    }
                 ]
             },
-
-            // Группа "СФД"
             {
                 id: 'sfd',
                 title: 'СФД',
@@ -64,19 +65,19 @@ export default defineEventHandler(async (event) => {
                     {
                         id: 'sfd1',
                         title: 'Движение Денежных Средств',
+                        type: 'item',
                         requiredRole: ['Сотрудник', 'Управляющий'],
-                        isActive: true,
+                        isActive: true
                     },
                     {
                         id: 'sfd2',
                         title: 'Инкассация',
+                        type: 'item',
                         requiredRole: ['Сотрудник', 'Управляющий'],
-                        isActive: true,
+                        isActive: true
                     }
                 ]
             },
-
-            // Группа "Настройки предприятия"
             {
                 id: 'company',
                 title: 'Настройки предприятия',
@@ -88,101 +89,101 @@ export default defineEventHandler(async (event) => {
                     {
                         id: 'enterprise',
                         title: 'Предприятие',
+                        type: 'item',
                         requiredRole: ['Управляющий'],
                         isActive: true,
                         items: [
                             {
                                 id: 'register',
                                 title: 'Регистрация предприятия',
+                                type: 'item',
                                 requiredRole: ['Управляющий'],
                                 isActive: true,
                                 componentName: 'Register',
-                                componentPath: 'company/enterprise/Register',
-                                parentId: 'enterprise'
+                                componentPath: 'company/enterprise/Register'
                             },
                             {
                                 id: 'login',
                                 title: 'Войти в предприятие',
+                                type: 'item',
                                 requiredRole: ['Управляющий'],
                                 isActive: true,
                                 componentName: 'Login',
-                                componentPath: 'company/enterprise/Login',
-                                parentId: 'enterprise'
+                                componentPath: 'company/enterprise/Login'
                             },
                             {
                                 id: 'control',
                                 title: 'Управление предприятием',
+                                type: 'item',
                                 requiredRole: ['Управляющий'],
                                 isActive: true,
                                 componentName: 'Control',
-                                componentPath: 'company/enterprise/Control',
-                                parentId: 'enterprise'
+                                componentPath: 'company/enterprise/Control'
                             },
                             {
                                 id: 'createPoint',
                                 title: 'Создание точки',
+                                type: 'item',
                                 requiredRole: ['Управляющий'],
                                 isActive: false,
                                 componentName: 'CreatePoint',
-                                componentPath: 'company/enterprise/CreatePoint',
-                                parentId: 'enterprise'
+                                componentPath: 'company/enterprise/CreatePoint'
                             },
                             {
                                 id: 'createEmployee',
                                 title: 'Создание сотрудника',
+                                type: 'item',
                                 requiredRole: ['Управляющий'],
                                 isActive: false,
                                 componentName: 'CreateEmployee',
-                                componentPath: 'company/enterprise/CreateEmployee',
-                                parentId: 'enterprise'
+                                componentPath: 'company/enterprise/CreateEmployee'
                             },
                             {
                                 id: 'createPlan',
                                 title: 'Создание плана',
+                                type: 'item',
                                 requiredRole: ['Управляющий'],
                                 isActive: false,
                                 componentName: 'CreatePlan',
-                                componentPath: 'company/enterprise/CreatePlan',
-                                parentId: 'enterprise'
+                                componentPath: 'company/enterprise/CreatePlan'
                             }
                         ]
                     },
                     {
                         id: 'points',
                         title: 'Точки',
+                        type: 'item',
                         requiredRole: ['Управляющий'],
                         isActive: true,
-                        componentName: 'Points',
                         items: [
                             {
                                 id: 'ProblemPoints',
                                 title: 'Проблемные точки',
+                                type: 'item',
                                 requiredRole: ['Управляющий'],
                                 isActive: true,
-                                componentName: 'ProblemPoints',
-                                parentId: 'points'
+                                componentName: 'ProblemPoints'
                             },
                             {
                                 id: 'ConfigurePoints',
                                 title: 'Конфигурация точки',
+                                type: 'item',
                                 requiredRole: ['Управляющий'],
                                 isActive: true,
-                                componentName: 'ConfigurePoints',
-                                parentId: 'points'
+                                componentName: 'ConfigurePoints'
                             }
                         ]
                     },
                     {
                         id: 'termsOfUse',
                         title: 'Условия пользования',
+                        type: 'item',
                         requiredRole: ['Управляющий'],
                         isActive: false,
                         componentName: 'TermsOfUse'
                     }
                 ]
             },
-
-            // Группа "Настройки"
             {
                 id: 'settings',
                 title: 'Настройки',
@@ -194,6 +195,7 @@ export default defineEventHandler(async (event) => {
                     {
                         id: 'customisation',
                         title: 'Кастомизация',
+                        type: 'item',
                         requiredRole: ['Сотрудник', 'Управляющий'],
                         isActive: true,
                         componentName: 'Customisation'
@@ -201,14 +203,13 @@ export default defineEventHandler(async (event) => {
                     {
                         id: 'confirm',
                         title: 'Подтверждение',
+                        type: 'item',
                         requiredRole: ['Сотрудник', 'Управляющий'],
                         isActive: false,
                         componentName: 'Confirm'
                     }
                 ]
             },
-
-            // Группа "Модули" (статические модули)
             {
                 id: 'modules',
                 title: 'Модули',
@@ -220,6 +221,7 @@ export default defineEventHandler(async (event) => {
                     {
                         id: 'creature',
                         title: 'Создание модуля',
+                        type: 'item',
                         requiredRole: ['Управляющий'],
                         isActive: true,
                         componentName: 'Creature',
@@ -228,6 +230,7 @@ export default defineEventHandler(async (event) => {
                     {
                         id: 'preview',
                         title: 'Предпоказ модуля',
+                        type: 'item',
                         requiredRole: ['Управляющий'],
                         isActive: false,
                         componentName: 'Preview',
@@ -235,8 +238,6 @@ export default defineEventHandler(async (event) => {
                     }
                 ]
             },
-
-            // Группа "Поиск модуля"
             {
                 id: 'search',
                 title: 'Поиск модуля',
@@ -248,6 +249,7 @@ export default defineEventHandler(async (event) => {
                     {
                         id: 'browser',
                         title: 'Браузер',
+                        type: 'item',
                         requiredRole: ['Управляющий'],
                         isActive: true,
                         componentName: 'Browser',
@@ -257,11 +259,10 @@ export default defineEventHandler(async (event) => {
             }
         ];
 
-        // Сохраняем все группы
         for (const group of fullMenu) {
             const newGroup = new Menu(group);
             await newGroup.save();
-            console.log(`Создана группа: ${group.title}`);
+            console.log(`✅ Создана группа: ${group.title}`);
         }
 
         const savedCount = await Menu.countDocuments();
@@ -269,12 +270,11 @@ export default defineEventHandler(async (event) => {
         return {
             message: 'Полное меню инициализировано',
             initialized: true,
-            groups: fullMenu,
             count: savedCount
         };
 
     } catch (error: any) {
-        console.error('Ошибка в POST /api/menu/init:', error);
+        console.error('❌ Ошибка в POST /api/menu/init:', error.message);
         throw createError({
             statusCode: 500,
             message: error.message || 'Ошибка инициализации меню'

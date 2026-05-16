@@ -106,6 +106,7 @@ const restoreWindowWithAnimation = (id: string) => {
 .window-manager {
   position: relative;
   overflow: visible;
+  width: 100%;
 }
 
 .draggable-window {
@@ -129,7 +130,7 @@ const restoreWindowWithAnimation = (id: string) => {
   bottom: 20px;
   left: 50%;
   transform: translateX(-50%);
-  background: rgb(26, 26, 26);
+  background: var(--half_opacity_bg);
   border: 1px solid var(--half_opacity_border);
   border-radius: 8px;
   padding: 10px 15px;

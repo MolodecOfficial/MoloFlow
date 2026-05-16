@@ -38,6 +38,7 @@
     "@types/node": "^25.0.3",
     "@vitejs/plugin-vue": "^6.0.3",
     "bcrypt": "^6.0.0",
+    "esbuild": "^0.28.0",
     "happy-dom": "^20.1.0",
     "jsdom": "^27.4.0",
     "mongoose": "^8.17.2",

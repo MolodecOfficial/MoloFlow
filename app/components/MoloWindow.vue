@@ -326,7 +326,11 @@ onUnmounted(() => {
 
       <div class="window-content">
         <div class="content">
-          <slot :refreshKey="refreshKey" :windowData="windowData"/>
+          <slot
+            :key="refreshKey"
+            :refreshKey="refreshKey"
+            :windowData="windowData"
+        />
         </div>
       </div>
 

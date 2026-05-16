@@ -406,7 +406,7 @@ onMounted(() => {
   justify-content: center;
   border-radius: 12px;
   overflow: hidden;
-  background: #1e1e1e;
+  background: var(--half_opacity_bg);
   border: 1px solid var(--half_opacity_border);
 }
 

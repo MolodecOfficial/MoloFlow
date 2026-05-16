@@ -1,13 +1,17 @@
 <script setup lang="ts">
-import {computed, nextTick, onMounted, onUnmounted, ref, watch} from 'vue'
-import {VueMonacoEditor} from '@guolao/vue-monaco-editor'
-import {getEditorLanguage, MONACO_EDITOR_OPTIONS} from '~~/app/utils/monacoConfig'
-import {initMonacoTypeScript, registerMonacoSnippets} from '~~/app/utils/monaco-init'
-import {useUserStore} from "~~/stores/userStore";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { VueMonacoEditor } from '@guolao/vue-monaco-editor'
+import { getEditorLanguage, MONACO_EDITOR_OPTIONS } from '~~/app/utils/monacoConfig'
+import { initMonacoTypeScript, registerMonacoSnippets } from '~~/app/utils/monaco-init'
+import { useUserStore } from '~~/stores/userStore'
+import { useMenuEditorStore } from '~~/stores/menuEditorStore'
+import { useModuleEditorStore } from '~~/stores/moduleEditorStore'
+import { useMenuApi } from '~/composables/useMenuApi'
+import { useModuleApi } from '~/composables/useModuleApi'
 
-import jsIcon from "~~/public/js.png";
-import tsIcon from "~~/public/ts.png";
-import vueIcon from "~~/public/vue.png";
+import jsIcon from '~~/public/js.png'
+import tsIcon from '~~/public/ts.png'
+import vueIcon from '~~/public/vue.png'
 
 if (typeof window !== 'undefined') {
   initMonacoTypeScript()
@@ -15,487 +19,193 @@ if (typeof window !== 'undefined') {
 }
 
 const emit = defineEmits(['close', 'saved'])
-const {openWindow, updateWindowData} = useWindowManager()
-const {addNotification} = useNotifications('Создание модуля')
-const {addLog} = useLogger('Создание модуля')
-const userStore = useUserStore()
 
-const showFileEditor = ref(false)
+const { openWindow, updateWindowData } = useWindowManager()
+const { addNotification } = useNotifications('Создание модуля')
+const { addLog } = useLogger('Создание модуля')
+
+const userStore = useUserStore()
+const menuStore = useMenuEditorStore()
+const moduleStore = useModuleEditorStore()
+
+const menuApi = useMenuApi()
+const moduleApi = useModuleApi()
+
+/* =========================================
+   ЛОКАЛЬНОЕ СОСТОЯНИЕ
+========================================= */
 const enterpriseInfo = ref<any>(null)
-const modules = ref<any[]>([])
-const selectedModuleId = ref<string | null>(null)
-const isEditing = computed(() => !!selectedModuleId.value)
 const monacoRef = ref()
-const showDocumentation = ref(false)
-const loading = ref(false)
-const loadingSubModules = ref(false)
-const loadingUPD = ref(false)
 const previewWindowId = ref<string | null>(null)
 
-const availableLocations = ref<any[]>([])
-const selectedGroupId = ref<string>('')
-const selectedParentId = ref<string | null>(null)
-const addingToMenu = ref(false)
+const showDocumentation = ref(false)
+const loadingUPD = ref(false)
 
-const activeDepTab = ref<'dependencies' | 'devDependencies'>('dependencies')
 const newDepName = ref('')
 const newDepVersion = ref('')
-const composablesInput = ref('')
 
-const newFileName = ref('')
-const newFilePath = ref('')
-const newFileFormat = ref('vue')
-const newFileCode = ref('')
-const newFileIsServer = ref(false)
-const editingFilePath = ref<string | null>(null)
-const moduleFiles = ref<any[]>([])
-const fileTab = ref<'list' | 'editor'>('list')
+let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
-const fileFormats = [
-  {label: '.vue', value: 'vue'},
-  {label: '.js', value: 'js'},
-  {label: '.ts', value: 'ts'},
+/* =========================================
+   STORE REFS
+========================================= */
+
+// module store
+const {
+  modules,
+  selectedModuleId,
+  loading,
+  formData,
+  moduleFiles,
+  loadingFiles,
+  showFileEditor,
+  fileForm,
+  editingFilePath,
+  activeDepTab,
+  clearingCache,
+  tagsInput,
+  composablesInput,
+  isEditing,
+  currentDeps,
+  clientFiles,
+  serverFiles
+} = storeToRefs(moduleStore)
+
+// menu store
+const {
+  locations,
+  selectedGroupId,
+  selectedParentId,
+  adding,
+  newLocation,
+  showNewForm,
+  creating,
+  tree,
+  expanded,
+  allExpanded,
+  deletingGroup,
+  deletingItem
+} = storeToRefs(menuStore)
+
+/* =========================================
+   КОНСТАНТЫ
+========================================= */
+const locationTypes = [
+  { label: 'Меню', value: 'menu' },
+  { label: 'Модули', value: 'module' }
 ]
 
-const formData = ref({
-  name: '',
-  fileName: '',
-  description: '',
-  format: 'vue',
-  code: '',
-  isPublic: false,
-  tags: [] as string[],
-  previewImage: null as string | null,
-  dependencies: {} as Record<string, string>,
-  devDependencies: {} as Record<string, string>,
-  serverEntry: '',
-  composables: [] as string[]
-})
+const fileFormats = [
+  { label: '.vue', value: 'vue' },
+  { label: '.js', value: 'js' },
+  { label: '.ts', value: 'ts' }
+]
 
-const tagsInput = ref('')
+const availableFormats = [
+  { label: '.vue', value: 'vue' },
+  { label: '.js', value: 'js' },
+  { label: '.ts', value: 'ts' }
+]
 
-const currentDeps = computed(() => {
-  if (activeDepTab.value === 'dependencies') {
-    return formData.value.dependencies || {}
-  }
-  return formData.value.devDependencies || {}
-})
-
-const availableParents = computed(() => {
-  if (!selectedGroupId.value) return []
-  const group = availableLocations.value.find(g => g.groupId === selectedGroupId.value)
-  if (!group) return []
-  return (group.locations || []).filter((loc: any) => loc.id !== null)
-})
-
+/* =========================================
+   COMPUTED
+========================================= */
 const currentUser = computed(() => ({
   _id: userStore.userId || 'system',
   name: userStore.userName || 'System',
   role: userStore.userRole || 'system'
 }))
 
-const editorLanguage = computed(() => getEditorLanguage(formData.value.format))
+const editorLanguage = computed(() =>
+    getEditorLanguage(formData.value.format)
+)
 
-const availableFormats = [
-  {label: '.vue', value: 'vue'},
-  {label: '.js', value: 'js'},
-  {label: '.ts', value: 'ts'}
-]
+const availableParents = computed(() => {
+  if (!selectedGroupId.value) return []
 
-// Разделение файлов на клиентские и серверные
-const clientFiles = computed(() => moduleFiles.value.filter(f => !f.isServerFile))
-const serverFiles = computed(() => moduleFiles.value.filter(f => f.isServerFile))
+  const group = locations.value.find(
+      (g: any) => g.groupId === selectedGroupId.value
+  )
 
+  if (!group) return []
+
+  return (group.locations || []).filter(
+      (loc: any) => loc.id !== null
+  )
+})
+
+/* =========================================
+   PLACEHOLDER
+========================================= */
 const getPlaceholder = () => {
   if (formData.value.format === 'vue') {
     return `<script setup>
-  import { ref } from 'vue'
+import { ref } from 'vue'
 
-  const message = ref('Привет из динамического модуля!')
+const message = ref('Привет из динамического модуля!')
 
-  const handleClick = () => {
-    message.value = 'Работает!'
-  }
+const handleClick = () => {
+  message.value = 'Работает!'
+}
+<\/script>
 
-  const { addNotification } = useNotifications()
-
-  const notice = () => {
-    addNotification('info', 'Стандартное уведомление')
-  }
-
-  const danger = () => {
-    addNotification('warning', 'Предупреждающее уведомление')
-  }
-
-  const error = () => {
-    addNotification('error', 'Уведомление об ошибке')
+<template>
+  <div>
+    <h1>{{ message }}</h1>
+    <button @click="handleClick">Click me</button>
+  </div>
+</template>
+`
   }
 
-  const testArray = ['Вика', 'Максим', 'Кирилл']
-  <\/script>
-
-  <template>
-    <div class="container">
-      <h1>{{ message }}</h1>
-      <button @click="handleClick" class="action-btn confirm">Click me</button>
-      <section class="container_input">
-          <MoloInput
-              lRequired
-              tLabel="Надпись к полю ввода"
-              maxLength="12"
-              placeholder="Фоновый текст"
-          />
-          <MoloInput
-              address
-              lRequired
-              tLabel="Режим ввода адреса"
-          />
-          <MoloInput
-              phone
-              lRequired
-              tLabel="Режим ввода телефона"
-          />
-          <MoloSelect
-              lRequired
-              tLabel="Работа со списком"
-              :parent="testArray"
-              disabled="Выберите элемент"
-              all="Все имена"
-          />
-      </section>
-      <section class="container_notifications">
-          <button @click="notice" class="action-btn confirm">Стандартное уведомление</button>
-          <button @click="danger" class="action-btn danger">Предупреждающее уведомление</button>
-          <button @click="error" class="action-btn close">Уведомление об ошибке</button>
-      </section>
-    </div>
-  </template>
-
-  <style scoped>
-  .container {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-  }
-  .container_input {
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      flex-direction: column;
-      gap: 10px;
-  }
-  .container_notifications {
-      display: flex;
-      width: 100%;
-      flex-direction: row;
-      gap: 20px;
-      justify-content: space-between;
-  }
-  .action-btn.confirm {
-    padding: 6px 16px;
-    background: #1eef6f;
-    color: #020b18;
-    border: none;
-    border-radius: 4px;
-    font-weight: 600;
-    cursor: pointer;
-  }
-  .action-btn.danger {
-    padding: 8px 16px;
-    background: #efd31e;
-    color: #020b18;
-    border: none;
-    border-radius: 4px;
-    font-weight: 600;
-    cursor: pointer;
-  }
-  .action-btn.close {
-    padding: 8px 16px;
-    background: #ef1e1e;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    font-weight: 600;
-    cursor: pointer;
-  }
-  </style>
-  `
-  }
   return '// module code...'
 }
 
+/* =========================================
+   MODULE API METHODS
+========================================= */
 const fetchModules = async () => {
   if (!enterpriseInfo.value?._id) {
     addLog('error', 'Нет ID предприятия')
     return
   }
 
-  addLog('info', 'Загружаем модули для редактирования')
-  try {
-    const enterpriseId = enterpriseInfo.value._id
-    const res = await $fetch(`/api/enterprises/${enterpriseId}/dynamicModules`)
-    modules.value = res.modules || []
-    addLog('success', `Загружено ${modules.value.length} модулей`)
-  } catch (e: any) {
-    addLog('error', `Ошибка загрузки модулей: ${e.message}`)
-    modules.value = []
-  }
-}
-
-const loadModuleFiles = async (moduleId: string, enterpriseId: string) => {
-  if (!moduleId || !enterpriseId) {
-    addLog('error', `Компилятор не может найти айди элементов: ${moduleId && enterpriseId}`)
-    return
-  }
-  addLog("info", `Начинаю загрузку файлов для модуля...`)
-  loadingSubModules.value = true
-  try {
-    const response = await $fetch(`/api/enterprises/${enterpriseId}/dynamicModules/${moduleId}/files`)
-    moduleFiles.value = response.files || []
-    addLog('success', `Загружено ${moduleFiles.value.length} файла(ов)`)
-  } catch (err: any) {
-    addLog('error', `Ошибка загрузки файлов для модуля - ${err}`)
-    moduleFiles.value = []
-  } finally {
-    loadingSubModules.value = false
-  }
-}
-
-const openFileEditor = () => {
-  resetFileForm()
-  showFileEditor.value = true
-}
-
-const closeFileEditor = () => {
-  showFileEditor.value = false
-  resetFileForm()
-}
-
-const editFile = (file: any) => {
-  newFileName.value = file.name
-  newFilePath.value = file.path
-  newFileFormat.value = file.format
-  newFileCode.value = file.code || ''
-  newFileIsServer.value = file.isServerFile || false
-  editingFilePath.value = file.path
-  showFileEditor.value = true
-}
-
-const resetFileForm = () => {
-  newFileName.value = ''
-  newFilePath.value = ''
-  newFileFormat.value = 'vue'
-  newFileCode.value = ''
-  newFileIsServer.value = false
-  editingFilePath.value = null
-}
-
-const normalizePath = (name: string, pathInput: string, format: string) => {
-  let basePath = pathInput?.trim() || name.trim()
-  basePath = basePath.replace(/^\.\//, '')
-  if (!basePath.match(/\.[a-z]+$/)) {
-    basePath += `.${format}`
-  }
-  return basePath
-}
-
-const saveFile = async () => {
-  if (!selectedModuleId.value || !enterpriseInfo.value?._id) return
-
-  if (!newFileName.value) {
-    addNotification('warning', 'Введите имя файла')
-    addLog('warning', 'Имя файла пустое')
-    return
-  }
-
-  addLog('info', editingFilePath.value ? 'Начинаю обновление файла...' : 'Начинаю сохранение файла')
+  loading.value = true
 
   try {
-    loadingUPD.value = true
-    const filePath = normalizePath(
-        newFileName.value,
-        newFilePath.value,
-        newFileFormat.value
+    modules.value = await moduleApi.fetchModules(
+        enterpriseInfo.value._id
     )
-
-    const fileData = {
-      name: newFileName.value,
-      path: filePath,
-      format: newFileFormat.value,
-      code: newFileCode.value,
-      isServerFile: newFileIsServer.value
-    }
-
-    await $fetch(`/api/enterprises/${enterpriseInfo.value._id}/dynamicModules/${selectedModuleId.value}/files`, {
-      method: 'POST',
-      body: {
-        action: editingFilePath.value ? 'update' : 'add',
-        file: fileData,
-        oldPath: editingFilePath.value  // ← передаём старый путь для поиска
-      }
-    })
-
-    addNotification('info', editingFilePath.value ? 'Файл обновлён' : 'Файл добавлен')
-    addLog('success', editingFilePath.value ? 'Файл успешно обновлен' : 'Файл успешно сохранён')
-
-    await loadModuleFiles(selectedModuleId.value, enterpriseInfo.value._id)
-    closeFileEditor()
-
-  } catch (error: any) {
-    console.error('Save file error:', error)
-    addNotification('error', 'Ошибка сохранения файла')
-    addLog('error', `Ошибка сохранения файла - ${error.message}`)
   } finally {
-    loadingUPD.value = false
+    loading.value = false
   }
 }
 
-const deleteFile = async (filePath: string) => {
+const loadModuleFiles = async () => {
   if (!selectedModuleId.value || !enterpriseInfo.value?._id) return
-  addLog('info', 'Начинаю удаление файла...')
+
+  loadingFiles.value = true
+
   try {
-    await $fetch(`/api/enterprises/${enterpriseInfo.value._id}/dynamicModules/${selectedModuleId.value}/files`, {
-      method: 'POST',
-      body: {
-        action: 'delete',
-        file: {path: filePath}
-      }
-    })
-    addNotification('info', 'Файл удалён')
-    addLog('info', `Файл ${filePath} удалён`)
-    await loadModuleFiles(selectedModuleId.value, enterpriseInfo.value._id)
-  } catch (error: any) {
-    addNotification('error', 'Ошибка удаления файла')
-    addLog('error', `Ошибка удаления файла - ${error.message}`)
+    moduleFiles.value = await moduleApi.loadModuleFiles(
+        enterpriseInfo.value._id,
+        selectedModuleId.value
+    )
+  } finally {
+    loadingFiles.value = false
   }
 }
 
 const loadDependencies = async () => {
   if (!selectedModuleId.value || !enterpriseInfo.value?._id) return
-  addLog('info', 'Начинаю загрузку зависимостей')
-  try {
-    const res = await $fetch(`/api/enterprises/${enterpriseInfo.value._id}/dynamicModules/${selectedModuleId.value}/dependencies`)
-    if (res) {
-      formData.value.dependencies = res.dependencies || {}
-      formData.value.devDependencies = res.devDependencies || {}
-      addLog('success', 'Зависимости загружены')
-    }
-  } catch (error) {
-    addLog('error', `Ошибка загрузки зависимостей - ${error}`)
-  }
-}
 
-const addDependency = async () => {
-  if (!newDepName.value || !selectedModuleId.value) return
-  addLog('info', 'Начинаю сохранение зависимости...')
+  const result = await moduleApi.loadDependencies(
+      enterpriseInfo.value._id,
+      selectedModuleId.value
+  )
 
-  try {
-    await $fetch(`/api/enterprises/${enterpriseInfo.value._id}/dynamicModules/${selectedModuleId.value}/dependencies`, {
-      method: 'POST',
-      body: {
-        action: 'add',
-        packageName: newDepName.value,
-        version: newDepVersion.value || 'latest',
-        packageType: activeDepTab.value
-      }
-    })
-
-    await loadDependencies()
-    addNotification('info', `Зависимость добавлена`)
-    addLog('success', `Зависимость ${newDepName.value} добавлен`)
-    newDepName.value = ''
-    newDepVersion.value = ''
-  } catch (error: any) {
-    addNotification('error', 'Ошибка добавления зависимости')
-    addLog('error', `Ошибка добавления зависимости - ${error.message}`)
-  }
-}
-
-const removeDependency = async (packageName: string) => {
-  if (!selectedModuleId.value) return
-  addLog('info', 'Начинаю удаление зависимости...')
-
-  try {
-    await $fetch(`/api/enterprises/${enterpriseInfo.value._id}/dynamicModules/${selectedModuleId.value}/dependencies`, {
-      method: 'POST',
-      body: {
-        action: 'remove',
-        packageName,
-        packageType: activeDepTab.value
-      }
-    })
-
-    await loadDependencies()
-    addNotification('info', `Зависимость удален`)
-    addLog('success', `Зависимость ${packageName} удалена`)
-  } catch (error: any) {
-    addLog('error', `Ошибка удаления зависимости - ${error.message}`)
-    addNotification('error', 'Ошибка удаления зависимости')
-  }
-}
-
-const loadAvailableLocations = async () => {
-  addLog('info', 'Поиск доступного места в меню')
-  try {
-    const locations = await $fetch('/api/menu/location')
-    availableLocations.value = locations || []
-    if (availableLocations.value.length > 0 && !selectedGroupId.value) {
-      selectedGroupId.value = availableLocations.value[0].groupId
-    }
-    addLog('success', 'Места загружены')
-  } catch (error) {
-    addLog('error', `Ошибка загрузки мест в меню: ${error}`)
-  }
-}
-
-const addModuleToMenu = async () => {
-  if (!selectedGroupId.value) {
-    addNotification('warning', 'Выберите группу меню')
-    return
-  }
-
-  let moduleId = selectedModuleId.value
-  if (!moduleId) {
-    await saveModule()
-    moduleId = selectedModuleId.value
-    if (!moduleId) {
-      addNotification('error', 'Не удалось сохранить модуль')
-      return
-    }
-  }
-
-  const mod = modules.value.find(m => m._id === moduleId)
-  if (!mod) {
-    addNotification('error', 'Модуль не найден')
-    return
-  }
-
-  addingToMenu.value = true
-  try {
-    addLog('info', 'Добавляем модуль в меню...')
-    await $fetch('/api/menu/module', {
-      method: 'POST',
-      body: {
-        module: {
-          _id: mod._id,
-          name: mod.name,
-          format: mod.format
-        },
-        targetGroupId: selectedGroupId.value,
-        parentItemId: selectedParentId.value || null
-      }
-    })
-    addNotification('info', 'Модуль добавлен в меню')
-    window.dispatchEvent(new CustomEvent('modules-updated'))
-    selectedGroupId.value = ''
-    selectedParentId.value = null
-    addLog('success', `Модуль "${mod.name}" добавлен в меню`)
-  } catch (error: any) {
-    addLog('info', `Ошибка добавления модуля "${mod.name}" в меню - ${error?.data?.message}`)
-    addNotification('error', 'Модуль не добавлен в меню!')
-  } finally {
-    addingToMenu.value = false
-  }
+  formData.value.dependencies = result.dependencies
+  formData.value.devDependencies = result.devDependencies
 }
 
 const saveModule = async () => {
@@ -515,276 +225,645 @@ const saveModule = async () => {
   }
 
   loading.value = true
-  const wasEditing = isEditing.value
-  addLog('info', 'Начинаю сохранения модуля...')
 
   try {
-    let response
-
-    if (wasEditing) {
-      // PUT запрос - обновление существующего модуля
-      const url = `/api/enterprises/${enterpriseInfo.value._id}/dynamicModules/${selectedModuleId.value}`
-
-      response = await $fetch(url, {
-        method: 'PUT',
-        body: {
-          name: formData.value.name,
-          fileName: formData.value.fileName,
-          description: formData.value.description,
-          format: formData.value.format,
-          code: formData.value.code,
-          isPublic: formData.value.isPublic,
-          tags: formData.value.tags,
-          previewImage: formData.value.previewImage,
-          dependencies: formData.value.dependencies,
-          devDependencies: formData.value.devDependencies,
-          serverEntry: formData.value.serverEntry,
-          composables: formData.value.composables
-        }
-      })
-    } else {
-      // POST запрос - создание нового модуля
-      const url = `/api/enterprises/${enterpriseInfo.value._id}/dynamicModules`
-      addLog('info', `POST запрос на ${url}`)
-
-      response = await $fetch(url, {
-        method: 'POST',
-        body: {
-          name: formData.value.name,
-          fileName: formData.value.fileName,
-          description: formData.value.description,
-          format: formData.value.format,
-          code: formData.value.code,
-          enterpriseId: enterpriseInfo.value._id,
-          isPublic: formData.value.isPublic,
-          tags: formData.value.tags,
-          previewImage: formData.value.previewImage,
-          createdBy: {
-            _id: currentUser.value._id,
-            name: currentUser.value.name,
-            role: currentUser.value.role
-          },
-          dependencies: formData.value.dependencies,
-          devDependencies: formData.value.devDependencies,
-          serverEntry: formData.value.serverEntry,
-          composables: formData.value.composables
-        }
-      })
+    const payload = {
+      ...formData.value,
+      code:
+          formData.value.code || getPlaceholder(),
+      createdBy: currentUser.value
     }
+
+    const response = await moduleApi.saveModule(
+        enterpriseInfo.value._id,
+        payload,
+        isEditing.value,
+        selectedModuleId.value || undefined
+    )
 
     await fetchModules()
 
-    if (!wasEditing) {
+    if (!isEditing.value) {
       selectedModuleId.value = response.module._id
       addNotification('info', 'Модуль создан')
-      addLog('success', `Модуль ${response.module.fileName} успешно создан`)
-      if (availableLocations.value.length === 0) {
-        await loadAvailableLocations()
-      }
     } else {
-      // Принудительно перезагружаем данные модуля после обновления
-      const updatedMod = modules.value.find(m => m._id === selectedModuleId.value)
-      if (updatedMod) {
-        formData.value = {
-          name: updatedMod.name,
-          fileName: updatedMod.fileName,
-          description: updatedMod.description || '',
-          format: updatedMod.format,
-          code: updatedMod.code,
-          isPublic: updatedMod.isPublic || false,
-          tags: updatedMod.tags || [],
-          previewImage: updatedMod.previewImage || null,
-          dependencies: updatedMod.dependencies || {},
-          devDependencies: updatedMod.devDependencies || {},
-          serverEntry: updatedMod.serverEntry || '',
-          composables: updatedMod.composables || []
-        }
-        tagsInput.value = (updatedMod.tags || []).join(', ')
-        composablesInput.value = (updatedMod.composables || []).join(', ')
-      }
-      addLog('success', `Модуль ${response.module?.fileName || formData.value.fileName} успешно обновлён`)
-      addNotification('info', 'Модуль обновлен')
+      addNotification('info', 'Модуль обновлён')
     }
 
     emit('saved', response.module)
   } catch (error: any) {
-    console.error('Save module error:', error)
-    addNotification('error', error?.data?.message || error?.message || 'Ошибка сохранения модуля')
-    addLog('error', `Ошибка сохранения модуля - ${error?.data?.message || error?.message} `)
+    addNotification(
+        'error',
+        error?.data?.message ||
+        error?.message ||
+        'Ошибка сохранения модуля'
+    )
   } finally {
     loading.value = false
   }
 }
 
-const handleImageUpload = (event: Event) => {
-  const input = event.target as HTMLInputElement
-  if (input.files && input.files[0]) {
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      formData.value.previewImage = e.target?.result as string
-    }
-    reader.readAsDataURL(input.files[0])
+const normalizePath = (
+    name: string,
+    pathInput: string,
+    format: string
+) => {
+  let basePath = pathInput?.trim() || name.trim()
+
+  basePath = basePath.replace(/^\.\//, '')
+
+  if (!basePath.match(/\.[a-z]+$/)) {
+    basePath += `.${format}`
   }
+
+  return basePath
 }
 
-const removePreview = () => {
-  formData.value.previewImage = null
-}
+const saveFile = async () => {
+  if (!selectedModuleId.value || !enterpriseInfo.value?._id) return
 
-const openPreviewInWindow = () => {
-  if (!formData.value.code?.trim()) {
-    addNotification('warning', 'Нет кода для предпросмотра')
+  if (!fileForm.value.name) {
+    addNotification('warning', 'Введите имя файла')
     return
   }
 
-  if (selectedModuleId.value && moduleFiles.value.length === 0) {
-    addNotification('warning', 'Файлы модуля еще не загружены')
+  try {
+    loadingUPD.value = true
+
+    const filePath = normalizePath(
+        fileForm.value.name,
+        fileForm.value.path,
+        fileForm.value.format
+    )
+
+    const fileData = {
+      name: fileForm.value.name,
+      path: filePath,
+      format: fileForm.value.format,
+      code: fileForm.value.code,
+      isServerFile: fileForm.value.isServer
+    }
+
+    await moduleApi.saveFile(
+        enterpriseInfo.value._id,
+        selectedModuleId.value,
+        fileData,
+        !!editingFilePath.value,
+        editingFilePath.value || undefined
+    )
+
+    addNotification(
+        'info',
+        editingFilePath.value
+            ? 'Файл обновлён'
+            : 'Файл добавлен'
+    )
+
+    await loadModuleFiles()
+    moduleStore.closeFileEditor()
+  } catch (error: any) {
+    addNotification('error', 'Ошибка сохранения файла')
+    addLog('error', error.message)
+  } finally {
+    loadingUPD.value = false
+  }
+}
+
+const deleteFile = async (filePath: string) => {
+  if (!selectedModuleId.value || !enterpriseInfo.value?._id) return
+
+  try {
+    await moduleApi.deleteFile(
+        enterpriseInfo.value._id,
+        selectedModuleId.value,
+        filePath
+    )
+
+    addNotification('info', 'Файл удалён')
+    await loadModuleFiles()
+  } catch {
+    addNotification('error', 'Ошибка удаления файла')
+  }
+}
+
+const addDependency = async () => {
+  if (!newDepName.value || !selectedModuleId.value) return
+
+  try {
+    await moduleApi.addDependency(
+        enterpriseInfo.value._id,
+        selectedModuleId.value,
+        newDepName.value,
+        newDepVersion.value || 'latest',
+        activeDepTab.value
+    )
+
+    await loadDependencies()
+
+    addNotification('info', 'Зависимость добавлена')
+
+    newDepName.value = ''
+    newDepVersion.value = ''
+  } catch {
+    addNotification(
+        'error',
+        'Ошибка добавления зависимости'
+    )
+  }
+}
+
+const removeDependency = async (
+    packageName: string
+) => {
+  if (!selectedModuleId.value) return
+
+  try {
+    await moduleApi.removeDependency(
+        enterpriseInfo.value._id,
+        selectedModuleId.value,
+        packageName,
+        activeDepTab.value
+    )
+
+    await loadDependencies()
+
+    addNotification('info', 'Зависимость удалена')
+  } catch {
+    addNotification(
+        'error',
+        'Ошибка удаления зависимости'
+    )
+  }
+}
+
+const clearModuleCache = async () => {
+  if (!selectedModuleId.value || !enterpriseInfo.value?._id) return
+
+  try {
+    clearingCache.value = true
+
+    await moduleApi.clearCache(
+        selectedModuleId.value,
+        enterpriseInfo.value._id
+    )
+
+    addNotification(
+        'info',
+        'Кеш модуля очищен'
+    )
+  } catch {
+    addNotification(
+        'error',
+        'Ошибка очистки кеша'
+    )
+  } finally {
+    clearingCache.value = false
+  }
+}
+
+/* =========================================
+   MENU API METHODS
+========================================= */
+const loadAvailableLocations = async () => {
+  locations.value = await menuApi.loadLocations()
+
+  if (
+      locations.value.length > 0 &&
+      !selectedGroupId.value
+  ) {
+    selectedGroupId.value =
+        locations.value[0].groupId
+  }
+}
+
+const loadMenuTree = async () => {
+  tree.value = await menuApi.loadTree()
+  if (expanded.value.size === 0) {
+    menuStore.toggleAll()
+  }
+}
+
+const createNewLocation = async () => {
+  if (!newLocation.value.title.trim()) {
+    addNotification('warning', 'Введите название места')
+    return
+  }
+
+  try {
+    creating.value = true
+
+    await menuApi.createGroup(
+        newLocation.value.title,
+        newLocation.value.type,
+        newLocation.value.order
+    )
+
+    addNotification(
+        'info',
+        'Новое место в меню создано'
+    )
+
+    newLocation.value = {
+      title: '',
+      type: 'menu',
+      order: 0
+    }
+
+    showNewForm.value = false
+
+    await loadAvailableLocations()
+    await loadMenuTree()
+
+    window.dispatchEvent(
+        new CustomEvent('modules-updated')
+    )
+  } catch {
+    addNotification(
+        'error',
+        'Ошибка создания места'
+    )
+  } finally {
+    creating.value = false
+  }
+}
+
+const deleteLocation = async (
+    groupId: string
+) => {
+  if (
+      !confirm(
+          `Удалить группу "${groupId}"?`
+      )
+  ) {
+    return
+  }
+
+  try {
+    deletingGroup.value = groupId
+
+    await menuApi.deleteGroup(groupId)
+
+    if (selectedGroupId.value === groupId) {
+      menuStore.resetSelection()
+    }
+
+    await loadAvailableLocations()
+    await loadMenuTree()
+
+    addNotification(
+        'info',
+        'Группа удалена'
+    )
+  } catch {
+    addNotification(
+        'error',
+        'Ошибка удаления группы'
+    )
+  } finally {
+    deletingGroup.value = null
+  }
+}
+
+const deleteMenuItem = async (
+    groupId: string,
+    itemId: string
+) => {
+  if (
+      !confirm(
+          'Удалить этот элемент меню?'
+      )
+  ) {
+    return
+  }
+
+  try {
+    deletingItem.value = itemId
+
+    await menuApi.deleteItem(
+        groupId,
+        itemId
+    )
+
+    await loadAvailableLocations()
+    await loadMenuTree()
+
+    addNotification(
+        'info',
+        'Элемент меню удалён'
+    )
+
+    window.dispatchEvent(
+        new CustomEvent('modules-updated')
+    )
+  } catch {
+    addNotification(
+        'error',
+        'Ошибка удаления элемента'
+    )
+  } finally {
+    deletingItem.value = null
+  }
+}
+
+const addModuleToMenuItem = async (
+    groupId: string,
+    parentItemId: string
+) => {
+  selectedGroupId.value = groupId
+  selectedParentId.value = parentItemId
+
+  await nextTick()
+
+  const el = document.querySelector(
+      '.menu-actions-row'
+  )
+
+  if (el) {
+    el.scrollIntoView({
+      behavior: 'smooth',
+      block: 'center'
+    })
+  }
+}
+
+const addModuleToMenu = async () => {
+  if (!selectedGroupId.value) {
+    addNotification('warning', 'Выберите группу')
+    return
+  }
+
+  let moduleId = selectedModuleId.value
+
+  if (!moduleId) {
+    await saveModule()
+    moduleId = selectedModuleId.value
+  }
+
+  if (!moduleId) {
+    addNotification(
+        'error',
+        'Не удалось сохранить модуль'
+    )
+    return
+  }
+
+  const mod = modules.value.find(
+      (m: any) => m._id === moduleId
+  )
+
+  if (!mod) {
+    addNotification('error', 'Модуль не найден')
+    return
+  }
+
+  try {
+    adding.value = true
+
+    await menuApi.addModule(
+        mod,
+        selectedGroupId.value,
+        selectedParentId.value
+    )
+
+    addNotification(
+        'info',
+        'Модуль добавлен в меню'
+    )
+
+    menuStore.resetSelection()
+
+    await loadMenuTree()
+
+    window.dispatchEvent(
+        new CustomEvent('modules-updated')
+    )
+  } catch {
+    addNotification(
+        'error',
+        'Модуль не добавлен в меню'
+    )
+  } finally {
+    adding.value = false
+  }
+}
+
+/* =========================================
+   PREVIEW
+========================================= */
+const openPreviewInWindow = () => {
+  if (!formData.value.code?.trim()) {
+    addNotification(
+        'warning',
+        'Нет кода для предпросмотра'
+    )
     return
   }
 
   const id = 'preview'
   previewWindowId.value = id
 
-  const filesForPreview = moduleFiles.value.map(file => ({
-    path: file.path,
-    name: file.name,
-    format: file.format,
-    code: file.code,
-    isServerFile: file.isServerFile
-  }))
-
-  addLog('info', 'Открываю предпоказ модуля...')
-
-  openWindow('modules', id, null, {
-    width: 600,
-    height: 500,
-    minWidth: 600,
-    minHeight: 400
-  }, false, 'modules/preview', null, {
-    moduleName: formData.value.name || 'Без названия',
-    code: formData.value.code,
-    files: filesForPreview,
-    dependencies: formData.value.dependencies
-  })
+  openWindow(
+      'modules',
+      id,
+      null,
+      {
+        width: 600,
+        height: 500,
+        minWidth: 600,
+        minHeight: 400
+      },
+      false,
+      'modules/preview',
+      null,
+      {
+        moduleName:
+            formData.value.name ||
+            'Без названия',
+        code: formData.value.code,
+        files: moduleFiles.value,
+        dependencies:
+        formData.value.dependencies,
+        moduleId:
+        selectedModuleId.value
+      }
+  )
 }
 
+/* =========================================
+   IMAGE HANDLING
+========================================= */
+const handleImageUpload = (
+    event: Event
+) => {
+  const input =
+      event.target as HTMLInputElement
+
+  if (!input.files?.[0]) return
+
+  const reader = new FileReader()
+
+  reader.onload = e => {
+    formData.value.previewImage =
+        e.target?.result as string
+  }
+
+  reader.readAsDataURL(input.files[0])
+}
+
+const removePreview = () => {
+  formData.value.previewImage = null
+}
+
+/* =========================================
+   HELPERS
+========================================= */
 const toggleDocumentation = () => {
-  showDocumentation.value = !showDocumentation.value
+  showDocumentation.value =
+      !showDocumentation.value
 }
 
-const resetForm = () => {
-  formData.value = {
-    name: '',
-    fileName: '',
-    description: '',
-    format: 'vue',
-    code: getPlaceholder(),
-    isPublic: false,
-    tags: [],
-    previewImage: null,
-    dependencies: {},
-    devDependencies: {},
-    serverEntry: '',
-    composables: []
-  }
-  tagsInput.value = ''
-  composablesInput.value = ''
-}
-
-watch(tagsInput, (val) => {
-  formData.value.tags = val.split(',').map(t => t.trim()).filter(Boolean)
+/* =========================================
+   WATCHERS
+========================================= */
+watch(tagsInput, value => {
+  formData.value.tags = value
+      .split(',')
+      .map(v => v.trim())
+      .filter(Boolean)
 })
 
-watch(composablesInput, (val) => {
-  formData.value.composables = val.split(',').map(c => c.trim()).filter(Boolean)
+watch(composablesInput, value => {
+  formData.value.composables = value
+      .split(',')
+      .map(v => v.trim())
+      .filter(Boolean)
 })
 
-watch(selectedModuleId, async (id) => {
-  if (!id) {
-    resetForm()
-    return
-  }
+watch(
+    [selectedModuleId, modules],
+    async ([id, mods]) => {
+      if (!id) {
+        moduleStore.resetForm()
+        formData.value.code = getPlaceholder()
+        return
+      }
 
-  const mod = modules.value.find(m => m._id === id)
-  if (mod) {
-    formData.value = {
-      name: mod.name,
-      fileName: mod.fileName,
-      description: mod.description || '',
-      format: mod.format,
-      code: mod.code,
-      isPublic: mod.isPublic || false,
-      tags: mod.tags || [],
-      previewImage: mod.previewImage || null,
-      dependencies: mod.dependencies || {},
-      devDependencies: mod.devDependencies || {},
-      serverEntry: mod.serverEntry || '',
-      composables: mod.composables || []
+      if (!mods || mods.length === 0) return
+
+      const mod = mods.find(
+          (m: any) => m._id === id
+      )
+
+      if (!mod) return
+
+      moduleStore.loadModule(mod)
+
+      if (!formData.value.code) {
+        formData.value.code = getPlaceholder()
+      }
+
+      await loadModuleFiles()
+      await loadDependencies()
+    },
+    {
+      immediate: true
     }
-    tagsInput.value = (mod.tags || []).join(', ')
-    composablesInput.value = (mod.composables || []).join(', ')
+)
 
-    await loadModuleFiles(id, enterpriseInfo.value?._id)
-    await loadDependencies()
-
-    fileTab.value = 'list'
-    resetFileForm()
-  }
-})
-
-watch(() => formData.value.format, () => {
-  if (!isEditing.value) formData.value.code = getPlaceholder()
-})
+watch(
+    () => formData.value.format,
+    () => {
+      if (!isEditing.value) {
+        formData.value.code =
+            getPlaceholder()
+      }
+    }
+)
 
 watch(selectedGroupId, () => {
   selectedParentId.value = null
 })
 
-watch([newFileName, newFileFormat], () => {
-  if (!newFileName.value) return
-  if (!newFilePath.value || !newFilePath.value.includes('/')) {
-    newFilePath.value = `${newFileName.value}.${newFileFormat.value}`
-  }
-})
+watch(
+    () => formData.value.code,
+    code => {
+      if (!previewWindowId.value) return
 
-watch(newFilePath, (val) => {
-  if (!val) return
-  if (!val.match(/\.[a-z]+$/)) {
-    newFilePath.value = `${val}.${newFileFormat.value}`
-  }
-})
-
-let debounceTimer: ReturnType<typeof setTimeout> | null = null
-watch(() => formData.value.code, (code) => {
-  if (!previewWindowId.value) return
-  updateWindowData('modules', previewWindowId.value!, {
-    moduleName: formData.value.name,
-    code,
-    isEditing: isEditing.value
-  })
-})
+      updateWindowData(
+          'modules',
+          previewWindowId.value,
+          {
+            moduleName:
+            formData.value.name,
+            code,
+            isEditing:
+            isEditing.value
+          }
+      )
+    }
+)
 
 watch(showDocumentation, async () => {
   await nextTick()
-  setTimeout(() => monacoRef.value?.editor?.layout?.(), 50)
+
+  setTimeout(() => {
+    monacoRef.value?.editor?.layout?.()
+  }, 50)
 })
 
+/* =========================================
+   LIFECYCLE
+========================================= */
 onMounted(async () => {
-  const data = localStorage.getItem('currentEnterprise')
-  if (data) {
+  const saved = localStorage.getItem('currentEnterprise')
+
+  if (saved) {
     try {
-      enterpriseInfo.value = JSON.parse(data)
+      enterpriseInfo.value = JSON.parse(saved)
       await fetchModules()
-    } catch (e) {
-      addNotification('warning', 'Ошибка при получении предприятия')
+    } catch {
+      addNotification(
+          'warning',
+          'Ошибка при получении предприятия'
+      )
     }
   }
-  resetForm()
+
+  // Загружаем меню
   await loadAvailableLocations()
+  await loadMenuTree()
+
+  // ВАЖНО:
+  // Если модуль уже выбран (selectedModuleId сохранён в store),
+  // НЕ сбрасываем форму.
+  // Иначе watcher на selectedModuleId загрузит данные,
+  // а resetForm() их тут же затрёт.
+  if (selectedModuleId.value) {
+    const mod = modules.value.find(
+        (m: any) => m._id === selectedModuleId.value
+    )
+
+    if (mod) {
+      moduleStore.loadModule(mod)
+
+      if (!formData.value.code) {
+        formData.value.code = getPlaceholder()
+      }
+
+      await loadModuleFiles()
+      await loadDependencies()
+    }
+  } else {
+    // Только если модуль НЕ выбран — создаём пустую форму
+    moduleStore.resetForm()
+    formData.value.code = getPlaceholder()
+  }
 })
 
 onUnmounted(() => {
-  if (debounceTimer) clearTimeout(debounceTimer)
+  if (debounceTimer) {
+    clearTimeout(debounceTimer)
+  }
 })
 </script>
 
@@ -793,16 +872,27 @@ onUnmounted(() => {
     <div class="editor-header">
       <div class="header-left">
         <h1>{{ isEditing ? 'Редактирование модуля' : 'Создание модуля' }}</h1>
+
         <div class="header-actions">
-          <MoloButton :class="selectedModuleId ? 'default' : 'confirm'"
-                      @click="selectedModuleId = null">
+          <MoloButton
+              :class="selectedModuleId ? 'default' : 'confirm'"
+              @click="selectedModuleId = null"
+          >
             Новый
           </MoloButton>
-          <MoloButton v-if="formData.format === 'vue'"
-                      :class="openPreviewInWindow ? 'default' : 'confirm' " @click="openPreviewInWindow">
+
+          <MoloButton
+              v-if="formData.format === 'vue'"
+              class="default"
+              @click="openPreviewInWindow"
+          >
             Предпросмотр
           </MoloButton>
-          <MoloButton @click="toggleDocumentation" :class="showDocumentation ? 'default' : 'confirm'">
+
+          <MoloButton
+              @click="toggleDocumentation"
+              :class="showDocumentation ? 'default' : 'confirm'"
+          >
             {{ showDocumentation ? 'Скрыть док.' : 'Документация' }}
           </MoloButton>
         </div>
@@ -814,75 +904,317 @@ onUnmounted(() => {
             :parent="modules"
             children="name"
             valueKey="_id"
-            disabled="Выбрать модуль"
+            :disabled="!modules || modules.length === 0 ? 'Нет модулей' : 'Выбрать модуль'"
             class="module-select"
         />
       </div>
     </div>
 
-    <hr>
+    <hr />
 
     <div class="editor-grid">
+      <!-- ОСНОВНЫЕ НАСТРОЙКИ -->
       <div class="main-settings">
         <div class="settings-group">
           <h3>Основное</h3>
+
           <div class="form-row">
-            <MoloInput tLabel="Название" lRequired v-model="formData.name" placeholder="Введите название"/>
-            <MoloInput tLabel="Имя файла" lRequired v-model="formData.fileName" placeholder="на_английском"/>
-            <MoloSelect tLabel="Формат" lRequired v-model="formData.format" :parent="availableFormats" children="label"
-                        valueKey="value"/>
+            <MoloInput
+                tLabel="Название"
+                lRequired
+                v-model="formData.name"
+                placeholder="Введите название"
+            />
+
+            <MoloInput
+                tLabel="Имя файла"
+                lRequired
+                v-model="formData.fileName"
+                placeholder="на_английском"
+            />
+
+            <MoloSelect
+                tLabel="Формат"
+                lRequired
+                v-model="formData.format"
+                :parent="availableFormats"
+                children="label"
+                valueKey="value"
+            />
           </div>
         </div>
 
         <div class="settings-group">
           <h3>Мета</h3>
+
           <div class="form-row">
-            <MoloInput tLabel="Описание" v-model="formData.description" placeholder="Что делает модуль?"/>
-            <MoloInput tLabel="Теги" v-model="tagsInput" placeholder="ui, таблицы, графики"/>
+            <MoloInput
+                tLabel="Описание"
+                v-model="formData.description"
+                placeholder="Что делает модуль?"
+            />
+
+            <MoloInput
+                tLabel="Теги"
+                v-model="tagsInput"
+                placeholder="ui, таблицы, графики"
+            />
           </div>
         </div>
 
         <div class="settings-group">
           <div class="form-row low">
             <label class="checkbox-label">
-              <input type="checkbox" v-model="formData.isPublic"/>
+              <input type="checkbox" v-model="formData.isPublic" />
               <span>Общедоступный</span>
             </label>
 
             <div class="preview-upload">
-              <MoloInput type="file" accept="image/*" @change="handleImageUpload" tLabel="Превью"/>
-              <div v-if="formData.previewImage" class="preview-image">
-                <img :src="formData.previewImage" alt="preview" style="width: 60px"/>
-                <MoloButton class="action-btn close small" @click="removePreview">✕</MoloButton>
+              <MoloInput
+                  type="file"
+                  accept="image/*"
+                  @change="handleImageUpload"
+                  tLabel="Превью"
+              />
+
+              <div
+                  v-if="formData.previewImage"
+                  class="preview-image"
+              >
+                <img
+                    :src="formData.previewImage"
+                    alt="preview"
+                    style="width: 60px"
+                />
+
+                <MoloButton
+                    class="action-btn close small"
+                    @click="removePreview"
+                >
+                  ✕
+                </MoloButton>
               </div>
             </div>
           </div>
         </div>
       </div>
 
+      <!-- УПРАВЛЕНИЕ МЕНЮ -->
       <div class="menu-settings">
         <div class="settings-group">
-          <h3>Добавление в меню</h3>
-          <MoloSelect v-model="selectedGroupId" :parent="availableLocations" tLabel="Группа" children="groupTitle"
-                      valueKey="groupId"/>
-          <MoloSelect v-if="availableParents.length" v-model="selectedParentId" :parent="availableParents"
-                      tLabel="Родитель" children="title" valueKey="id"/>
-          <MoloButton class="confirm" :disabled="!selectedGroupId || addingToMenu"
-                      @click="addModuleToMenu">
-            <span v-if="!addingToMenu">Добавить в меню</span>
-            <MoloLoaders v-else btnLoader/>
+          <div class="settings-group-header">
+            <h3>Управление меню</h3>
+
+            <div class="header-actions-row">
+              <MoloButton
+                  class="confirm"
+                  @click="showNewForm = !showNewForm"
+              >
+                {{ showNewForm ? 'Скрыть' : 'Новое место' }}
+              </MoloButton>
+            </div>
+          </div>
+
+          <!-- Создание новой группы -->
+          <div
+              v-if="showNewForm"
+              class="new-location-form"
+          >
+            <MoloInput
+                v-model="newLocation.title"
+                tLabel="Название места"
+                placeholder="Например: Аналитика"
+                lRequired
+            />
+
+            <MoloSelect
+                v-model="newLocation.type"
+                tLabel="Тип"
+                :parent="locationTypes"
+                children="label"
+                valueKey="value"
+            />
+
+            <MoloInput
+                v-model="newLocation.order"
+                tLabel="Порядок"
+                type="number"
+                placeholder="0"
+            />
+
+            <MoloButton
+                class="confirm"
+                :disabled="!newLocation.title || creating"
+                @click="createNewLocation"
+            >
+              <span v-if="!creating">Создать место</span>
+              <MoloLoaders v-else btnLoader />
+            </MoloButton>
+          </div>
+
+          <hr
+              v-if="showNewForm"
+              style="margin: 8px 0; border-color: rgba(255,255,255,0.05);"
+          />
+
+          <!-- Дерево меню -->
+          <div class="menu-tree">
+            <div class="menu-tree-header">
+              <span class="menu-tree-label">
+                Структура меню
+              </span>
+
+              <button
+                  class="expand-all-btn"
+                  @click="menuStore.toggleAll()"
+              >
+                {{ allExpanded ? 'Свернуть все' : 'Развернуть все' }}
+              </button>
+            </div>
+
+            <div
+                v-if="tree.length === 0"
+                class="no-locations"
+            >
+              Нет доступных мест
+            </div>
+
+            <div
+                v-for="group in tree"
+                :key="group.id"
+                class="tree-group"
+            >
+              <div class="tree-group-header">
+                <div class="tree-group-info">
+                  <span
+                      class="tree-toggle"
+                      @click="menuStore.toggleGroup(group.id)"
+                  >
+                    {{ expanded.has(group.id) ? '▾' : '▸' }}
+                  </span>
+
+                  <span class="tree-group-icon">📁</span>
+
+                  <span class="tree-group-title">
+                    {{ group.title }}
+                  </span>
+
+                  <span class="tree-badge">
+                    {{ group.type }}
+                  </span>
+                </div>
+
+                <button
+                    class="tree-delete-btn"
+                    @click="deleteLocation(group.id)"
+                    :disabled="deletingGroup === group.id"
+                    title="Удалить группу"
+                >
+                  <span
+                      v-if="deletingGroup !== group.id"
+                  >
+                    ×
+                  </span>
+
+                  <span
+                      v-else
+                      class="deleting-spinner"
+                  >
+                    ⋯
+                  </span>
+                </button>
+              </div>
+
+              <div
+                  v-if="expanded.has(group.id)"
+                  class="tree-items"
+              >
+                <div
+                    v-if="!group.items || group.items.length === 0"
+                    class="tree-empty"
+                >
+                  Нет элементов
+                </div>
+
+                <MoloMenuItemTree
+                    v-for="item in group.items"
+                    :key="item.id"
+                    :item="item"
+                    :groupId="group.id"
+                    :depth="1"
+                    :deletingItem="deletingItem"
+                    @delete-item="(itemId) => deleteMenuItem(group.id, itemId)"
+                    @add-module="(itemId) => addModuleToMenuItem(group.id, itemId)"
+                />
+              </div>
+            </div>
+          </div>
+
+          <hr
+              style="margin: 8px 0; border-color: rgba(255,255,255,0.05);"
+          />
+
+          <!-- Добавление модуля в меню -->
+          <MoloSelect
+              v-model="selectedGroupId"
+              :parent="locations"
+              tLabel="Группа для добавления"
+              children="groupTitle"
+              valueKey="groupId"
+              :disabled="locations.length === 0 ? 'Нет доступных групп' : 'Выбрать группу'"
+          />
+
+          <MoloSelect
+              v-if="availableParents.length"
+              v-model="selectedParentId"
+              :parent="availableParents"
+              tLabel="Родительский элемент"
+              children="title"
+              valueKey="id"
+              disabled="Выбрать родителя (опционально)"
+          />
+
+          <MoloButton
+              class="confirm"
+              :disabled="!selectedGroupId || adding"
+              @click="addModuleToMenu"
+          >
+            <span v-if="!adding">
+              Добавить модуль в меню
+            </span>
+            <MoloLoaders v-else btnLoader />
           </MoloButton>
         </div>
       </div>
     </div>
 
-    <hr>
+    <hr />
 
+    <!-- КОД МОДУЛЯ -->
     <div class="editor-section">
       <div class="modal-header">
         <h3>Код модуля</h3>
+
+        <MoloButton
+            v-if="selectedModuleId && enterpriseInfo?._id"
+            class="confirm"
+            @click="clearModuleCache"
+            :disabled="clearingCache"
+        >
+          <MoloLoaders
+              btnLoader
+              v-if="clearingCache"
+          />
+          <span v-else>
+            Очистить кеш
+          </span>
+        </MoloButton>
       </div>
-      <div class="code-container" :class="{ 'with-docs': showDocumentation }">
+
+      <div
+          class="code-container"
+          :class="{ 'with-docs': showDocumentation }"
+      >
         <vue-monaco-editor
             ref="monacoRef"
             v-model:value="formData.code"
@@ -891,106 +1223,236 @@ onUnmounted(() => {
             :options="MONACO_EDITOR_OPTIONS"
             class="monaco-editor-container"
         />
-        <div v-if="showDocumentation" class="documentation">
-          <MoloDocumentation/>
+
+        <div
+            v-if="showDocumentation"
+            class="documentation"
+        >
+          <MoloDocumentation />
         </div>
       </div>
     </div>
 
-    <hr>
+    <hr />
 
-    <!-- Файлы модуля - клиентские и серверные вместе -->
+    <!-- ФАЙЛЫ МОДУЛЯ -->
     <div class="files-section">
       <div class="modal-content">
         <div class="modal-header">
           <h3>Файлы модуля</h3>
-          <MoloButton class="confirm" @click="openFileEditor">Добавить файл</MoloButton>
+
+          <MoloButton
+              class="confirm"
+              @click="moduleStore.openFileEditor()"
+          >
+            Добавить файл
+          </MoloButton>
         </div>
 
-        <!-- Лоадер -->
-        <div v-if="loadingSubModules" class="loader-wrapper">
-          <MoloLoaders wndLoader/>
+        <div
+            v-if="loadingFiles"
+            class="loader-wrapper"
+        >
+          <MoloLoaders wndLoader />
         </div>
+
         <section class="modal-body">
+          <!-- Клиентские файлы -->
           <section class="file-items">
-            <div v-for="file in clientFiles" :key="file.path" class="file-item">
+            <div
+                v-for="file in clientFiles"
+                :key="file.path"
+                class="file-item"
+            >
               <div class="file-info">
-              <span class="file-logo">
-                <img :src="vueIcon" class="file-icon" alt="" v-if="file.format == 'vue'">
-                <img :src="tsIcon" class="file-icon" alt="" v-else-if="file.format == 'ts'">
-                <img :src="jsIcon" class="file-icon" alt="" v-else>
+                <span class="file-logo">
+                  <img
+                      :src="vueIcon"
+                      class="file-icon"
+                      alt=""
+                      v-if="file.format === 'vue'"
+                  />
+                  <img
+                      :src="tsIcon"
+                      class="file-icon"
+                      alt=""
+                      v-else-if="file.format === 'ts'"
+                  />
+                  <img
+                      :src="jsIcon"
+                      class="file-icon"
+                      alt=""
+                      v-else
+                  />
                   {{ file.name }}
-              </span>
-                <span class="file-badge">{{ file.format }}</span>
-                <span class="file-path">{{ file.path }}</span>
+                </span>
+
+                <span class="file-badge">
+                  {{ file.format }}
+                </span>
+
+                <span class="file-path">
+                  {{ file.path }}
+                </span>
               </div>
+
               <div class="file-actions">
-                <MoloButton @click="editFile(file)" class="action-btn-small edit" title="Редактировать">↩</MoloButton>
-                <MoloButton @click="deleteFile(file.path)" class="action-btn-small delete" title="Удалить">×</MoloButton>
+                <MoloButton
+                    @click="moduleStore.openFileEditor(file)"
+                    class="action-btn-small edit"
+                    title="Редактировать"
+                >
+                  ↩
+                </MoloButton>
+
+                <MoloButton
+                    @click="deleteFile(file.path)"
+                    class="action-btn-small delete"
+                    title="Удалить"
+                >
+                  ×
+                </MoloButton>
               </div>
             </div>
           </section>
 
-
           <!-- Серверные файлы -->
-          <div v-for="file in serverFiles" :key="file.path" class="file-item">
+          <div
+              v-for="file in serverFiles"
+              :key="file.path"
+              class="file-item"
+          >
             <div class="file-info">
-        <span class="file-logo">
-          <img :src="tsIcon" class="file-icon" alt="" v-if="file.format == 'ts'">
-          <img :src="jsIcon" class="file-icon" alt="" v-else>
-          {{ file.name }}
-        </span>
-              <span class="file-badge server">server | {{ file.format }}</span>
-              <span class="file-path">{{ file.path }}</span>
+              <span class="file-logo">
+                <img
+                    :src="tsIcon"
+                    class="file-icon"
+                    alt=""
+                    v-if="file.format === 'ts'"
+                />
+                <img
+                    :src="jsIcon"
+                    class="file-icon"
+                    alt=""
+                    v-else
+                />
+                {{ file.name }}
+              </span>
+
+              <span class="file-badge server">
+                server | {{ file.format }}
+              </span>
+
+              <span class="file-path">
+                {{ file.path }}
+              </span>
             </div>
+
             <div class="file-actions">
-              <MoloButton @click="editFile(file)" class="action-btn-small edit" title="Редактировать">↩</MoloButton>
-              <MoloButton @click="deleteFile(file.path)" class="action-btn-small delete" title="Удалить">×</MoloButton>
+              <MoloButton
+                  @click="moduleStore.openFileEditor(file)"
+                  class="action-btn-small edit"
+                  title="Редактировать"
+              >
+                ↩
+              </MoloButton>
+
+              <MoloButton
+                  @click="deleteFile(file.path)"
+                  class="action-btn-small delete"
+                  title="Удалить"
+              >
+                ×
+              </MoloButton>
             </div>
           </div>
 
-          <div v-if="!loadingSubModules && clientFiles.length === 0 && serverFiles.length === 0" class="file-empty">
+          <div
+              v-if="!loadingFiles && clientFiles.length === 0 && serverFiles.length === 0"
+              class="file-empty"
+          >
             Нет файлов
           </div>
         </section>
-        <!-- Клиентские файлы -->
-
       </div>
     </div>
-    <!-- Модальное окно для создания/редактирования файла -->
-    <div v-if="showFileEditor" class="modal-overlay" @click.self="closeFileEditor">
+
+    <!-- МОДАЛКА ФАЙЛА -->
+    <div
+        v-if="showFileEditor"
+        class="modal-overlay"
+        @click.self="moduleStore.closeFileEditor()"
+    >
       <div class="modal-content">
         <div class="modal-header">
-          <h3>{{ editingFilePath ? 'Редактирование файла' : 'Новый файл' }}</h3>
+          <h3>
+            {{ editingFilePath ? 'Редактирование файла' : 'Новый файл' }}
+          </h3>
+
           <div class="modal-footer">
-            <MoloButton class="close" @click="closeFileEditor">Отмена</MoloButton>
-            <MoloButton class="confirm" @click="saveFile" :disabled="loadingUPD">
-              <span v-if="!loadingUPD">{{ editingFilePath ? 'Обновить' : 'Создать' }}</span>
-              <MoloLoaders v-else btnLoader/>
+            <MoloButton
+                class="close"
+                @click="moduleStore.closeFileEditor()"
+            >
+              Отмена
+            </MoloButton>
+
+            <MoloButton
+                class="confirm"
+                @click="saveFile"
+                :disabled="loadingUPD"
+            >
+              <span v-if="!loadingUPD">
+                {{ editingFilePath ? 'Обновить' : 'Создать' }}
+              </span>
+              <MoloLoaders v-else btnLoader />
             </MoloButton>
           </div>
         </div>
 
         <div class="modal-body">
           <div class="form-row">
-            <MoloInput v-model="newFileName" tLabel="Имя файла" placeholder="Button.vue" lRequired/>
-            <MoloInput v-model="newFilePath" tLabel="Путь" placeholder="components/Button.vue" lRequired/>
-            <MoloSelect v-model="newFileFormat" tLabel="Формат" :parent="fileFormats" children="label"
-                        valueKey="value"/>
+            <MoloInput
+                v-model="fileForm.name"
+                tLabel="Имя файла"
+                placeholder="Button.vue"
+                lRequired
+            />
+
+            <MoloInput
+                v-model="fileForm.path"
+                tLabel="Путь"
+                placeholder="components/Button.vue"
+                lRequired
+            />
+
+            <MoloSelect
+                v-model="fileForm.format"
+                tLabel="Формат"
+                :parent="fileFormats"
+                children="label"
+                valueKey="value"
+            />
           </div>
 
-          <div class="form-row" style="margin-top: 12px;">
+          <div
+              class="form-row"
+              style="margin-top: 12px;"
+          >
             <label class="checkbox-label">
-              <input type="checkbox" v-model="newFileIsServer"/>
+              <input
+                  type="checkbox"
+                  v-model="fileForm.isServer"
+              />
               <span>Серверный файл</span>
             </label>
           </div>
 
           <div class="file-editor-container">
             <vue-monaco-editor
-                v-model:value="newFileCode"
+                v-model:value="fileForm.code"
                 theme="vs-dark"
-                :language="getEditorLanguage(newFileFormat)"
+                :language="getEditorLanguage(fileForm.format)"
                 :options="MONACO_EDITOR_OPTIONS"
                 class="file-monaco-editor"
             />
@@ -999,21 +1461,31 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <hr>
+    <hr />
 
+    <!-- ЗАВИСИМОСТИ -->
     <section class="dependencies">
       <div class="modal-content">
         <div class="modal-header">
           <h3>Зависимости</h3>
+
           <div class="dep-tabs">
-            <MoloButton class="confirm"
-                        @click="activeDepTab = 'dependencies'">dependencies
+            <MoloButton
+                class="confirm"
+                @click="activeDepTab = 'dependencies'"
+            >
+              dependencies
             </MoloButton>
-            <MoloButton class="confirm"
-                        @click="activeDepTab = 'devDependencies'">devDependencies
+
+            <MoloButton
+                class="confirm"
+                @click="activeDepTab = 'devDependencies'"
+            >
+              devDependencies
             </MoloButton>
           </div>
         </div>
+
         <div class="dep-list-header">
           <span>Название пакета</span>
           <span>Версия</span>
@@ -1021,36 +1493,81 @@ onUnmounted(() => {
         </div>
 
         <div class="dep-list">
-          <div v-for="(version, pkg) in currentDeps" :key="pkg" class="dep-item">
+          <div
+              v-for="(version, pkg) in currentDeps"
+              :key="pkg"
+              class="dep-item"
+          >
             <span class="dep-name">{{ pkg }}</span>
             <span class="dep-version">{{ version }}</span>
-            <button @click="removeDependency(pkg)" class="action-btn-small delete">×</button>
+
+            <button
+                @click="removeDependency(pkg as string)"
+                class="action-btn-small delete"
+            >
+              ×
+            </button>
           </div>
-          <div v-if="Object.keys(currentDeps).length === 0" class="dep-empty">Нет зависимостей</div>
+
+          <div
+              v-if="Object.keys(currentDeps).length === 0"
+              class="dep-empty"
+          >
+            Нет зависимостей
+          </div>
         </div>
       </div>
 
-        <div class="modal-content">
-          <div class="modal-header">
-            <h3>Добавить</h3>
-          </div>
-          <section class="dependencies-new">
-            <MoloInput v-model="newDepName" placeholder="package-name" tLabel="Пакет"/>
-            <MoloInput v-model="newDepVersion" placeholder="latest" tLabel="Версия"/>
-            <MoloButton @click="addDependency" class="confirm" :disabled="!newDepName">Добавить</MoloButton>
-          </section>
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>Добавить</h3>
         </div>
-      </section>
 
+        <section class="dependencies-new">
+          <MoloInput
+              v-model="newDepName"
+              placeholder="package-name"
+              tLabel="Пакет"
+          />
 
+          <MoloInput
+              v-model="newDepVersion"
+              placeholder="latest"
+              tLabel="Версия"
+          />
 
-    <hr>
+          <MoloButton
+              @click="addDependency"
+              class="confirm"
+              :disabled="!newDepName"
+          >
+            Добавить
+          </MoloButton>
+        </section>
+      </div>
+    </section>
 
+    <hr />
+
+    <!-- ДЕЙСТВИЯ -->
     <div class="editor-actions">
-      <MoloButton class="close" @click="emit('close')">Отмена</MoloButton>
-      <MoloButton class="confirm" :disabled="loading" @click="saveModule">
-        <span v-if="!loading">{{ isEditing ? 'Сохранить' : 'Создать' }}</span>
-        <MoloLoaders btnLoader v-else/>
+      <MoloButton
+          class="close"
+          @click="emit('close')"
+      >
+        Отмена
+      </MoloButton>
+
+      <MoloButton
+          class="confirm"
+          :disabled="loading"
+          @click="saveModule"
+      >
+        <span v-if="!loading">
+          {{ isEditing ? 'Сохранить' : 'Создать' }}
+        </span>
+
+        <MoloLoaders v-else btnLoader />
       </MoloButton>
     </div>
   </div>
@@ -1116,6 +1633,12 @@ onUnmounted(() => {
   gap: 10px;
 }
 
+.menu-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
 .settings-group {
   background: var(--half_opacity_bg);
   border-radius: 8px;
@@ -1126,11 +1649,27 @@ onUnmounted(() => {
   border: 1px solid var(--half_opacity_border);
 }
 
+.settings-group-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
 .settings-group h3 {
-  margin: 0 0 12px 0;
+  margin: 0;
   font-size: 14px;
   color: #aaa;
   font-weight: 500;
+}
+
+.new-location-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .editor-actions {
@@ -1324,7 +1863,6 @@ onUnmounted(() => {
   border-radius: 4px;
 }
 
-/* Grid система для заголовка */
 .dep-list-header {
   display: grid;
   gap: 16px;
@@ -1342,13 +1880,13 @@ onUnmounted(() => {
   z-index: 1;
 }
 
-/* Grid система для каждого элемента */
 .dep-item {
   display: grid;
   grid-template-columns: 1fr 100px 70px;
   align-items: center;
-  gap: 16px;  padding: 10px 12px;
-  background: #252525;
+  gap: 16px;
+  padding: 10px 12px;
+  background: var(--half_opacity_bg);
   border-bottom: 1px solid #3c3c3c;
   transition: all 0.2s ease;
 }
@@ -1362,7 +1900,6 @@ onUnmounted(() => {
   transform: translateX(4px);
 }
 
-/* Контент внутри ячеек */
 .dep-name {
   font-family: 'Monaco', 'Menlo', monospace;
   font-size: 13px;
@@ -1384,14 +1921,12 @@ onUnmounted(() => {
   justify-self: start;
 }
 
-/* Пустое состояние */
 .dep-empty {
   text-align: center;
   color: #666;
   padding: 40px 20px;
   font-size: 14px;
 }
-
 
 .modal-overlay {
   display: flex;
@@ -1467,6 +2002,257 @@ hr {
   margin: 16px 0;
 }
 
+.header-actions-row {
+  display: flex;
+  gap: 8px;
+}
+
+.location-management {
+  margin-top: 4px;
+}
+
+.location-header {
+  margin-bottom: 8px;
+}
+
+.location-label {
+  font-size: 12px;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.locations-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.location-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  transition: all 0.2s;
+}
+
+.location-item:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.location-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.location-title {
+  font-size: 12px;
+  color: #ccc;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.location-type-badge {
+  font-size: 10px;
+  padding: 2px 6px;
+  background: rgba(58, 110, 165, 0.2);
+  border-radius: 10px;
+  color: #6ea2ff;
+  white-space: nowrap;
+}
+
+.delete-location-btn {
+  background: none;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.delete-location-btn:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.4);
+}
+
+.delete-location-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.deleting-spinner {
+  animation: spin 1s linear infinite;
+}
+
+.no-locations {
+  text-align: center;
+  color: #666;
+  padding: 12px;
+  font-size: 12px;
+}
+
+.menu-actions-row {
+  display: flex;
+  gap: 8px;
+}
+
+.menu-actions-row > * {
+  flex: 1;
+}
+
+.danger {
+  background: rgba(239, 68, 68, 0.15) !important;
+  border-color: rgba(239, 68, 68, 0.3) !important;
+  color: #ef4444 !important;
+}
+
+.danger:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.25) !important;
+}
+
+.menu-tree {
+  margin-top: 8px;
+}
+
+.menu-tree-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.menu-tree-label {
+  font-size: 12px;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.expand-all-btn {
+  background: none;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  padding: 4px 10px;
+  color: #888;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.expand-all-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: #fff;
+}
+
+.tree-group {
+  margin-bottom: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.tree-group-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.02);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.tree-group-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.tree-group-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.tree-group-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: #ddd;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tree-badge {
+  font-size: 9px;
+  padding: 2px 6px;
+  background: rgba(58, 110, 165, 0.2);
+  border-radius: 10px;
+  color: #6ea2ff;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.tree-items {
+  padding: 4px;
+}
+
+.tree-empty {
+  text-align: center;
+  color: #666;
+  padding: 12px;
+  font-size: 11px;
+}
+
+.tree-delete-btn {
+  background: none;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.tree-delete-btn:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.4);
+}
+
+.tree-delete-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.deleting-spinner {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
 @media (max-width: 768px) {
   .form-row {
     flex-direction: column;
@@ -1482,6 +2268,10 @@ hr {
   }
 
   .files-section {
+    flex-direction: column;
+  }
+
+  .dependencies {
     flex-direction: column;
   }
 }

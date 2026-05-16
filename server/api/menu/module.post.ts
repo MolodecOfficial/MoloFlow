@@ -1,4 +1,6 @@
+// server/api/menu/module.post.ts
 import { Menu } from '~~/server/models/menu.model';
+import { DynamicModule } from '~~/server/models/dynamicModules.model';
 
 export default defineEventHandler(async (event) => {
     try {
@@ -6,19 +8,19 @@ export default defineEventHandler(async (event) => {
         let { module, targetGroupId, parentItemId } = body;
 
         if (!module || !targetGroupId) {
-            throw createError({
-                statusCode: 400,
-                message: 'Не переданы обязательные данные'
-            });
+            throw createError({ statusCode: 400, message: 'Не переданы обязательные данные' });
         }
-        if (!module || !module._id || !module.name) {
-            throw createError({
-                statusCode: 400,
-                message: 'module должен содержать _id и name'
-            });
+        if (!module._id || !module.name) {
+            throw createError({ statusCode: 400, message: 'module должен содержать _id и name' });
         }
 
-        // Преобразование parentItemId, если он объект
+        // Загружаем полные данные модуля из базы
+        const fullModule = await DynamicModule.findById(module._id);
+        if (!fullModule) {
+            throw createError({ statusCode: 404, message: 'Модуль не найден в базе' });
+        }
+
+        // parentItemId может прийти как объект { id: ... }
         if (parentItemId && typeof parentItemId === 'object') {
             parentItemId = parentItemId.id || parentItemId._id || null;
         }
@@ -27,34 +29,32 @@ export default defineEventHandler(async (event) => {
         }
 
         const menuItem = {
-            id: `module_${module._id}`,
-            title: module.name,
+            id: `module_${fullModule._id}`,
+            title: fullModule.name,
             type: 'item',
             requiredRole: ['Управляющий', 'Сотрудник'],
             isActive: true,
-            componentName: 'DynamicModuleLoader',      // ← Имя компонента
-            componentPath: 'modules/DynamicModuleLoader', // ← Правильный путь
+            componentName: 'DynamicModuleLoader',
+            componentPath: 'modules/DynamicModuleLoader',
             isModule: true,
-            moduleId: module._id,
-            format: module.format,
+            moduleId: fullModule._id,
+            format: fullModule.format,
             moduleData: {
-                _id: module._id,
-                name: module.name,
-                format: module.format
+                _id: fullModule._id,
+                name: fullModule.name,
+                format: fullModule.format,
+                code: fullModule.code || '',
+                files: fullModule.files || [],
+                dependencies: Object.fromEntries(fullModule.dependencies || new Map()),
             },
-            items: []
+            items: [],
         };
 
         let group = await Menu.findOne({ id: targetGroupId });
         if (!group && /^[0-9a-fA-F]{24}$/.test(targetGroupId)) {
             group = await Menu.findById(targetGroupId);
         }
-        if (!group) {
-            throw createError({
-                statusCode: 404,
-                message: 'Группа не найдена'
-            });
-        }
+        if (!group) throw createError({ statusCode: 404, message: 'Группа не найдена' });
 
         const insertItem = (items: any[]): boolean => {
             for (const item of items) {
@@ -72,12 +72,7 @@ export default defineEventHandler(async (event) => {
 
         if (parentItemId) {
             const inserted = insertItem(group.items || []);
-            if (!inserted) {
-                throw createError({
-                    statusCode: 400,
-                    message: 'Родительский элемент не найден'
-                });
-            }
+            if (!inserted) throw createError({ statusCode: 400, message: 'Родительский элемент не найден' });
         } else {
             group.items = group.items || [];
             group.items.push(menuItem);
@@ -85,17 +80,9 @@ export default defineEventHandler(async (event) => {
 
         await group.save();
 
-        return {
-            success: true,
-            menuItem,
-            group: group.id
-        };
-
+        return { success: true, menuItem, group: group.id };
     } catch (error: any) {
         console.error('Ошибка modulePost:', error);
-        throw createError({
-            statusCode: 500,
-            message: error.message || 'Ошибка добавления модуля'
-        });
+        throw createError({ statusCode: 500, message: error.message || 'Ошибка добавления модуля' });
     }
 });

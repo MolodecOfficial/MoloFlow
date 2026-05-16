@@ -1,35 +1,31 @@
+// server/api/execute/[name].post.ts
+import { getModuleSandbox } from '~~/app/utils/moduleSandbox';
 import { DynamicModule } from '~~/server/models/dynamicModules.model';
 
 export default defineEventHandler(async (event) => {
-    const fileName = getRouterParam(event, 'name');
+    const moduleId = getRouterParam(event, 'name');
     const body = await readBody(event);
+    const { fileName, data } = body || {};
 
-    // Ищем серверный файл в БД
-    const allModules = await DynamicModule.find({});
-
-    let serverFile = null;
-
-    for (const module of allModules) {
-        const found = module.files?.find(f =>
-            f.isServerFile === true &&
-            (f.name === fileName || f.path === fileName)
-        );
-        if (found) {
-            serverFile = found;
-            break;
-        }
+    if (!moduleId || !fileName) {
+        throw createError({
+            statusCode: 400,
+            message: `moduleId and fileName are required`
+        });
     }
 
-    if (!serverFile) {
-        throw createError({ statusCode: 404, message: `Файл ${fileName} не найден` });
-    }
+    const mod = await DynamicModule.findById(moduleId);
+    if (!mod) throw createError({ statusCode: 404, message: `Module not found` });
 
-    // Просто выполняем код через eval (для серверных файлов это безопасно)
     try {
-        const AsyncFunction = Object.getPrototypeOf(async function() {}).constructor;
-        const handler = new AsyncFunction('body', serverFile.code + '\n\nreturn typeof defaultExport === "function" ? defaultExport(body) : (typeof handler === "function" ? handler(body) : { success: true });');
-        return await handler(body);
+        const sandbox = await getModuleSandbox(moduleId, mod.enterpriseId);
+        const result = await sandbox.executeFile(fileName, data || {});
+        return result;
     } catch (error: any) {
-        return { success: false, error: error.message };
+        console.error(`[Execute API] Error:`, error.message);
+        throw createError({
+            statusCode: error.statusCode || 500,
+            message: error.message || 'Script execution failed'
+        });
     }
 });
