@@ -270,10 +270,9 @@ const resetForm = () => {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  height: 100%;
-  width: 100%;
   color: white;
   overflow-y: initial;
+  padding: 20px;
 }
 
 .notice {

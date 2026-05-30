@@ -133,10 +133,9 @@ async function deleteToken() {
 .enterprise-login {
   display: flex;
   flex-direction: column;
-  height: 100%;
-  width: 100%;
   color: white;
   box-sizing: border-box;
+  padding: 20px;
 }
 
 

@@ -20,6 +20,15 @@ export function useModuleApi(){
         try {
             const response = await $fetch(`/api/enterprises/${enterpriseId}/dynamicModules/${moduleId}/files`)
             addLog('success', `Загружено ${response.files?.length || 0} файлов`)
+
+            // Логируем наличие основного кода
+            if (response.mainFile?.code) {
+                addLog('success', `Основной код найден, длина: ${response.mainFile.code.length}`)
+            } else {
+                addLog('error', 'Основной код отсутствует в ответе!')
+                console.error('[API] No mainFile.code in response:', response)
+            }
+
             return response.files || []
         } catch (err: any) {
             addLog('error', `Ошибка: ${err}`)
@@ -28,13 +37,16 @@ export function useModuleApi(){
     }
 
     const loadDependencies = async (enterpriseId: string, moduleId: string) => {
+        addLog('info', 'Загружаю зависимости...')
         try {
             const res = await $fetch(`/api/enterprises/${enterpriseId}/dynamicModules/${moduleId}/dependencies`)
+            addLog('success', 'Зависимости загружены')
             return {
                 dependencies: res.dependencies || {},
                 devDependencies: res.devDependencies || {}
             }
-        } catch {
+        } catch (err: any) {
+            addLog('error', `Ошибка: ${err}`)
             return { dependencies: {}, devDependencies: {} }
         }
     }
@@ -44,7 +56,8 @@ export function useModuleApi(){
             return await $fetch(`/api/enterprises/${enterpriseId}/dynamicModules/${moduleId}`, {
                 method: 'PUT',
                 body: data
-            })
+            });
+
         } else {
             return await $fetch(`/api/enterprises/${enterpriseId}/dynamicModules`, {
                 method: 'POST',

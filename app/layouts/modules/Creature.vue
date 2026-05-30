@@ -1,13 +1,13 @@
-<script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import { VueMonacoEditor } from '@guolao/vue-monaco-editor'
-import { getEditorLanguage, MONACO_EDITOR_OPTIONS } from '~~/app/utils/monacoConfig'
-import { initMonacoTypeScript, registerMonacoSnippets } from '~~/app/utils/monaco-init'
-import { useUserStore } from '~~/stores/userStore'
-import { useMenuEditorStore } from '~~/stores/menuEditorStore'
-import { useModuleEditorStore } from '~~/stores/moduleEditorStore'
-import { useMenuApi } from '~/composables/useMenuApi'
-import { useModuleApi } from '~/composables/useModuleApi'
+<script lang="ts" setup>
+import {computed, nextTick, onMounted, onUnmounted, ref, watch} from 'vue'
+import {VueMonacoEditor} from '@guolao/vue-monaco-editor'
+import {getEditorLanguage, MONACO_EDITOR_OPTIONS} from '~~/app/utils/monacoConfig'
+import {initMonacoTypeScript, registerMonacoSnippets} from '~~/app/utils/monaco-init'
+import {useUserStore} from '~~/stores/userStore'
+import {useMenuEditorStore} from '~~/stores/menuEditorStore'
+import {useModuleEditorStore} from '~~/stores/moduleEditorStore'
+import {useMenuApi} from '~/composables/useMenuApi'
+import {useModuleApi} from '~/composables/useModuleApi'
 
 import jsIcon from '~~/public/js.png'
 import tsIcon from '~~/public/ts.png'
@@ -20,9 +20,9 @@ if (typeof window !== 'undefined') {
 
 const emit = defineEmits(['close', 'saved'])
 
-const { openWindow, updateWindowData } = useWindowManager()
-const { addNotification } = useNotifications('Создание модуля')
-const { addLog } = useLogger('Создание модуля')
+const {openWindow, updateWindowData} = useWindowManager()
+const {addNotification} = useNotifications('Создание модуля')
+const {addLog} = useLogger('Создание модуля')
 
 const userStore = useUserStore()
 const menuStore = useMenuEditorStore()
@@ -91,20 +91,20 @@ const {
    КОНСТАНТЫ
 ========================================= */
 const locationTypes = [
-  { label: 'Меню', value: 'menu' },
-  { label: 'Модули', value: 'module' }
+  {label: 'Меню', value: 'menu'},
+  {label: 'Модули', value: 'module'}
 ]
 
 const fileFormats = [
-  { label: '.vue', value: 'vue' },
-  { label: '.js', value: 'js' },
-  { label: '.ts', value: 'ts' }
+  {label: '.vue', value: 'vue'},
+  {label: '.js', value: 'js'},
+  {label: '.ts', value: 'ts'}
 ]
 
 const availableFormats = [
-  { label: '.vue', value: 'vue' },
-  { label: '.js', value: 'js' },
-  { label: '.ts', value: 'ts' }
+  {label: '.vue', value: 'vue'},
+  {label: '.js', value: 'js'},
+  {label: '.ts', value: 'ts'}
 ]
 
 /* =========================================
@@ -229,8 +229,7 @@ const saveModule = async () => {
   try {
     const payload = {
       ...formData.value,
-      code:
-          formData.value.code || getPlaceholder(),
+      code: formData.value.code || getPlaceholder(),
       createdBy: currentUser.value
     }
 
@@ -402,18 +401,21 @@ const clearModuleCache = async () => {
   try {
     clearingCache.value = true
 
-    await moduleApi.clearCache(
+    const result = await moduleApi.clearCache(
         selectedModuleId.value,
         enterpriseInfo.value._id
     )
 
-    addNotification(
-        'info',
-        'Кеш модуля очищен'
-    )
-  } catch {
+    console.log('Cache clear result:', result)
+
+    addNotification('info', 'Кеш модуля очищен')
+  } catch (error: any) {
+    console.error('Clear cache error:', error)
+
     addNotification(
         'error',
+        error?.data?.message ||
+        error?.message ||
         'Ошибка очистки кеша'
     )
   } finally {
@@ -714,6 +716,20 @@ const removePreview = () => {
   formData.value.previewImage = null
 }
 
+const openDocumentation = () => {
+  openWindow(
+      'settings',
+      'Documentation',
+      null,
+      {
+        width: 1400,
+        height: 600,
+        minWidth: 600,
+        minHeight: 400
+      },
+  )
+}
+
 /* =========================================
    HELPERS
 ========================================= */
@@ -811,6 +827,13 @@ watch(showDocumentation, async () => {
   }, 50)
 })
 
+watch(moduleFiles, (newFiles) => {
+  if (!previewWindowId.value) return
+  updateWindowData('modules', previewWindowId.value, {
+    files: newFiles
+  })
+})
+
 /* =========================================
    LIFECYCLE
 ========================================= */
@@ -829,15 +852,9 @@ onMounted(async () => {
     }
   }
 
-  // Загружаем меню
   await loadAvailableLocations()
   await loadMenuTree()
 
-  // ВАЖНО:
-  // Если модуль уже выбран (selectedModuleId сохранён в store),
-  // НЕ сбрасываем форму.
-  // Иначе watcher на selectedModuleId загрузит данные,
-  // а resetForm() их тут же затрёт.
   if (selectedModuleId.value) {
     const mod = modules.value.find(
         (m: any) => m._id === selectedModuleId.value
@@ -854,7 +871,6 @@ onMounted(async () => {
       await loadDependencies()
     }
   } else {
-    // Только если модуль НЕ выбран — создаём пустую форму
     moduleStore.resetForm()
     formData.value.code = getPlaceholder()
   }
@@ -883,15 +899,15 @@ onUnmounted(() => {
 
           <MoloButton
               v-if="formData.format === 'vue'"
-              class="default"
+              class="confirm"
               @click="openPreviewInWindow"
           >
             Предпросмотр
           </MoloButton>
 
           <MoloButton
-              @click="toggleDocumentation"
-              :class="showDocumentation ? 'default' : 'confirm'"
+              :class="openDocumentation ? 'confirm' : 'default'"
+              @click="openDocumentation"
           >
             {{ showDocumentation ? 'Скрыть док.' : 'Документация' }}
           </MoloButton>
@@ -901,16 +917,16 @@ onUnmounted(() => {
       <div class="header-right">
         <MoloSelect
             v-model="selectedModuleId"
+            :disabled="!modules || modules.length === 0 ? 'Нет модулей' : 'Выбрать модуль'"
             :parent="modules"
             children="name"
-            valueKey="_id"
-            :disabled="!modules || modules.length === 0 ? 'Нет модулей' : 'Выбрать модуль'"
             class="module-select"
+            valueKey="_id"
         />
       </div>
     </div>
 
-    <hr />
+    <hr/>
 
     <div class="editor-grid">
       <!-- ОСНОВНЫЕ НАСТРОЙКИ -->
@@ -920,25 +936,25 @@ onUnmounted(() => {
 
           <div class="form-row">
             <MoloInput
-                tLabel="Название"
-                lRequired
                 v-model="formData.name"
+                lRequired
                 placeholder="Введите название"
+                tLabel="Название"
             />
 
             <MoloInput
-                tLabel="Имя файла"
-                lRequired
                 v-model="formData.fileName"
+                lRequired
                 placeholder="на_английском"
+                tLabel="Имя файла"
             />
 
             <MoloSelect
-                tLabel="Формат"
-                lRequired
                 v-model="formData.format"
                 :parent="availableFormats"
                 children="label"
+                lRequired
+                tLabel="Формат"
                 valueKey="value"
             />
           </div>
@@ -949,15 +965,15 @@ onUnmounted(() => {
 
           <div class="form-row">
             <MoloInput
-                tLabel="Описание"
                 v-model="formData.description"
                 placeholder="Что делает модуль?"
+                tLabel="Описание"
             />
 
             <MoloInput
-                tLabel="Теги"
                 v-model="tagsInput"
                 placeholder="ui, таблицы, графики"
+                tLabel="Теги"
             />
           </div>
         </div>
@@ -965,16 +981,16 @@ onUnmounted(() => {
         <div class="settings-group">
           <div class="form-row low">
             <label class="checkbox-label">
-              <input type="checkbox" v-model="formData.isPublic" />
+              <input v-model="formData.isPublic" type="checkbox"/>
               <span>Общедоступный</span>
             </label>
 
             <div class="preview-upload">
               <MoloInput
-                  type="file"
                   accept="image/*"
-                  @change="handleImageUpload"
                   tLabel="Превью"
+                  type="file"
+                  @change="handleImageUpload"
               />
 
               <div
@@ -999,196 +1015,55 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <!-- УПРАВЛЕНИЕ МЕНЮ -->
+      <!-- УПРАВЛЕНИЕ МЕНЮ - ПРОСТАЯ ВЕРСИЯ -->
       <div class="menu-settings">
         <div class="settings-group">
-          <div class="settings-group-header">
-            <h3>Управление меню</h3>
+          <h3>Добавить в меню</h3>
 
-            <div class="header-actions-row">
-              <MoloButton
-                  class="confirm"
-                  @click="showNewForm = !showNewForm"
-              >
-                {{ showNewForm ? 'Скрыть' : 'Новое место' }}
-              </MoloButton>
-            </div>
-          </div>
-
-          <!-- Создание новой группы -->
-          <div
-              v-if="showNewForm"
-              class="new-location-form"
-          >
-            <MoloInput
-                v-model="newLocation.title"
-                tLabel="Название места"
-                placeholder="Например: Аналитика"
-                lRequired
-            />
-
-            <MoloSelect
-                v-model="newLocation.type"
-                tLabel="Тип"
-                :parent="locationTypes"
-                children="label"
-                valueKey="value"
-            />
-
-            <MoloInput
-                v-model="newLocation.order"
-                tLabel="Порядок"
-                type="number"
-                placeholder="0"
-            />
-
-            <MoloButton
-                class="confirm"
-                :disabled="!newLocation.title || creating"
-                @click="createNewLocation"
-            >
-              <span v-if="!creating">Создать место</span>
-              <MoloLoaders v-else btnLoader />
-            </MoloButton>
-          </div>
-
-          <hr
-              v-if="showNewForm"
-              style="margin: 8px 0; border-color: rgba(255,255,255,0.05);"
-          />
-
-          <!-- Дерево меню -->
-          <div class="menu-tree">
-            <div class="menu-tree-header">
-              <span class="menu-tree-label">
-                Структура меню
-              </span>
-
-              <button
-                  class="expand-all-btn"
-                  @click="menuStore.toggleAll()"
-              >
-                {{ allExpanded ? 'Свернуть все' : 'Развернуть все' }}
-              </button>
-            </div>
-
-            <div
-                v-if="tree.length === 0"
-                class="no-locations"
-            >
-              Нет доступных мест
-            </div>
-
-            <div
-                v-for="group in tree"
-                :key="group.id"
-                class="tree-group"
-            >
-              <div class="tree-group-header">
-                <div class="tree-group-info">
-                  <span
-                      class="tree-toggle"
-                      @click="menuStore.toggleGroup(group.id)"
-                  >
-                    {{ expanded.has(group.id) ? '▾' : '▸' }}
-                  </span>
-
-                  <span class="tree-group-icon">📁</span>
-
-                  <span class="tree-group-title">
-                    {{ group.title }}
-                  </span>
-
-                  <span class="tree-badge">
-                    {{ group.type }}
-                  </span>
-                </div>
-
-                <button
-                    class="tree-delete-btn"
-                    @click="deleteLocation(group.id)"
-                    :disabled="deletingGroup === group.id"
-                    title="Удалить группу"
-                >
-                  <span
-                      v-if="deletingGroup !== group.id"
-                  >
-                    ×
-                  </span>
-
-                  <span
-                      v-else
-                      class="deleting-spinner"
-                  >
-                    ⋯
-                  </span>
-                </button>
-              </div>
-
-              <div
-                  v-if="expanded.has(group.id)"
-                  class="tree-items"
-              >
-                <div
-                    v-if="!group.items || group.items.length === 0"
-                    class="tree-empty"
-                >
-                  Нет элементов
-                </div>
-
-                <MoloMenuItemTree
-                    v-for="item in group.items"
-                    :key="item.id"
-                    :item="item"
-                    :groupId="group.id"
-                    :depth="1"
-                    :deletingItem="deletingItem"
-                    @delete-item="(itemId) => deleteMenuItem(group.id, itemId)"
-                    @add-module="(itemId) => addModuleToMenuItem(group.id, itemId)"
-                />
-              </div>
-            </div>
-          </div>
-
-          <hr
-              style="margin: 8px 0; border-color: rgba(255,255,255,0.05);"
-          />
-
-          <!-- Добавление модуля в меню -->
           <MoloSelect
               v-model="selectedGroupId"
-              :parent="locations"
-              tLabel="Группа для добавления"
-              children="groupTitle"
-              valueKey="groupId"
               :disabled="locations.length === 0 ? 'Нет доступных групп' : 'Выбрать группу'"
+              :parent="locations"
+              children="groupTitle"
+              tLabel="Группа"
+              valueKey="groupId"
           />
 
           <MoloSelect
               v-if="availableParents.length"
               v-model="selectedParentId"
               :parent="availableParents"
-              tLabel="Родительский элемент"
               children="title"
-              valueKey="id"
               disabled="Выбрать родителя (опционально)"
+              tLabel="Родительский элемент"
+              valueKey="id"
           />
 
           <MoloButton
-              class="confirm"
               :disabled="!selectedGroupId || adding"
+              class="confirm"
               @click="addModuleToMenu"
           >
-            <span v-if="!adding">
-              Добавить модуль в меню
-            </span>
-            <MoloLoaders v-else btnLoader />
+            <span v-if="!adding">Добавить в меню</span>
+            <MoloLoaders v-else btnLoader/>
           </MoloButton>
         </div>
+        <section class="settings-group">
+          <h3>Создать новое место</h3>
+          <MoloInput tLabel="Название места" placeholder="Новое место"/>
+
+          <MoloButton
+              class="confirm"
+
+          >
+            <span v-if="!adding">Добавить новое место</span>
+            <MoloLoaders v-else btnLoader/>
+          </MoloButton>
+        </section>
       </div>
     </div>
 
-    <hr />
+    <hr/>
 
     <!-- КОД МОДУЛЯ -->
     <div class="editor-section">
@@ -1197,43 +1072,41 @@ onUnmounted(() => {
 
         <MoloButton
             v-if="selectedModuleId && enterpriseInfo?._id"
+            :disabled="clearingCache"
             class="confirm"
             @click="clearModuleCache"
-            :disabled="clearingCache"
         >
           <MoloLoaders
-              btnLoader
               v-if="clearingCache"
+              btnLoader
           />
-          <span v-else>
-            Очистить кеш
-          </span>
+          <span v-else>Очистить кеш</span>
         </MoloButton>
       </div>
 
       <div
-          class="code-container"
           :class="{ 'with-docs': showDocumentation }"
+          class="code-container"
       >
         <vue-monaco-editor
             ref="monacoRef"
             v-model:value="formData.code"
-            theme="vs-dark"
             :language="editorLanguage"
             :options="MONACO_EDITOR_OPTIONS"
             class="monaco-editor-container"
+            theme="vs-dark"
         />
 
         <div
             v-if="showDocumentation"
             class="documentation"
         >
-          <MoloDocumentation />
+          ...
         </div>
       </div>
     </div>
 
-    <hr />
+    <hr/>
 
     <!-- ФАЙЛЫ МОДУЛЯ -->
     <div class="files-section">
@@ -1253,68 +1126,66 @@ onUnmounted(() => {
             v-if="loadingFiles"
             class="loader-wrapper"
         >
-          <MoloLoaders wndLoader />
+          <MoloLoaders wndLoader/>
         </div>
 
         <section class="modal-body">
           <!-- Клиентские файлы -->
-          <section class="file-items">
-            <div
-                v-for="file in clientFiles"
-                :key="file.path"
-                class="file-item"
-            >
-              <div class="file-info">
-                <span class="file-logo">
-                  <img
-                      :src="vueIcon"
-                      class="file-icon"
-                      alt=""
-                      v-if="file.format === 'vue'"
-                  />
-                  <img
-                      :src="tsIcon"
-                      class="file-icon"
-                      alt=""
-                      v-else-if="file.format === 'ts'"
-                  />
-                  <img
-                      :src="jsIcon"
-                      class="file-icon"
-                      alt=""
-                      v-else
-                  />
-                  {{ file.name }}
-                </span>
+          <div
+              v-for="file in clientFiles"
+              :key="file.path"
+              class="file-item"
+          >
+            <div class="file-info">
+              <span class="file-logo">
+                <img
+                    v-if="file.format === 'vue'"
+                    :src="vueIcon"
+                    alt=""
+                    class="file-icon"
+                />
+                <img
+                    v-else-if="file.format === 'ts'"
+                    :src="tsIcon"
+                    alt=""
+                    class="file-icon"
+                />
+                <img
+                    v-else
+                    :src="jsIcon"
+                    alt=""
+                    class="file-icon"
+                />
+                {{ file.name }}
+              </span>
 
-                <span class="file-badge">
-                  {{ file.format }}
-                </span>
+              <span class="file-badge">
+                {{ file.format }}
+              </span>
 
-                <span class="file-path">
-                  {{ file.path }}
-                </span>
-              </div>
-
-              <div class="file-actions">
-                <MoloButton
-                    @click="moduleStore.openFileEditor(file)"
-                    class="action-btn-small edit"
-                    title="Редактировать"
-                >
-                  ↩
-                </MoloButton>
-
-                <MoloButton
-                    @click="deleteFile(file.path)"
-                    class="action-btn-small delete"
-                    title="Удалить"
-                >
-                  ×
-                </MoloButton>
-              </div>
+              <span class="file-path">
+                {{ file.path }}
+              </span>
             </div>
-          </section>
+
+            <div class="file-actions">
+              <MoloButton
+                  class="action-btn-small edit"
+                  title="Редактировать"
+                  @click="moduleStore.openFileEditor(file)"
+              >
+                ↩
+              </MoloButton>
+
+              <MoloButton
+                  class="action-btn-small delete"
+                  title="Удалить"
+                  @click="deleteFile(file.path)"
+              >
+                ×
+              </MoloButton>
+            </div>
+          </div>
 
           <!-- Серверные файлы -->
           <div
@@ -1325,16 +1196,16 @@ onUnmounted(() => {
             <div class="file-info">
               <span class="file-logo">
                 <img
-                    :src="tsIcon"
-                    class="file-icon"
-                    alt=""
                     v-if="file.format === 'ts'"
+                    :src="tsIcon"
+                    alt=""
+                    class="file-icon"
                 />
                 <img
-                    :src="jsIcon"
-                    class="file-icon"
-                    alt=""
                     v-else
+                    :src="jsIcon"
+                    alt=""
+                    class="file-icon"
                 />
                 {{ file.name }}
               </span>
@@ -1350,17 +1221,17 @@ onUnmounted(() => {
 
             <div class="file-actions">
               <MoloButton
-                  @click="moduleStore.openFileEditor(file)"
                   class="action-btn-small edit"
                   title="Редактировать"
+                  @click="moduleStore.openFileEditor(file)"
               >
                 ↩
               </MoloButton>
 
               <MoloButton
-                  @click="deleteFile(file.path)"
                   class="action-btn-small delete"
                   title="Удалить"
+                  @click="deleteFile(file.path)"
               >
                 ×
               </MoloButton>
@@ -1398,14 +1269,14 @@ onUnmounted(() => {
             </MoloButton>
 
             <MoloButton
+                :disabled="loadingUPD"
                 class="confirm"
                 @click="saveFile"
-                :disabled="loadingUPD"
             >
               <span v-if="!loadingUPD">
                 {{ editingFilePath ? 'Обновить' : 'Создать' }}
               </span>
-              <MoloLoaders v-else btnLoader />
+              <MoloLoaders v-else btnLoader/>
             </MoloButton>
           </div>
         </div>
@@ -1414,35 +1285,32 @@ onUnmounted(() => {
           <div class="form-row">
             <MoloInput
                 v-model="fileForm.name"
-                tLabel="Имя файла"
-                placeholder="Button.vue"
                 lRequired
+                placeholder="Button.vue"
+                tLabel="Имя файла"
             />
 
             <MoloInput
                 v-model="fileForm.path"
-                tLabel="Путь"
-                placeholder="components/Button.vue"
                 lRequired
+                placeholder="components/Button.vue"
+                tLabel="Путь"
             />
 
             <MoloSelect
                 v-model="fileForm.format"
-                tLabel="Формат"
                 :parent="fileFormats"
                 children="label"
+                tLabel="Формат"
                 valueKey="value"
             />
           </div>
 
-          <div
-              class="form-row"
-              style="margin-top: 12px;"
-          >
+          <div class="form-row">
             <label class="checkbox-label">
               <input
-                  type="checkbox"
                   v-model="fileForm.isServer"
+                  type="checkbox"
               />
               <span>Серверный файл</span>
             </label>
@@ -1451,34 +1319,34 @@ onUnmounted(() => {
           <div class="file-editor-container">
             <vue-monaco-editor
                 v-model:value="fileForm.code"
-                theme="vs-dark"
                 :language="getEditorLanguage(fileForm.format)"
                 :options="MONACO_EDITOR_OPTIONS"
                 class="file-monaco-editor"
+                theme="vs-dark"
             />
           </div>
         </div>
       </div>
     </div>
 
-    <hr />
+    <hr/>
 
     <!-- ЗАВИСИМОСТИ -->
-    <section class="dependencies">
+    <div class="dependencies">
       <div class="modal-content">
         <div class="modal-header">
           <h3>Зависимости</h3>
 
           <div class="dep-tabs">
             <MoloButton
-                class="confirm"
+                :class="activeDepTab === 'dependencies' ? 'confirm' : 'default'"
                 @click="activeDepTab = 'dependencies'"
             >
               dependencies
             </MoloButton>
 
             <MoloButton
-                class="confirm"
+                :class="activeDepTab === 'devDependencies' ? 'confirm' : 'default'"
                 @click="activeDepTab = 'devDependencies'"
             >
               devDependencies
@@ -1502,8 +1370,8 @@ onUnmounted(() => {
             <span class="dep-version">{{ version }}</span>
 
             <button
-                @click="removeDependency(pkg as string)"
                 class="action-btn-small delete"
+                @click="removeDependency(pkg as string)"
             >
               ×
             </button>
@@ -1520,10 +1388,10 @@ onUnmounted(() => {
 
       <div class="modal-content">
         <div class="modal-header">
-          <h3>Добавить</h3>
+          <h3>Добавить зависимость</h3>
         </div>
 
-        <section class="dependencies-new">
+        <div class="dependencies-new">
           <MoloInput
               v-model="newDepName"
               placeholder="package-name"
@@ -1537,17 +1405,17 @@ onUnmounted(() => {
           />
 
           <MoloButton
-              @click="addDependency"
-              class="confirm"
               :disabled="!newDepName"
+              class="confirm"
+              @click="addDependency"
           >
             Добавить
           </MoloButton>
-        </section>
+        </div>
       </div>
-    </section>
+    </div>
 
-    <hr />
+    <hr/>
 
     <!-- ДЕЙСТВИЯ -->
     <div class="editor-actions">
@@ -1559,15 +1427,15 @@ onUnmounted(() => {
       </MoloButton>
 
       <MoloButton
-          class="confirm"
           :disabled="loading"
+          class="confirm"
           @click="saveModule"
       >
         <span v-if="!loading">
           {{ isEditing ? 'Сохранить' : 'Создать' }}
         </span>
 
-        <MoloLoaders v-else btnLoader />
+        <MoloLoaders v-else btnLoader/>
       </MoloButton>
     </div>
   </div>
@@ -1593,6 +1461,8 @@ onUnmounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 20px;
 }
 
 .header-left {
@@ -1649,27 +1519,11 @@ onUnmounted(() => {
   border: 1px solid var(--half_opacity_border);
 }
 
-.settings-group-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
 .settings-group h3 {
   margin: 0;
   font-size: 14px;
   color: #aaa;
   font-weight: 500;
-}
-
-.new-location-form {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 12px;
-  background: rgba(255, 255, 255, 0.02);
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .editor-actions {
@@ -1760,14 +1614,6 @@ onUnmounted(() => {
 .files-section {
   display: flex;
   width: 100%;
-  justify-content: space-between;
-  gap: 20px;
-}
-
-.file-items {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
 }
 
 .file-item {
@@ -1775,7 +1621,8 @@ onUnmounted(() => {
   gap: 10px;
   justify-content: space-between;
   align-items: center;
-  border-radius: 4px;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   font-family: monospace;
   font-size: 13px;
 }
@@ -1859,7 +1706,7 @@ onUnmounted(() => {
 
 .dep-list {
   max-height: 300px;
-  overflow: hidden;
+  overflow-y: auto;
   border-radius: 4px;
 }
 
@@ -1875,9 +1722,6 @@ onUnmounted(() => {
   text-transform: uppercase;
   letter-spacing: 0.5px;
   color: rgba(255, 255, 255, 0.5);
-  position: sticky;
-  top: 0;
-  z-index: 1;
 }
 
 .dep-item {
@@ -1897,7 +1741,6 @@ onUnmounted(() => {
 
 .dep-item:hover {
   background: #2a2a2a;
-  transform: translateX(4px);
 }
 
 .dep-name {
@@ -1929,15 +1772,23 @@ onUnmounted(() => {
 }
 
 .modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
   display: flex;
   align-items: center;
   justify-content: center;
+  z-index: 1000;
 }
 
 .modal-content {
   background: var(--half_opacity_bg);
   border-radius: 10px;
-  width: 100%;
+  width: 90%;
+  max-width: 800px;
   max-height: 85vh;
   display: flex;
   flex-direction: column;
@@ -1959,7 +1810,7 @@ onUnmounted(() => {
 }
 
 .modal-body {
-  padding: 15px;
+  padding: 20px;
   overflow-y: auto;
   flex: 1;
 }
@@ -1993,264 +1844,13 @@ onUnmounted(() => {
 .dependencies-new {
   display: flex;
   flex-direction: column;
-  padding: 15px;
+  padding: 20px;
   gap: 10px;
 }
 
 hr {
   border-color: #3c3c3c;
   margin: 16px 0;
-}
-
-.header-actions-row {
-  display: flex;
-  gap: 8px;
-}
-
-.location-management {
-  margin-top: 4px;
-}
-
-.location-header {
-  margin-bottom: 8px;
-}
-
-.location-label {
-  font-size: 12px;
-  color: #888;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.locations-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  max-height: 200px;
-  overflow-y: auto;
-}
-
-.location-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 8px 10px;
-  background: rgba(255, 255, 255, 0.02);
-  border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.04);
-  transition: all 0.2s;
-}
-
-.location-item:hover {
-  background: rgba(255, 255, 255, 0.04);
-}
-
-.location-info {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex: 1;
-  min-width: 0;
-}
-
-.location-title {
-  font-size: 12px;
-  color: #ccc;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.location-type-badge {
-  font-size: 10px;
-  padding: 2px 6px;
-  background: rgba(58, 110, 165, 0.2);
-  border-radius: 10px;
-  color: #6ea2ff;
-  white-space: nowrap;
-}
-
-.delete-location-btn {
-  background: none;
-  border: 1px solid rgba(239, 68, 68, 0.2);
-  color: #ef4444;
-  width: 24px;
-  height: 24px;
-  border-radius: 6px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 16px;
-  transition: all 0.2s;
-  flex-shrink: 0;
-}
-
-.delete-location-btn:hover:not(:disabled) {
-  background: rgba(239, 68, 68, 0.1);
-  border-color: rgba(239, 68, 68, 0.4);
-}
-
-.delete-location-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.deleting-spinner {
-  animation: spin 1s linear infinite;
-}
-
-.no-locations {
-  text-align: center;
-  color: #666;
-  padding: 12px;
-  font-size: 12px;
-}
-
-.menu-actions-row {
-  display: flex;
-  gap: 8px;
-}
-
-.menu-actions-row > * {
-  flex: 1;
-}
-
-.danger {
-  background: rgba(239, 68, 68, 0.15) !important;
-  border-color: rgba(239, 68, 68, 0.3) !important;
-  color: #ef4444 !important;
-}
-
-.danger:hover:not(:disabled) {
-  background: rgba(239, 68, 68, 0.25) !important;
-}
-
-.menu-tree {
-  margin-top: 8px;
-}
-
-.menu-tree-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
-}
-
-.menu-tree-label {
-  font-size: 12px;
-  color: #888;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.expand-all-btn {
-  background: none;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 6px;
-  padding: 4px 10px;
-  color: #888;
-  font-size: 11px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.expand-all-btn:hover {
-  background: rgba(255, 255, 255, 0.05);
-  color: #fff;
-}
-
-.tree-group {
-  margin-bottom: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.04);
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-.tree-group-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 8px 10px;
-  background: rgba(255, 255, 255, 0.02);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-}
-
-.tree-group-info {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex: 1;
-  min-width: 0;
-}
-
-.tree-group-icon {
-  font-size: 14px;
-  flex-shrink: 0;
-}
-
-.tree-group-title {
-  font-size: 13px;
-  font-weight: 500;
-  color: #ddd;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.tree-badge {
-  font-size: 9px;
-  padding: 2px 6px;
-  background: rgba(58, 110, 165, 0.2);
-  border-radius: 10px;
-  color: #6ea2ff;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
-.tree-items {
-  padding: 4px;
-}
-
-.tree-empty {
-  text-align: center;
-  color: #666;
-  padding: 12px;
-  font-size: 11px;
-}
-
-.tree-delete-btn {
-  background: none;
-  border: 1px solid rgba(239, 68, 68, 0.2);
-  color: #ef4444;
-  width: 24px;
-  height: 24px;
-  border-radius: 6px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 16px;
-  transition: all 0.2s;
-  flex-shrink: 0;
-}
-
-.tree-delete-btn:hover:not(:disabled) {
-  background: rgba(239, 68, 68, 0.1);
-  border-color: rgba(239, 68, 68, 0.4);
-}
-
-.tree-delete-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.deleting-spinner {
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
 }
 
 @media (max-width: 768px) {

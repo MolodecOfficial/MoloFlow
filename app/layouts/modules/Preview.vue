@@ -1,13 +1,23 @@
 <!-- components/modules/preview.vue -->
 <script setup lang="ts">
 import {computed, ref, watch} from 'vue'
-import {useModuleCompiler} from '~/composables/useModuleCompiler'
+import {useModuleCompiler, setGlobalComposables} from '~/composables/useModuleCompiler'
+import { useLogger } from '~/composables/useLogger'
+import { useNotifications } from '~/composables/useNotifications'
+import { useWindowManager } from '~/composables/useWindowManager'
 
 const props = defineProps<{ windowData?: any }>()
 const loading = ref(true)
 const error = ref<string | null>(null)
 const currentModuleName = ref('')
 const renderKey = ref(0)
+
+// Устанавливаем composables
+setGlobalComposables({
+  useLogger,
+  useNotifications,
+  useWindowManager,
+})
 
 const moduleId = computed(() => props.windowData?.moduleId || '')
 const {compiledComponent, compiling, compileError, compileModule, reset} = useModuleCompiler()

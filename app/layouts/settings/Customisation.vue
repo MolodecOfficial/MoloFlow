@@ -250,6 +250,7 @@ const previewStyle = computed(() => {
   flex-direction: column;
   gap: 25px;
   color: white;
+  padding: 20px;
 }
 
 h2 {

@@ -284,7 +284,7 @@ onUnmounted(() => {
       <div class="window-header" @mousedown="handleDragStart">
         <div class="window-title">{{ displayTitle }}</div>
         <div class="header-logger" v-if="role === 'Управляющий'">
-          <span>{{ groupId }}</span><span>{{ subGroupId }}</span><span>{{ windowId }}</span>
+          <span>{{ groupId }}/</span><span>{{ subGroupId }}</span>/<span>{{ windowId }}</span>
         </div>
         <div class="window-controls">
           <button class="control-btn refresh" @click="refreshContent" @mousedown.stop>
@@ -531,7 +531,6 @@ onUnmounted(() => {
 }
 
 .window-content {
-  padding: 10px 15px;
   color: var(--window-content-text, rgba(255, 255, 255, 0.9));
   background: var(--window-content-bg, transparent);
   overflow: auto;

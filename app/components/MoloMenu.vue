@@ -108,7 +108,7 @@ const createDynamicMenuItems = () => {
   if (!dynamicModules.value.length) return []
 
   return dynamicModules.value
-      .filter(module => module && module._id) // Фильтруем невалидные модули
+      .filter(module => module && module._id)
       .map(module => ({
         id: `module_${module._id}`,
         title: module.name || 'Без названия',
@@ -136,7 +136,7 @@ const loadMenuFromAPI = async () => {
     })
 
     menuGroups.value = (response as any[])
-        .filter(g => g && g.type === 'menu') // Фильтруем null/undefined
+        .filter(g => g && g.type === 'menu')
 
     const modulesData = (response as any[])
         .filter(g => g && g.type === 'module')
@@ -159,7 +159,6 @@ const initDefaultMenu = async () => {
   }
 }
 
-
 /* =========================
    COMPUTED GROUPS
 ========================= */
@@ -170,7 +169,7 @@ const modulesGroups = computed(() => {
 
   const staticModules =
       ((window as any).__modulesData || menuGroups.value.filter(g => g?.type === 'module'))
-          .filter(Boolean) // Убираем null/undefined
+          .filter(Boolean)
 
   const dynamic = createDynamicMenuItems()
 
@@ -182,8 +181,6 @@ const modulesGroups = computed(() => {
 /* =========================
    UI HELPERS
 ========================= */
-
-const getPaddingLeft = (depth: number = 0) => `${10 + depth * 20}px`
 
 const handleGroupEnter = (id: string) => activeGroup.value = id
 const handleGroupLeave = () => activeGroup.value = null
@@ -207,6 +204,7 @@ const getWindowSizeOptions = (itemId: string) => {
     register: { width: 1000, height: 650 },
     customisation: { width: 800, height: 600 },
     creature: { width: 1000, height: 650 },
+    control: { width: 1000, height: 650 },
   }
 
   return presets[itemId]
@@ -254,22 +252,37 @@ const handleMenuItemClick = (event: MouseEvent, groupId: string, item: any, isMo
   }
 
   if (item.isScript) {
-    // Для скриптовых модулей - запускаем выполнение
     restartModule(item.moduleData)
     return
   }
 
   const sizeOptions = getWindowSizeOptions(item.id)
 
-  emit('open-window',
-      groupId,
-      item.id,
-      undefined,
-      sizeOptions,
-      false,
-      item.componentPath || item.componentName,
-      item.moduleData
-  )
+  if (item.format === 'vue' && item.moduleId) {
+    emit('open-window',
+        groupId,
+        item.id,
+        undefined,
+        sizeOptions,
+        false,
+        'modules/DynamicModuleLoader',
+        {
+          ...item.moduleData,
+          moduleId: item.moduleId,
+          _id: item.moduleId,
+        }
+    )
+  } else {
+    emit('open-window',
+        groupId,
+        item.id,
+        undefined,
+        sizeOptions,
+        false,
+        item.componentPath || item.componentName,
+        item.moduleData
+    )
+  }
 }
 
 const handleChildItemClick = (groupId: string, parentItem: any, child: any, isModule = false) => {
@@ -364,7 +377,7 @@ const customStorageEvent = async () => {
 window.addEventListener('storage', customStorageEvent)
 window.addEventListener('enterprise-login', customStorageEvent)
 window.addEventListener('enterprise-logout', customStorageEvent)
-window.addEventListener('modules-updated', customStorageEvent) // Добавил слушатель обновления модулей
+window.addEventListener('modules-updated', customStorageEvent)
 
 onUnmounted(() => {
   window.removeEventListener('storage', customStorageEvent)
@@ -376,205 +389,191 @@ onUnmounted(() => {
 
 <template>
   <!-- ЛЕВОЕ МЕНЮ -->
-  <section
-      ref="menuRef"
-      class="menu-panel"
-      :class="{ locked: isLockedHover }"
-      @mousemove="handleMouseMove($event, menuRef)"
-      @mouseenter="handleMouseEnter"
-      @mouseleave="handleMouseLeave"
-  >
-    <div v-if="loading" class="loading">
-      Загрузка меню...
-    </div>
+  <div class="menu-wrapper">
+    <section
+        ref="menuRef"
+        class="menu-panel"
+        :class="{ locked: isLockedHover }"
+        @mousemove="handleMouseMove($event, menuRef)"
+        @mouseenter="handleMouseEnter"
+        @mouseleave="handleMouseLeave"
+    >
+      <div v-if="loading" class="loading">
+        Загрузка меню...
+      </div>
 
-    <div v-else class="groups">
-      <div
-          v-for="group in menuGroups"
-          :key="group.id"
-          class="group"
-          @mouseenter="handleGroupEnter(group.id)"
-          @mouseleave="handleGroupLeave"
-      >
-        <div class="group-header">
-          <span>{{ group.title }}</span>
-          <span class="arrow">›</span>
-        </div>
+      <div v-else class="groups-horizontal">
+        <div
+            v-for="group in menuGroups"
+            :key="group.id"
+            class="group-horizontal"
+            @mouseenter="handleGroupEnter(group.id)"
+            @mouseleave="handleGroupLeave"
+        >
+          <div class="group-header-horizontal">
+            <span>{{ group.title }}</span>
+            <span class="arrow">▼</span>
+          </div>
 
-        <transition name="fade">
-          <div v-show="activeGroup === group.id" class="items">
-            <div
-                v-for="item in (group.items || []).filter(i => i && i.isActive !== false)"
-                :key="item.id"
-                class="item-wrapper"
-            >
+          <transition name="fade">
+            <div v-show="activeGroup === group.id" class="items-dropdown">
               <div
-                  class="item"
-                  :class="{ parent: item.items?.length }"
-                  @click="handleMenuItemClick($event, group.id, item)"
-              >
-                <span class="title">
-                  {{ item.title }}
-                </span>
-
-                <span
-                    v-if="item.items?.length"
-                    class="expand"
-                    @click.stop="toggleExpand(item.id)"
-                >
-                  ›
-                </span>
-              </div>
-
-              <!-- CHILDREN -->
-              <div
-                  v-if="item.items?.length && expandedItems.has(item.id)"
-                  class="children"
+                  v-for="item in (group.items || []).filter(i => i && i.isActive !== false)"
+                  :key="item.id"
+                  class="item-wrapper"
               >
                 <div
-                    v-for="child in (item.items || []).filter(c => c)"
-                    :key="child.id"
-                    class="child"
-                    @click="handleChildItemClick(group.id, item, child)"
+                    class="item"
+                    :class="{ parent: item.items?.length }"
+                    @click="handleMenuItemClick($event, group.id, item)"
                 >
-                  {{ child.title }}
+                  <span class="title">
+                    {{ item.title }}
+                  </span>
+
+                  <span
+                      v-if="item.items?.length"
+                      class="expand"
+                      @click.stop="toggleExpand(item.id)"
+                  >
+                    ›
+                  </span>
+                </div>
+
+                <div
+                    v-if="item.items?.length && expandedItems.has(item.id)"
+                    class="children-dropdown"
+                >
+                  <div
+                      v-for="child in (item.items || []).filter(c => c)"
+                      :key="child.id"
+                      class="child"
+                      @click="handleChildItemClick(group.id, item, child)"
+                  >
+                    {{ child.title }}
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        </transition>
-      </div>
-    </div>
-
-    <!-- LOCK -->
-    <div v-if="isLockedHover && role === 'Пользователь'" class="lock">
-      <img :src="lock" class="lock-icon" />
-      <div
-          class="lock-tooltip"
-          :style="{ left: tooltipPosition.x + 10 + 'px', top: tooltipPosition.y + 10 + 'px' }"
-      >
-        Нет доступа
-      </div>
-    </div>
-  </section>
-
-  <!-- ПРАВОЕ МЕНЮ (MODULES) -->
-  <section
-      ref="modulesRef"
-      class="menu-panel right"
-      @mousemove="handleMouseMove($event, modulesRef)"
-      @mouseenter="handleMouseEnter"
-      @mouseleave="handleMouseLeave"
-  >
-    <div class="groups">
-      <div
-          v-for="group in modulesGroups"
-          :key="group.id"
-          class="group"
-          @mouseenter="handleModulesGroupEnter(group.id)"
-          @mouseleave="handleModulesGroupLeave"
-      >
-        <div class="group-header">
-          <span>{{ group.title }}</span>
-          <span class="arrow">›</span>
+          </transition>
         </div>
+      </div>
 
-        <transition name="fade">
-          <div v-show="activeModulesGroup === group.id" class="items">
-            <div
-                v-for="item in (group.items || []).filter(i => i)"
-                :key="item.id"
-                class="item-wrapper"
-            >
+      <div v-if="isLockedHover && role === 'Пользователь'" class="lock">
+        <img :src="lock" class="lock-icon" />
+        <div
+            class="lock-tooltip"
+            :style="{ left: tooltipPosition.x + 10 + 'px', top: tooltipPosition.y + 10 + 'px' }"
+        >
+          Нет доступа
+        </div>
+      </div>
+    </section>
+
+    <!-- ПРАВОЕ МЕНЮ (MODULES) -->
+    <section
+        ref="modulesRef"
+        class="menu-panel right"
+        @mousemove="handleMouseMove($event, modulesRef)"
+        @mouseenter="handleMouseEnter"
+        @mouseleave="handleMouseLeave"
+    >
+      <div class="groups-horizontal">
+        <div
+            v-for="group in modulesGroups"
+            :key="group.id"
+            class="group-horizontal"
+            @mouseenter="handleModulesGroupEnter(group.id)"
+            @mouseleave="handleModulesGroupLeave"
+        >
+          <div class="group-header-horizontal">
+            <span>{{ group.title }}</span>
+            <span class="arrow">▼</span>
+          </div>
+
+          <transition name="fade">
+            <div v-show="activeModulesGroup === group.id" class="items-dropdown modules-dropdown">
               <div
-                  class="item"
-                  :class="{ script: item.isScript }"
-                  @click="handleMenuItemClick($event, group.id, item, true)"
-              >
-                <span class="title">
-                  <img
-                      v-if="item.format === 'ts'"
-                      :src="tsIcon"
-                      class="icon"
-                  />
-                  <img
-                      v-if="item.format === 'js'"
-                      :src="jsIcon"
-                      class="icon"
-                  />
-                  {{ item.title }}
-                </span>
-
-                <button
-                    v-if="item.isScript"
-                    class="restart"
-                    @click.stop="restartModule(item.moduleData)"
-                >
-                  ↻
-                </button>
-
-                <span
-                    v-if="item.items?.length"
-                    class="expand"
-                    @click.stop="toggleExpand(item.id, true)"
-                >
-                  ›
-                </span>
-              </div>
-
-              <div
-                  v-if="item.items?.length && expandedModulesItems.has(item.id)"
-                  class="children"
+                  v-for="item in (group.items || []).filter(i => i)"
+                  :key="item.id"
+                  class="item-wrapper"
               >
                 <div
-                    v-for="child in (item.items || []).filter(c => c)"
-                    :key="child.id"
-                    class="child"
-                    @click="handleChildItemClick(group.id, item, child, true)"
+                    class="item"
+                    :class="{ script: item.isScript }"
+                    @click="handleMenuItemClick($event, group.id, item, true)"
                 >
-                  {{ child.title }}
+                  <span class="title">
+                    <img
+                        v-if="item.format === 'ts'"
+                        :src="tsIcon"
+                        class="icon"
+                    />
+                    <img
+                        v-if="item.format === 'js'"
+                        :src="jsIcon"
+                        class="icon"
+                    />
+                    {{ item.title }}
+                  </span>
+
+                  <button
+                      v-if="item.isScript"
+                      class="restart"
+                      @click.stop="restartModule(item.moduleData)"
+                  >
+                    ↻
+                  </button>
+
+                  <span
+                      v-if="item.items?.length"
+                      class="expand"
+                      @click.stop="toggleExpand(item.id, true)"
+                  >
+                    ›
+                  </span>
+                </div>
+
+                <div
+                    v-if="item.items?.length && expandedModulesItems.has(item.id)"
+                    class="children-dropdown modules-children"
+                >
+                  <div
+                      v-for="child in (item.items || []).filter(c => c)"
+                      :key="child.id"
+                      class="child"
+                      @click="handleChildItemClick(group.id, item, child, true)"
+                  >
+                    {{ child.title }}
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        </transition>
+          </transition>
+        </div>
       </div>
-    </div>
-  </section>
+    </section>
+  </div>
 </template>
 
 <style scoped>
-/* =========================
-   PANEL BASE
-========================= */
-
-.menu-panel {
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-
-  width: 280px;
-  max-height: 70vh;
-
+/* ОБЕРТКА */
+.menu-wrapper {
   display: flex;
-  flex-direction: column;
-
-  padding: 18px;
-
-  border-radius: 24px;
-
-  background: rgba(255,255,255,0.04);
-  border: 1px solid rgba(255,255,255,0.08);
-
-  backdrop-filter: blur(18px);
-
-  transition: 0.25s ease;
-
-  overflow: hidden;
+  justify-content: center;
+  gap: 20px;
+  position: relative;
+  z-index: 100;
 }
 
-.menu-panel:hover {
-  border-color: rgba(56,114,239,0.25);
+/* ПАНЕЛИ */
+.menu-panel {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  backdrop-filter: blur(18px);
+  border-radius: 16px;
+  padding: 8px 16px;
+  transition: 0.25s ease;
 }
 
 .menu-panel.locked {
@@ -582,177 +581,173 @@ onUnmounted(() => {
 }
 
 .menu-panel.right {
-  right: 20px;
+  margin-left: auto;
 }
 
-.menu-panel:not(.right) {
-  left: 20px;
-}
-
-/* =========================
-   GROUPS
-========================= */
-
-.groups {
+/* ГОРИЗОНТАЛЬНЫЕ ГРУППЫ */
+.groups-horizontal {
   display: flex;
-  flex-direction: column;
-  gap: 12px;
+  flex-direction: row;
+  gap: 8px;
 }
 
-.group {
-  border-bottom: 1px solid rgba(255,255,255,0.06);
-  padding-bottom: 10px;
+.group-horizontal {
+  position: relative;
 }
 
-/* =========================
-   HEADER
-========================= */
-
-.group-header {
+/* ЗАГОЛОВОК ГРУППЫ */
+.group-header-horizontal {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-
-  padding: 10px;
-
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 12px;
   cursor: pointer;
-
   color: rgba(255,255,255,0.8);
-
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
   transition: 0.2s ease;
 }
 
-.group-header:hover {
+.group-header-horizontal:hover {
+  background: rgba(255,255,255,0.08);
   color: #fff;
-  transform: translateX(2px);
 }
 
 .arrow {
-  opacity: 0.5;
-  transition: 0.2s ease;
+  font-size: 10px;
+  opacity: 0.6;
+  transition: transform 0.2s ease;
 }
 
-.group-header:hover .arrow {
+.group-horizontal:hover .arrow {
+  transform: rotate(180deg);
   opacity: 1;
-  transform: rotate(90deg);
 }
 
-/* =========================
-   ITEMS
-========================= */
-
-.items {
-  padding-left: 10px;
-  margin-top: 6px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+/* ВЫПАДАЮЩИЙ СПИСОК (вниз) */
+.items-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  min-width: 220px;
+  background: rgba(20, 20, 30, 0.95);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 8px 0;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3);
+  z-index: 1000;
 }
 
+.modules-dropdown {
+  right: 0;
+  left: auto;
+}
+
+/* ЭЛЕМЕНТЫ */
 .item-wrapper {
   display: flex;
   flex-direction: column;
+  position: relative;
 }
 
 .item {
   display: flex;
   justify-content: space-between;
   align-items: center;
-
-  padding: 8px 10px;
-
-  border-radius: 12px;
-
+  padding: 8px 16px;
   cursor: pointer;
-
-  color: rgba(255,255,255,0.7);
-
-  transition: 0.2s ease;
+  color: rgba(255,255,255,0.8);
+  font-size: 13px;
+  transition: 0.15s ease;
+  white-space: nowrap;
 }
 
 .item:hover {
-  background: rgba(255,255,255,0.05);
+  background: rgba(255,255,255,0.08);
   color: #fff;
-  transform: translateX(2px);
 }
 
 .item.parent {
-  font-weight: 600;
+  font-weight: 500;
 }
 
-/* =========================
-   CHILDREN
-========================= */
+.expand {
+  font-size: 14px;
+  opacity: 0.5;
+  margin-left: 12px;
+}
 
-.children {
-  padding-left: 14px;
-  margin-top: 4px;
+/* ДЕТИ (вылетают вбок) */
+.children-dropdown {
+  position: absolute;
+  top: -8px;
+  left: calc(100% + 4px);
+  min-width: 200px;
+  background: rgba(20, 20, 30, 0.95);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 8px 0;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3);
+  z-index: 1001;
+}
 
-  border-left: 1px solid rgba(255,255,255,0.08);
+.modules-children {
+  left: auto;
+  right: calc(100% + 4px);
 }
 
 .child {
-  padding: 6px 10px;
-
-  font-size: 13px;
-
-  color: rgba(255,255,255,0.6);
-
+  padding: 8px 16px;
   cursor: pointer;
-
-  border-radius: 8px;
-
-  transition: 0.2s ease;
+  color: rgba(255,255,255,0.7);
+  font-size: 12px;
+  transition: 0.15s ease;
+  white-space: nowrap;
 }
 
 .child:hover {
-  background: rgba(255,255,255,0.04);
+  background: rgba(255,255,255,0.08);
   color: #fff;
-  transform: translateX(2px);
+  padding-left: 20px;
 }
 
-/* =========================
-   ICONS
-========================= */
-
+/* ИКОНКИ */
 .icon {
   width: 16px;
   height: 16px;
   margin-right: 6px;
 }
 
-/* =========================
-   BUTTONS
-========================= */
-
+/* КНОПКА ПЕРЕЗАПУСКА */
 .restart {
   background: transparent;
   border: none;
   color: rgba(255,255,255,0.5);
-
   cursor: pointer;
-
+  padding: 4px 8px;
+  border-radius: 6px;
   transition: 0.2s ease;
 }
 
 .restart:hover {
   color: #6ea2ff;
+  background: rgba(110, 162, 255, 0.1);
   transform: rotate(180deg);
 }
 
-/* =========================
-   LOCK
-========================= */
-
+/* LOCK */
 .lock {
   position: absolute;
   inset: 0;
-
   display: flex;
   justify-content: center;
   align-items: center;
-
   background: rgba(0,0,0,0.15);
+  border-radius: 16px;
 }
 
 .lock-icon {
@@ -763,23 +758,15 @@ onUnmounted(() => {
 
 .lock-tooltip {
   position: absolute;
-
   padding: 8px 10px;
-
   border-radius: 10px;
-
   font-size: 12px;
-
   color: white;
-
   background: rgba(0,0,0,0.85);
   border: 1px solid rgba(255,80,80,0.3);
 }
 
-/* =========================
-   ANIMATION
-========================= */
-
+/* АНИМАЦИИ */
 .fade-enter-active,
 .fade-leave-active {
   transition: 0.2s ease;
@@ -791,16 +778,41 @@ onUnmounted(() => {
   transform: translateY(-4px);
 }
 
-/* =========================
-   RESPONSIVE
-========================= */
-
+/* АДАПТИВНОСТЬ */
 @media (max-width: 900px) {
+  .menu-wrapper {
+    flex-direction: column;
+  }
+
   .menu-panel {
-    position: relative;
-    transform: none;
     width: 100%;
-    margin-bottom: 16px;
+  }
+
+  .groups-horizontal {
+    flex-direction: column;
+  }
+
+  .items-dropdown {
+    position: static;
+    box-shadow: none;
+    background: rgba(255,255,255,0.03);
+    margin-top: 4px;
+    border: none;
+    padding-left: 16px;
+  }
+
+  .children-dropdown {
+    position: static;
+    box-shadow: none;
+    background: transparent;
+    padding-left: 20px;
+    border-left: 1px solid rgba(255,255,255,0.1);
+    margin-left: 16px;
+  }
+
+  .modules-children {
+    right: auto;
+    left: auto;
   }
 }
 </style>

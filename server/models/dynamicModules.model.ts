@@ -21,7 +21,7 @@ const moduleFileSchema = new mongoose.Schema({
     },
     isServerFile: {
         type: Boolean,
-        default: false  // true - серверный файл, false - клиентский
+        default: false
     },
     size: {
         type: Number,

@@ -9,20 +9,29 @@ defineProps<{
   placeholder?: string
   maxLength?: string
   readonly?: any
-  children?: any
-  parent?: any
+  children?: string
+  parent?: any[]
   disabled?: any
   key?: any
   value?: any
   valueKey?: string
   all?: any
+  clearable?: boolean
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   'update:modelValue': [value: string]
+  'change': [value: string]
   'input': [event: Event]
   'focus': [event: Event]
 }>()
+
+const handleInput = (event: Event) => {
+  const target = event.target as HTMLSelectElement
+  const value = target.value
+  emit('update:modelValue', value)
+  emit('change', value)
+}
 </script>
 
 <template>
@@ -34,20 +43,21 @@ defineEmits<{
     <select
         :id="id || label"
         :value="modelValue"
-        @input="$emit('update:modelValue', ($event.target as HTMLSelectElement).value)"
+        @input="handleInput"
         @focus="$emit('focus', $event)"
         :required="iRequired"
         class="select"
     >
       <option value="" disabled v-if="disabled">{{ disabled }}</option>
       <option value="" v-if="all">{{ all }}</option>
+      <option value="" v-if="clearable && modelValue">— Очистить —</option>
 
       <!-- Если parent - массив объектов и есть children -->
       <template v-if="parent && parent.length && children">
         <option
             v-for="item in parent"
-            :key="item[valueKey || '_id'] || item"
-            :value="item[valueKey || '_id'] || item"
+            :key="item[valueKey || '_id']"
+            :value="item[valueKey || '_id']"
         >
           {{ item[children] }}
         </option>
@@ -56,8 +66,8 @@ defineEmits<{
       <!-- Если parent - массив строк или простой массив -->
       <template v-else-if="parent && parent.length">
         <option
-            v-for="item in parent"
-            :key="key || item"
+            v-for="(item, idx) in parent"
+            :key="idx"
             :value="value || item"
         >
           {{ item }}

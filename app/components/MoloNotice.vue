@@ -92,6 +92,7 @@ const getAccentColor = computed(() => {
   gap: 10px;
   width: 380px;
   min-width: 380px;
+  backdrop-filter: blur(40px);
   transition: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
   animation: slideInRight 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55) forwards;
   transform: translateX(100%);
@@ -139,7 +140,7 @@ const getAccentColor = computed(() => {
   display: flex;
   align-items: center;
   background: var(--half_opacity_bg);
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(40px);
   padding: 16px;
   gap: 16px;
   position: relative;

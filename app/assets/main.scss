@@ -30,8 +30,6 @@ body {
   opacity: 0.5;
 }
 
-
-
 .action-btn.danger {
   padding: 6px 16px;
   background: #efd31e;
@@ -100,4 +98,12 @@ input[type="checkbox"] {
   animation: spin 1s linear infinite;
 }
 
+.hr-vert {
+  width: 2px;
+  height: auto;
+  min-height: 100%;
+  border: none;
+  border-left: 1px solid var(--half_opacity_border, #3c3c3c);
+  align-self: stretch;
+}
 
