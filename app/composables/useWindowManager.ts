@@ -213,6 +213,7 @@ export function useWindowManager() {
             'customisation': 'Кастомизация',
             'employees': 'Сотрудники',
             'modules': 'Модули',
+            'creature': 'Создание',
         }
         if (map[text.toLowerCase()]) return map[text.toLowerCase()]
         // Иначе просто капитализируем

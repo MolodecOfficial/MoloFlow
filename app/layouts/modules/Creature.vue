@@ -1614,6 +1614,7 @@ onUnmounted(() => {
 .files-section {
   display: flex;
   width: 100%;
+  gap: 10px;
 }
 
 .file-item {
@@ -1621,8 +1622,6 @@ onUnmounted(() => {
   gap: 10px;
   justify-content: space-between;
   align-items: center;
-  padding: 8px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   font-family: monospace;
   font-size: 13px;
 }
@@ -1787,8 +1786,7 @@ onUnmounted(() => {
 .modal-content {
   background: var(--half_opacity_bg);
   border-radius: 10px;
-  width: 90%;
-  max-width: 800px;
+  width: 100%;
   max-height: 85vh;
   display: flex;
   flex-direction: column;
@@ -1810,9 +1808,12 @@ onUnmounted(() => {
 }
 
 .modal-body {
-  padding: 20px;
+  padding: 10px;
   overflow-y: auto;
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
 .modal-footer {

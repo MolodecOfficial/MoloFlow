@@ -47,12 +47,13 @@ const fieldSchema = new mongoose.Schema({
     order: { type: Number, default: 0 }
 }, { _id: false })
 
+// Группы - это просто логические секции для организации полей в форме создания/редактирования
 const groupSchema = new mongoose.Schema({
     name: { type: String, required: true },
     description: { type: String, default: '' },
     order: { type: Number, default: 0 },
-    icon: { type: String, default: 'folder' }, // без эмодзи, используем имя иконки или просто текст
-    fields: [fieldSchema]
+    icon: { type: String, default: 'folder' },
+    fields: [fieldSchema] // Поля, относящиеся к этой группе (для формы)
 }, { _id: true })
 
 const tabSchema = new mongoose.Schema({
@@ -68,7 +69,7 @@ const tabSchema = new mongoose.Schema({
     defaultViewType: {
         type: String, enum: ['table', 'card', 'list', 'grid', 'kanban', 'calendar', 'map', 'timeline'], default: 'table'
     },
-    groups: [groupSchema],
+    groups: [groupSchema], // Группы для организации полей в форме
     actions: [{
         name: String, label: String, icon: String, color: String, action: String, isBulk: Boolean
     }],
@@ -82,8 +83,24 @@ const tabSchema = new mongoose.Schema({
     },
     isActive: { type: Boolean, default: true }
 }, {
-    timestamps: true
+    timestamps: true,
+    // Виртуальное поле для получения всех полей из всех групп
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true }
 })
+
+// Виртуальное поле - все поля из всех групп (плоский список)
+tabSchema.virtual('allFields').get(function() {
+    const fields: any[] = [];
+    if (this.groups && Array.isArray(this.groups)) {
+        this.groups.forEach((group: any) => {
+            if (group.fields && Array.isArray(group.fields)) {
+                fields.push(...group.fields);
+            }
+        });
+    }
+    return fields.sort((a: any, b: any) => (a.order || 0) - (b.order || 0));
+});
 
 tabSchema.index({ enterpriseId: 1, slug: 1 }, { unique: true })
 
@@ -98,7 +115,7 @@ tabSchema.pre('validate', function (next) {
     next()
 })
 
-// Миграция старых вкладок (без групп, с полем fields)
+// Миграция старых вкладок
 async function migrateLegacyTabs() {
     const TabModel = mongoose.model('Tab')
     const legacyTabs = await TabModel.find({ groups: { $exists: false }, fields: { $exists: true } })
@@ -127,7 +144,6 @@ async function migrateLegacyTabs() {
     }
 }
 
-// Асинхронный запуск миграции при инициализации модели
 setTimeout(() => {
     migrateLegacyTabs().catch(err => console.error('Migration error:', err))
 }, 1000)

@@ -632,9 +632,9 @@ onUnmounted(() => {
   top: calc(100% + 8px);
   left: 0;
   min-width: 220px;
-  background: rgba(20, 20, 30, 0.95);
+  background: var(--half_opacity_bg);
   backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--half_opacity_border);
   border-radius: 12px;
   padding: 8px 0;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3);
@@ -686,7 +686,7 @@ onUnmounted(() => {
   top: -8px;
   left: calc(100% + 4px);
   min-width: 200px;
-  background: rgba(20, 20, 30, 0.95);
+  background: var(--half_opacity_bg);
   backdrop-filter: blur(20px);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 12px;
