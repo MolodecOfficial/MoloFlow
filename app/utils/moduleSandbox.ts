@@ -20,6 +20,7 @@ export class ModuleSandbox {
     }
 
     async prepare() {
+        await ensureDir(ROOT)
         await ensureDir(this.dir)
         this.module = await DynamicModule.findById(this.moduleId)
         if (!this.module) throw new Error('Module not found')

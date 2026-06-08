@@ -20,7 +20,13 @@ export default defineNuxtConfig({
   vite: {
     json: {
       stringify: true
+    },
+    ssr: {
+      noExternal: ['velocityjs']
     }
+  },
+  build: {
+    transpile: ['velocityjs']
   },
   modules: ['@pinia/nuxt'],
 })
