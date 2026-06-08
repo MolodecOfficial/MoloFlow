@@ -1090,6 +1090,7 @@ onUnmounted(() => {
           :class="{ 'with-docs': showDocumentation }"
           class="code-container"
       >
+        <ClientOnly>
         <vue-monaco-editor
             ref="monacoRef"
             v-model:value="formData.code"
@@ -1098,6 +1099,7 @@ onUnmounted(() => {
             class="monaco-editor-container"
             theme="vs-dark"
         />
+        </ClientOnly>
 
         <div
             v-if="showDocumentation"
@@ -1319,6 +1321,7 @@ onUnmounted(() => {
           </div>
 
           <div class="file-editor-container">
+            <ClientOnly>
             <vue-monaco-editor
                 v-model:value="fileForm.code"
                 :language="getEditorLanguage(fileForm.format)"
@@ -1326,6 +1329,7 @@ onUnmounted(() => {
                 class="file-monaco-editor"
                 theme="vs-dark"
             />
+            </ClientOnly>
           </div>
         </div>
       </div>
