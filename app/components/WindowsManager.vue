@@ -45,6 +45,14 @@ const restoreWindowWithAnimation = (id: string) => {
     emit('focus', id)
   }
 }
+
+function updateWindowTitle(newTitle: string) {
+  if (props.window) {
+    props.window.itemTitle = newTitle
+    props.window.fullTitle = newTitle
+    emit('update-title', newTitle)
+  }
+}
 </script>
 
 <template>
@@ -82,6 +90,7 @@ const restoreWindowWithAnimation = (id: string) => {
             :component-name="window.componentName"
             :window-data="window.data"
             :enterprise-id="window.enterpriseId"
+            @updateTitle="(title) => updateWindowTitle(title)"
         />
       </template>
     </MoloWindow>

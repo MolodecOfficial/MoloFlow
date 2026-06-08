@@ -6,11 +6,13 @@ import { useNotifications } from '~/composables/useNotifications'
 import { useWindowManager } from '~/composables/useWindowManager'
 import { useLogger } from '~/composables/useLogger'
 import logo from '~~/public/logo.ico'
+import { useAppStore } from "~~/stores/appStore"
 
 const name = ref('')
 const role = ref('')
 const enterpriseName = ref('')
 const isLoading = ref(true)
+const dataPreloadStarted = ref(false)
 
 const {
   windows,
@@ -24,9 +26,10 @@ const {
 } = useWindowManager()
 
 const userStore = useUserStore()
+const appStore = useAppStore()
 const router = useRouter()
 const { notifications, removeNotification } = useNotifications('Главная страница')
-const { addLog } = useLogger()
+const { addLog } = useLogger('Предприятие')
 
 useHead({
   title: computed(() => `Предприятие — ${enterpriseName.value || 'Загрузка...'}`)
@@ -87,20 +90,59 @@ const loadUserData = () => {
   isLoading.value = false
 }
 
+// Предзагрузка всех данных предприятия (вкладки, стандарты, записи)
+const preloadEnterpriseData = async () => {
+  if (dataPreloadStarted.value) return
+
+  dataPreloadStarted.value = true
+  addLog('info', 'Начинаем предзагрузку данных предприятия...')
+
+  try {
+    // Загружаем данные предприятия из хранилища, если нужно
+    if (!appStore.getEnterpriseId()) {
+      appStore.loadEnterpriseFromStorage()
+    }
+
+    // Если есть ID предприятия - загружаем все данные
+    if (appStore.getEnterpriseId()) {
+      await appStore.preloadAllTabsData()
+      addLog('success', 'Все данные предприятия успешно предзагружены')
+    } else {
+      addLog('warning', 'Нет авторизации в предприятии, данные не предзагружены')
+    }
+  } catch (error) {
+    addLog('error', 'Ошибка при предзагрузке данных предприятия')
+    console.error(error)
+  }
+}
+
 // Слушатель изменений в localStorage (для других вкладок)
-const handleStorageChange = (e: StorageEvent) => {
+const handleStorageChange = async (e: StorageEvent) => {
   if (e.key === 'currentEnterprise' || e.key === 'user') {
     loadUserData()
+
+    // Если сменилось предприятие - перезагружаем данные
+    if (e.key === 'currentEnterprise') {
+      dataPreloadStarted.value = false
+      await preloadEnterpriseData()
+    }
   }
 }
 
 // Пользовательское событие для обновления в той же вкладке
-const handleEnterpriseUpdate = () => {
+const handleEnterpriseUpdate = async () => {
   loadUserData()
+  // При обновлении предприятия перезагружаем данные
+  dataPreloadStarted.value = false
+  await preloadEnterpriseData()
 }
 
-onMounted(() => {
+onMounted(async () => {
   loadUserData()
+
+  // Запускаем предзагрузку данных предприятия в фоне
+  // Не блокируем отображение интерфейса
+  preloadEnterpriseData()
 
   // Слушаем изменения localStorage из других вкладок
   window.addEventListener('storage', handleStorageChange)
@@ -173,7 +215,6 @@ function deleteUser() {
         <!-- Верхняя панель -->
         <header class="topbar">
           <div class="brand">
-            <div class="brand-dot"></div>
             <div class="brand-text">
               <h1 class="enterprise-title">MF:Предприятие</h1>
               <p class="enterprise-subtitle">{{ enterpriseName }}</p>
@@ -192,9 +233,9 @@ function deleteUser() {
               </div>
             </div>
 
-            <button @click="deleteUser" class="logout-btn">
+            <MoloButton @click="deleteUser" class="close">
               <span>Выйти</span>
-            </button>
+            </MoloButton>
           </div>
         </header>
 
@@ -407,10 +448,7 @@ function deleteUser() {
   align-items: center;
   gap: 24px;
   padding: 24px 28px;
-  margin: 20px;
   border-radius: 28px;
-  background: rgba(255, 255, 255, 0.045);
-  border: 1px solid rgba(255, 255, 255, 0.07);
   backdrop-filter: blur(22px);
   -webkit-backdrop-filter: blur(22px);
 
@@ -421,17 +459,6 @@ function deleteUser() {
   align-items: center;
   gap: 16px;
   min-width: 0;
-}
-
-.brand-dot {
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #3872ef, #7c3aed);
-  box-shadow:
-      0 0 20px rgba(56, 114, 239, 0.5),
-      0 0 40px rgba(124, 58, 237, 0.25);
-  flex-shrink: 0;
 }
 
 .brand-text {
@@ -454,7 +481,7 @@ function deleteUser() {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  transition: all 0.3s ease; /* Плавное обновление */
+  transition: all 0.3s ease;
 }
 
 /* ========================================
@@ -465,6 +492,10 @@ function deleteUser() {
   align-items: center;
   gap: 14px;
   flex-shrink: 0;
+  border: 1px solid var(--half_opacity_border);
+  padding: 10px 20px;
+  border-radius: 10px;
+  background: var(--half_opacity_bg);
 }
 
 .user-card {
@@ -473,13 +504,12 @@ function deleteUser() {
   gap: 12px;
   padding: 8px 12px 8px 8px;
   border-radius: 18px;
-  border: 1px solid var(--half_opacity_border);
 }
 
 .user-avatar {
   width: 42px;
   height: 42px;
-  border-radius: 14px;
+  border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -514,26 +544,13 @@ function deleteUser() {
 ======================================== */
 .logout-btn {
   height: 42px;
-  padding: 0 18px;
   border: 1px solid var(--half_opacity_border);
-  border-radius: 14px;
+  border-radius: 6px;
   background: rgba(208, 0, 22, 0.34);
   color: #ffffff;
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
-  transition:
-      transform 0.2s ease,
-      background 0.2s ease,
-      border-color 0.2s ease,
-      box-shadow 0.2s ease;
-}
-
-.logout-btn:hover {
-  background: rgba(245, 0, 26, 0.55);
-  border-color: rgba(220, 53, 69, 0.35);
-  transform: translateY(-1px);
-  box-shadow: 0 8px 20px rgba(220, 53, 69, 0.15);
 }
 
 /* ========================================

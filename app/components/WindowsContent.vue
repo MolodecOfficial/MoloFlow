@@ -13,7 +13,10 @@ const props = defineProps<{
   enterpriseId?: string
 }>()
 
+const emit = defineEmits(['updateTitle'])
+
 const layoutsContext = import.meta.glob('../layouts/**/*.vue')
+const componentsContext = import.meta.glob('../components/**/*.vue')
 
 const moduleFiles = ref<any[]>([])
 const loadingFiles = ref(false)
@@ -31,25 +34,43 @@ const getEnterpriseIdFromLocal = (): string | null => {
   return null
 }
 
+// Загрузка файлов модуля (опционально, если есть API)
 const loadModuleFiles = async () => {
-  const moduleId = props.windowData?._id
+  const moduleId = props.windowData?._id || props.windowData?.moduleId
   const enterpriseId = props.enterpriseId || getEnterpriseIdFromLocal()
   if (!moduleId || !enterpriseId) return
+
+  // Проверяем, есть ли уже код в windowData
+  if (props.windowData?.code) {
+    return // Код уже есть, не нужно загружать файлы
+  }
+
   loadingFiles.value = true
   try {
-    const response = await $fetch(`/api/enterprises/${enterpriseId}/dynamicModules/${moduleId}/files`)
-    moduleFiles.value = response.files || []
+    // Пробуем загрузить файлы, если API существует
+    const response = await $fetch(`/api/enterprises/${enterpriseId}/dynamicModules/${moduleId}/files`).catch(() => null)
+    if (response?.files) {
+      moduleFiles.value = response.files || []
+      // Если есть mainFile с кодом, обновляем windowData
+      if (response.mainFile?.code && props.windowData) {
+        props.windowData.code = response.mainFile.code
+      }
+    }
   } catch (error) {
+    // Игнорируем ошибку — возможно, API не существует
+    console.warn('Could not load module files:', error)
     moduleFiles.value = []
   } finally {
     loadingFiles.value = false
   }
 }
 
+// Загружаем файлы только если есть moduleId и нет кода
 watch(
-    () => props.windowData?._id,
-    (newId) => {
-      if (newId && props.windowData?.format === 'vue') {
+    () => [props.windowData?._id, props.windowData?.moduleId, props.windowData?.code],
+    ([moduleId, moduleId2, code]) => {
+      const id = moduleId || moduleId2
+      if (id && !code) {
         loadModuleFiles()
       }
     },
@@ -64,7 +85,6 @@ const toCamelCase = (str: string): string =>
 
 const generatePossibleNames = (): string[] => {
   const names: string[] = []
-
 
   if (props.componentName && typeof props.componentName === 'string') {
     names.push(props.componentName)
@@ -90,6 +110,8 @@ const generatePossibleNames = (): string[] => {
 
 const findComponent = () => {
   const possibleNames = generatePossibleNames()
+
+  // Поиск в layouts
   for (const name of possibleNames) {
     const exactPath = `../layouts/${name}.vue`
     if (layoutsContext[exactPath]) {
@@ -104,22 +126,45 @@ const findComponent = () => {
       return layoutsContext[found]
     }
   }
+
+  // Поиск в components
+  for (const name of possibleNames) {
+    const exactPath = `../components/${name}.vue`
+    if (componentsContext[exactPath]) {
+      return componentsContext[exactPath]
+    }
+    const availableFiles = Object.keys(componentsContext)
+    const found = availableFiles.find(path => {
+      const filePath = path.replace('../components/', '').replace('.vue', '')
+      return filePath === name || filePath.toLowerCase() === name.toLowerCase()
+    })
+    if (found) {
+      return componentsContext[found]
+    }
+  }
+
   if (props.componentName) {
     const compName = typeof props.componentName === 'string' ? props.componentName : String(props.componentName)
-    const availableFiles = Object.keys(layoutsContext)
-    const found = availableFiles.find(path => {
+
+    // Поиск в layouts
+    let found = Object.keys(layoutsContext).find(path => {
       const fileName = path.split('/').pop()?.replace('.vue', '')
       return fileName && (fileName === compName || fileName.toLowerCase() === compName.toLowerCase())
     })
-    if (found) {
-      return layoutsContext[found]
-    }
+    if (found) return layoutsContext[found]
+
+    // Поиск в components
+    found = Object.keys(componentsContext).find(path => {
+      const fileName = path.split('/').pop()?.replace('.vue', '')
+      return fileName && (fileName === compName || fileName.toLowerCase() === compName.toLowerCase())
+    })
+    if (found) return componentsContext[found]
   }
   return null
 }
 
 const isDynamicModule = computed(() => {
-  return !!(props.windowData?._id && props.windowData?.format)
+  return !!(props.windowData?._id && (props.windowData?.format === 'vue' || props.windowData?.format === 'js' || props.windowData?.format === 'ts'))
 })
 
 const staticComponentLoader = computed(() => {
@@ -152,7 +197,6 @@ const Component = computed(() => {
 })
 
 const componentProps = computed(() => {
-  // Базовые пропсы
   const baseProps = {
     windowId: props.windowId,
     groupId: props.groupId,
@@ -161,9 +205,9 @@ const componentProps = computed(() => {
     componentName: props.componentName,
     uniqueWindowId: props.uniqueWindowId,
     enterpriseId: props.enterpriseId || getEnterpriseIdFromLocal(),
+    additionalFiles: moduleFiles.value
   }
 
-  // Если есть windowData, разворачиваем его поля как отдельные пропсы
   if (props.windowData && typeof props.windowData === 'object') {
     return {
       ...baseProps,
@@ -173,6 +217,11 @@ const componentProps = computed(() => {
 
   return baseProps
 })
+
+// Обработчик обновления заголовка
+function handleUpdateTitle(title: string) {
+  emit('updateTitle', title)
+}
 </script>
 
 <template>
@@ -186,6 +235,9 @@ const componentProps = computed(() => {
             v-else-if="Component"
             :is="Component"
             v-bind="componentProps"
+            :unique-window-id="uniqueWindowId"
+            :window-id="uniqueWindowId"
+            @updateTitle="handleUpdateTitle"
         />
         <div v-else class="error-component">
           Компонент не найден: {{ componentName || windowId }}

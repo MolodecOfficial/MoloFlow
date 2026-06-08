@@ -1,4 +1,5 @@
-import { ref } from 'vue'
+// composables/useWindowResize.ts
+import { ref, watch } from 'vue'
 
 export interface UseWindowResizeOptions {
     initialSize: { width: number; height: number; minWidth?: number; minHeight?: number }
@@ -33,6 +34,15 @@ export function useWindowResize(options: UseWindowResizeOptions) {
     const minWidth = options.initialSize.minWidth || 300
     const minHeight = options.initialSize.minHeight || 200
 
+    // Следим за изменениями извне
+    watch(() => options.initialSize, (newSize) => {
+        currentSize.value = { width: newSize.width, height: newSize.height }
+    }, { deep: true })
+
+    watch(() => options.position, (newPos) => {
+        currentPosition.value = { x: newPos.x, y: newPos.y }
+    }, { deep: true })
+
     const handleResizeStart = (e: MouseEvent, edge: string) => {
         e.preventDefault()
         e.stopPropagation()
@@ -62,8 +72,9 @@ export function useWindowResize(options: UseWindowResizeOptions) {
         let newX = startState.value.x
         let newY = startState.value.y
 
-        const maxWidth = window.innerWidth - 20
-        const maxHeight = window.innerHeight - 20
+        // Максимальные размеры с учётом отступов
+        const maxWidth = window.innerWidth - 40
+        const maxHeight = window.innerHeight - 40
 
         if (edge.includes('e')) {
             newWidth = Math.min(maxWidth, Math.max(minWidth, startState.value.width + deltaX))
@@ -81,6 +92,12 @@ export function useWindowResize(options: UseWindowResizeOptions) {
             newHeight = Math.min(maxHeight, Math.max(minHeight, possibleHeight))
             newY = startState.value.y + (startState.value.height - newHeight)
         }
+
+        // Округляем до целых чисел
+        newWidth = Math.round(newWidth)
+        newHeight = Math.round(newHeight)
+        newX = Math.round(newX)
+        newY = Math.round(newY)
 
         currentSize.value = { width: newWidth, height: newHeight }
         currentPosition.value = { x: newX, y: newY }

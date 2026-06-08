@@ -7,49 +7,99 @@ import MoloList from './MoloList.vue'
 
 const props = defineProps<{
   fields: any[]
-  groups?: any[]       // массив групп { name, fields, ... }
+  groups?: any[]
   viewType: 'table' | 'card' | 'list'
   standard: any
   rowsCount?: number
+  realData?: any[]
 }>()
 
-function generateMockEntry(fields: any[], index: number): any {
-  const entry: any = { _id: `mock_${index}` }
-  for (const field of fields) {
-    const key = field.key
-    switch (field.type) {
-      case 'text': case 'string': entry[key] = `Значение ${index+1} ${field.label}`; break
-      case 'number': entry[key] = Math.floor(Math.random()*1000); break
-      case 'boolean': entry[key] = index%2===0; break
-      case 'date': entry[key] = new Date(Date.now()-index*86400000).toISOString().split('T')[0]; break
-      case 'email': entry[key] = `user${index+1}@example.com`; break
-      case 'phone': entry[key] = `+7 900 ${1000000+index}`; break
-      case 'url': entry[key] = `https://example.com/${index+1}`; break
-      case 'select': entry[key] = field.options?.[0]?.value || 'option1'; break
-      case 'multiselect': entry[key] = field.options?.slice(0,2).map(o=>o.value) || []; break
-      default: entry[key] = `demo_${key}_${index}`
+// Генерация моковых данных на основе структуры групп
+function generateMockFromGroups(groups: any[], index: number): any {
+  const entry: any = { _id: `mock_${index}_${Date.now()}_${Math.random()}` }
+  for (const group of groups) {
+    if (group.fields && group.fields.length) {
+      for (const field of group.fields) {
+        const key = field.key
+        entry[key] = `[${group.name}] ${field.label}`
+      }
     }
   }
   return entry
 }
 
-const mockData = computed(() => {
-  const count = props.rowsCount || 3
-  const flatFields = props.fields
-  return Array.from({ length: count }, (_, i) => generateMockEntry(flatFields, i))
+// Реальные или моковые данные
+const actualData = computed(() => {
+  if (props.realData && props.realData.length > 0) {
+    return props.realData
+  }
+
+  const groups = props.groups || []
+  const count = props.rowsCount || 1
+
+  // Для списка - создаём ровно 1 моковую запись для демонстрации структуры
+  if (props.viewType === 'list') {
+    if (groups.length > 0) {
+      return [generateMockFromGroups(groups, 0)]
+    }
+    return [generateMockFromGroups([{ name: 'Пример', fields: props.fields }], 0)]
+  }
+
+  // Для таблицы и карточек - по количеству групп
+  if (groups.length > 0) {
+    return Array.from({ length: count }, (_, i) => generateMockFromGroups(groups, i))
+  }
+
+  return [{ _id: 'mock_1' }]
 })
 
-// Если включены группы-колонки, строим колонки из групп
+// Подготовка групповых данных для таблицы
+const groupedData = computed(() => {
+  if (!props.standard?.settings?.useGroupsAsColumns) return actualData.value
+
+  const groups = props.groups || []
+  const showLabels = props.standard?.settings?.groupShowFieldLabels ?? false
+  const blockFormat = props.standard?.settings?.groupCellFormat === 'block'
+
+  return actualData.value.map((entry: any, idx: number) => {
+    const newEntry = { ...entry, _uniqueKey: entry._id || idx }
+    for (const group of groups) {
+      const groupKey = `_group_${group._id || group.name || idx}`
+      const fieldItems: { label: string; value: any }[] = []
+      for (const field of group.fields || []) {
+        const val = entry[field.key]
+        let displayValue = val
+        if (Array.isArray(val)) displayValue = val.join(', ')
+        if (displayValue === undefined || displayValue === null) displayValue = '—'
+        fieldItems.push({
+          label: showLabels ? field.label : '',
+          value: displayValue
+        })
+      }
+      if (blockFormat) {
+        newEntry[groupKey] = fieldItems
+      } else {
+        newEntry[groupKey] = fieldItems.map(item =>
+            item.label ? `${item.label}: ${item.value}` : item.value
+        ).join('; ')
+      }
+    }
+    return newEntry
+  })
+})
+
+// Колонки таблицы
 const tableColumns = computed(() => {
   if (props.viewType !== 'table') return []
   if (props.standard?.settings?.useGroupsAsColumns) {
     const groups = props.groups || []
-    return groups.map(group => ({
-      field: `_group_${group._id}`,
+    return groups.map((group, idx) => ({
+      field: `_group_${group._id || group.name || idx}`,
       label: group.name,
       width: 'auto',
       align: 'left',
-      sortable: false
+      sortable: false,
+      isGroup: true
     }))
   } else {
     const cols = props.standard?.tableSettings?.columns || props.standard?.settings?.columns
@@ -59,93 +109,101 @@ const tableColumns = computed(() => {
       label: f.label,
       width: 'auto',
       align: 'left',
-      sortable: true
+      sortable: true,
+      isGroup: false
     }))
   }
 })
 
-// Для grouped-table преобразуем данные: добавляем поля _group_<id>
-const groupedMockData = computed(() => {
-  if (!props.standard?.settings?.useGroupsAsColumns) return mockData.value
-  const groups = props.groups || []
-  return mockData.value.map(entry => {
-    const newEntry = { ...entry }
-    for (const group of groups) {
-      const groupKey = `_group_${group._id}`
-      const parts: string[] = []
-      for (const field of (group.fields || [])) {
-        const val = entry[field.key]
-        const label = field.label
-        if (props.standard.settings.groupCellFormat === 'block') {
-          parts.push(`${label}: ${val}`)
-        } else {
-          parts.push(`${label}: ${val}`)
-        }
-      }
-      newEntry[groupKey] = props.standard.settings.groupCellFormat === 'block'
-          ? parts.join('\n')
-          : parts.join('; ')
-    }
-    return newEntry
-  })
+const cardColumnsCount = computed(() => {
+  if (props.standard?.settings?.cardColumns !== undefined && props.standard.settings.cardColumns !== null) {
+    const val = Number(props.standard.settings.cardColumns)
+    return isNaN(val) ? 3 : Math.max(1, val)
+  }
+  if (props.standard?.cardSettings?.columns !== undefined && props.standard.cardSettings.columns !== null) {
+    const val = Number(props.standard.cardSettings.columns)
+    return isNaN(val) ? 3 : Math.max(1, val)
+  }
+  return 3
 })
 
-const cardSettings = computed(() => ({
-  title: props.standard?.cardSettings?.title || props.standard?.settings?.cardTitle || props.fields[0]?.key || '',
-  subtitle: props.standard?.cardSettings?.subtitle || props.standard?.settings?.cardSubtitle || props.fields[1]?.key || '',
-  fields: props.standard?.cardSettings?.fields || props.standard?.settings?.cardFields || props.fields.map(f=>f.key),
-  columns: props.standard?.cardSettings?.columns || props.standard?.settings?.cardColumns || 3,
-  avatarField: props.standard?.cardSettings?.avatarField || props.standard?.settings?.cardAvatarField || '',
-  showFooter: props.standard?.cardSettings?.showFooter ?? props.standard?.settings?.cardShowFooter ?? true,
-  showStatus: props.standard?.cardSettings?.showStatus ?? props.standard?.settings?.cardShowStatus ?? true
-}))
+// Карточки на основе групп - одна карточка на группу
+const cardItems = computed(() => {
+  const groups = props.groups || []
+  if (!groups.length) return []
 
+  return groups.map((group, index) => ({
+    _id: group._id || `group_${index}`,
+    group,
+    fields: group.fields || [],
+    entry: generateMockFromGroups([group], index)
+  }))
+})
+
+// Настройки списка
 const listSettings = computed(() => ({
-  title: props.standard?.listSettings?.title || props.standard?.settings?.listTitle || props.fields[0]?.key || '',
-  subtitle: props.standard?.listSettings?.subtitle || props.standard?.settings?.listSubtitle || props.fields[1]?.key || '',
+  title: props.standard?.listSettings?.title || props.standard?.settings?.listTitle || '',
+  subtitle: props.standard?.listSettings?.subtitle || props.standard?.settings?.listSubtitle || '',
   showIcon: props.standard?.listSettings?.showIcon ?? props.standard?.settings?.listShowIcon ?? true,
   showDivider: props.standard?.listSettings?.showDivider ?? props.standard?.settings?.listShowDivider ?? true
 }))
+
+const stylesFromStandard = computed(() => props.standard?.styles || {})
 </script>
 
 <template>
   <div class="mock-preview">
-    <div class="preview-header">
-      <span class="preview-badge">🔍 {{ viewType === 'table' ? 'Таблица' : viewType === 'card' ? 'Карточки' : 'Список' }}</span>
-      <span class="mock-info">Демо-данные, {{ mockData.length }} записей</span>
-    </div>
     <div class="preview-body">
       <MoloTable
           v-if="viewType === 'table'"
           :columns="tableColumns"
-          :data="groupedMockData"
+          :data="groupedData"
           :settings="standard"
-          @row-click="()=>{}"
+          :styles="stylesFromStandard"
+          :groups="props.groups"
       />
 
-      <div v-else-if="viewType === 'card'" class="cards-grid" :style="{ gridTemplateColumns: `repeat(${cardSettings.columns}, 1fr)` }">
-        <MoloCard v-for="item in mockData" :key="item._id" :item="item" :settings="cardSettings" :fields="fields" @click="()=>{}" />
+      <div v-else-if="viewType === 'card'" class="cards-grid" :style="{
+        display: 'grid',
+        gridTemplateColumns: `repeat(${cardColumnsCount}, minmax(0, 1fr))`,
+        gap: '16px'
+      }">
+        <MoloCard
+            v-for="card in cardItems"
+            :key="card._id"
+            :item="card.entry"
+            :settings="{ fields: card.fields.map(f => f.key) }"
+            :fields="card.fields"
+            :styles="stylesFromStandard"
+            :group-name="card.group?.name"
+            :group-description="card.group?.description"
+            :group-image="card.group?.image"
+            :group-link="card.group?.link"
+        />
       </div>
 
-      <MoloList v-else-if="viewType === 'list'" :items="mockData" :settings="listSettings" @item-click="()=>{}" />
+      <MoloList
+          v-else-if="viewType === 'list'"
+          :items="actualData"
+          :groups="props.groups"
+          :settings="listSettings"
+          :styles="stylesFromStandard"
+      />
     </div>
   </div>
 </template>
 
 <style scoped>
 .mock-preview {
-  background: rgba(0,0,0,0.3);
-  border-radius: 20px;
-  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
   overflow: hidden;
 }
-.preview-header {
-  display: flex; justify-content: space-between; padding: 14px 20px;
-  background: rgba(255,255,255,0.03); border-bottom: 1px solid rgba(255,255,255,0.05);
-  font-size: 13px;
+.preview-body {
+  padding: 16px;
 }
-.preview-badge { color: #6496ff; font-weight: 600; }
-.mock-info { color: rgba(255,255,255,0.4); font-size: 12px; }
-.preview-body { padding: 16px; }
-.cards-grid { display: grid; gap: 16px; }
+.cards-grid {
+  display: grid;
+  gap: 16px;
+}
 </style>

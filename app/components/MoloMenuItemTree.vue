@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ref, type Ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
-import { useNotifications } from '~/composables/useNotifications'
-import { useLogger } from '~/composables/useLogger'
+import {computed, onMounted, onUnmounted, ref} from 'vue'
+import {useNotifications} from '~/composables/useNotifications'
+import {useLogger} from '~/composables/useLogger'
 import lock from "~~/public/lock.svg"
-import { useModulesStore } from '~~/stores/moduleStore'
-import { executeScriptBackground, restartScript } from '~~/app/composables/useScriptCompiler'
+import {useModulesStore} from '~~/stores/moduleStore'
+import { useModuleService } from '~/composables/useModuleService'
+import {executeScriptBackground, restartScript} from '~~/app/composables/useScriptCompiler'
 import tsIcon from '~~/public/ts.png'
 import jsIcon from '~~/public/js.png'
 
@@ -31,8 +32,10 @@ const emit = defineEmits<{
 }>()
 
 const modulesStore = useModulesStore()
-const { addNotification } = useNotifications('Меню')
-const { addLog } = useLogger()
+const {addNotification} = useNotifications('Меню')
+const {addLog} = useLogger('Меню')
+const moduleService = useModuleService()
+
 
 const enterpriseDataStr = ref<string | null>(null)
 const token = ref<string | null>(null)
@@ -46,7 +49,7 @@ const loadingEnterprises = ref(false)
 const loading = ref(false)
 
 const isLockedHover = ref(false)
-const tooltipPosition = ref({ x: 0, y: 0 })
+const tooltipPosition = ref({x: 0, y: 0})
 
 const menuRef = ref<HTMLElement | null>(null)
 const modulesRef = ref<HTMLElement | null>(null)
@@ -88,6 +91,18 @@ const updateAuthData = () => {
   }
 }
 
+const getEnterpriseIdFromLocal = (): string | null => {
+  try {
+    const data = localStorage.getItem('currentEnterprise')
+    if (data) {
+      const enterprise = JSON.parse(data)
+      return enterprise._id
+    }
+  } catch (e) {
+  }
+  return null
+}
+
 /* =========================
    MODULES
 ========================= */
@@ -104,14 +119,6 @@ const loadDynamicModules = async () => {
   }
 }
 
-const safeModuleData = (module: any) => ({
-  _id: module._id?.toString?.() || module._id,
-  name: module.name,
-  format: module.format,
-  code: module.code,
-  fileName: module.fileName
-})
-
 const createDynamicMenuItems = () => {
   if (!dynamicModules.value.length) return []
 
@@ -125,7 +132,13 @@ const createDynamicMenuItems = () => {
         isActive: true,
         isModule: true,
         moduleId: module._id,
-        moduleData: safeModuleData(module),
+        moduleData: {
+          _id: module._id,
+          name: module.name,
+          format: module.format,
+          code: module.code || '',  // ← ДОБАВЬТЕ ЭТУ СТРОКУ
+          fileName: module.fileName
+        },
         componentName: module.format === 'vue' ? 'DynamicModuleLoader' : undefined,
         isScript: module.format !== 'vue'
       }))
@@ -140,11 +153,26 @@ const loadMenuFromAPI = async () => {
 
   try {
     const response = await $fetch('/api/menu', {
-      params: { role: props.role, type: 'all' }
+      params: {role: props.role, type: 'all'}
     })
 
     menuGroups.value = (response as any[])
         .filter(g => g && g.type === 'menu')
+        .map(group => ({
+          ...group,
+          items: (group.items || []).map(item => {
+            // Если это модуль, добавляем нужные поля
+            if (item.moduleId || item.type === 'module') {
+              return {
+                ...item,
+                format: item.format || 'vue',
+                componentName: 'DynamicModuleLoader',
+                componentPath: 'modules/DynamicModuleLoader'
+              }
+            }
+            return item
+          })
+        }))
 
     const modulesData = (response as any[])
         .filter(g => g && g.type === 'module')
@@ -160,7 +188,7 @@ const loadMenuFromAPI = async () => {
 
 const initDefaultMenu = async () => {
   try {
-    await $fetch('/api/menu/init', { method: 'POST' })
+    await $fetch('/api/menu/init', {method: 'POST'})
     await loadMenuFromAPI()
   } catch (e) {
     addLog('error', `Init menu error: ${e}`)
@@ -182,7 +210,7 @@ const modulesGroups = computed(() => {
   const dynamic = createDynamicMenuItems()
 
   return dynamic.length
-      ? [...staticModules, { id: 'dynamic_modules', title: 'Мои модули', items: dynamic }]
+      ? [...staticModules, {id: 'dynamic_modules', title: 'Мои модули', items: dynamic}]
       : staticModules
 })
 
@@ -238,12 +266,12 @@ const handleMouseLeaveItem = (isModules = false) => {
 
 const getWindowSizeOptions = (itemId: string) => {
   const presets: Record<string, any> = {
-    login: { width: 400, height: 450 },
-    browser: { width: 900, height: 650 },
-    register: { width: 1000, height: 650 },
-    customisation: { width: 800, height: 600 },
-    creature: { width: 1000, height: 650 },
-    control: { width: 1000, height: 650 },
+    login: {width: 400, height: 450},
+    browser: {width: 900, height: 650},
+    register: {width: 1000, height: 650},
+    customisation: {width: 800, height: 600},
+    creature: {width: 1000, height: 650},
+    control: {width: 1000, height: 650},
   }
 
   return presets[itemId]
@@ -253,24 +281,12 @@ const getWindowSizeOptions = (itemId: string) => {
    CLICK HANDLERS
 ========================= */
 
-// Обработчик клика по родительскому элементу (с детьми)
-const handleParentClick = (event: MouseEvent, groupId: string, item: any, isModule = false) => {
-  event.stopPropagation()
-  // Переключаем состояние открытия подменю при клике
-  if (isModule) {
-    openModulesSubmenu.value = openModulesSubmenu.value === item.id ? null : item.id
-  } else {
-    openSubmenu.value = openSubmenu.value === item.id ? null : item.id
-  }
-}
-
-// Обработчик клика по конечному пункту (без детей)
-const handleLeafClick = (event: MouseEvent, groupId: string, item: any, isModule = false) => {
+// В MoloMenuItemTree.vue
+const handleLeafClick = async (event: MouseEvent, groupId: string, item: any, isModule = false) => {
   if (!item) return
 
   if (item.isScript) {
-    restartModule(item.moduleData)
-    // Закрываем дропдаун после клика
+    await restartModule(item.moduleData)
     if (isModule) {
       openModulesDropdown.value = null
       openModulesSubmenu.value = null
@@ -283,7 +299,34 @@ const handleLeafClick = (event: MouseEvent, groupId: string, item: any, isModule
 
   const sizeOptions = getWindowSizeOptions(item.id)
 
-  if (item.format === 'vue' && item.moduleId) {
+  let moduleDataToSend = item.moduleData || {}
+  let finalModuleId = item.moduleId || moduleDataToSend._id || moduleDataToSend.moduleId
+  if (item.format === 'vue' && finalModuleId) {
+    try {
+      const enterpriseId = getEnterpriseIdFromLocal()
+      if (enterpriseId && finalModuleId) {
+        const fullModuleData = await moduleService.fetchFullModuleData(finalModuleId, enterpriseId, true)
+        const moduleDataToSend = moduleService.prepareModuleForWindow(fullModuleData, item.title)
+
+        emit('open-window', groupId, item.id, undefined, sizeOptions, false,
+            'modules/DynamicModuleLoader', moduleDataToSend, undefined, item.title)
+      }
+    } catch (err) {
+      addLog('error', `Не удалось загрузить модуль ${item.title}: ${err}`)
+    }
+  }
+
+  const customTitle = item.title || moduleDataToSend?.name || 'Модуль'
+
+  // Проверяем, есть ли у нас код для отправки
+  const hasCode = !!(moduleDataToSend?.code && moduleDataToSend.code.trim())
+  console.log('[MoloMenuItemTree] Отправка в окно:', {
+    hasCode,
+    moduleId: finalModuleId,
+    customTitle
+  })
+
+  if (item.format === 'vue' && finalModuleId) {
     emit('open-window',
         groupId,
         item.id,
@@ -292,10 +335,15 @@ const handleLeafClick = (event: MouseEvent, groupId: string, item: any, isModule
         false,
         'modules/DynamicModuleLoader',
         {
-          ...item.moduleData,
-          moduleId: item.moduleId,
-          _id: item.moduleId,
-        }
+          ...moduleDataToSend,
+          moduleId: finalModuleId,
+          _id: finalModuleId,
+          name: customTitle,
+          format: item.format || 'vue',
+          code: moduleDataToSend.code || ''  // Даже если пустой, передаём
+        },
+        undefined,
+        customTitle
     )
   } else {
     emit('open-window',
@@ -305,11 +353,16 @@ const handleLeafClick = (event: MouseEvent, groupId: string, item: any, isModule
         sizeOptions,
         false,
         item.componentPath || item.componentName,
-        item.moduleData
+        moduleDataToSend,
+        undefined,
+        customTitle
     )
   }
-
-  // Закрываем дропдаун после клика
+  console.log(
+      '[MODULE OPEN]',
+      moduleDataToSend.name,
+      moduleDataToSend.files
+  )
   if (isModule) {
     openModulesDropdown.value = null
     openModulesSubmenu.value = null
@@ -517,7 +570,8 @@ onUnmounted(() => {
                     @click="handleMenuItemClick($event, group.id, item)"
                 >
                   <span class="dropdown-item-title">{{ item.title }}</span>
-                  <span v-if="item.items?.length" class="sub-arrow" :class="{ rotated: openSubmenu === item.id }">›</span>
+                  <span v-if="item.items?.length" class="sub-arrow"
+                        :class="{ rotated: openSubmenu === item.id }">›</span>
                 </div>
 
                 <!-- Подменю (дети) -->
@@ -597,7 +651,8 @@ onUnmounted(() => {
                   >
                     ↻
                   </button>
-                  <span v-if="item.items?.length" class="sub-arrow" :class="{ rotated: openModulesSubmenu === item.id }">›</span>
+                  <span v-if="item.items?.length" class="sub-arrow"
+                        :class="{ rotated: openModulesSubmenu === item.id }">›</span>
                 </div>
 
                 <!-- Подменю модулей -->
@@ -623,7 +678,7 @@ onUnmounted(() => {
 
   <!-- LOCK для пользователя -->
   <div v-if="isLockedHover && role === 'Пользователь'" class="global-lock">
-    <img :src="lock" class="lock-icon" />
+    <img :src="lock" class="lock-icon"/>
     <div
         class="lock-tooltip"
         :style="{ left: tooltipPosition.x + 10 + 'px', top: tooltipPosition.y + 10 + 'px' }"

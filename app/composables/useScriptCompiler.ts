@@ -1,7 +1,6 @@
 import * as Babel from '@babel/standalone'
 import presetTypeScript from '@babel/preset-typescript'
 import MoloSelect from "~~/app/components/MoloSelect.vue";
-import { useModulesStore } from "~~/stores/moduleStore";
 import MoloInput from "~~/app/components/MoloInput.vue";
 import { useNotifications } from '~~/app/composables/useNotifications';
 import { useLogger } from '~~/app/composables/useLogger';

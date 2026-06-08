@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, computed } from 'vue'
+import { onMounted, computed, watch } from 'vue'
 import MockDataPreview from '~~/app/components/MockDataPreview.vue'
 import { useAppStore } from '~~/stores/appStore'
 
@@ -10,11 +10,12 @@ const props = defineProps<{
 }>()
 
 const { addNotification } = useNotifications('Данные вкладки')
+const { addLog } = useLogger('Данные вкладки')
 const store = useAppStore()
 
-// Просто берём tabId из props
 const targetTabId = computed(() => props.tabId || '')
 const targetTabName = computed(() => props.tabName || '')
+const loading = ref(false)
 
 async function loadAll() {
   if (!store.getEnterpriseId()) {
@@ -34,11 +35,32 @@ async function loadAll() {
     return
   }
 
-  store.setCurrentTab(tabId)
-  await store.loadTabById(tabId)
-  await store.loadStandards(tabId)
-  await store.loadEntries(tabId)
+  loading.value = true
+  addLog('info', `Загрузка данных для вкладки`)
+
+  try {
+    store.setCurrentTab(tabId)
+
+    await Promise.all([
+      store.loadTabById(tabId),
+      store.loadStandards(tabId),
+      store.loadEntries(tabId)
+    ])
+
+    addLog('success', `Данные загружены`)
+  } catch (error: any) {
+    addLog('error', error.message)
+    addNotification('error', 'Ошибка загрузки данных')
+  } finally {
+    loading.value = false
+  }
 }
+
+watch(targetTabId, (newId, oldId) => {
+  if (newId && newId !== oldId) {
+    loadAll()
+  }
+})
 
 onMounted(() => {
   loadAll()
@@ -47,32 +69,26 @@ onMounted(() => {
 
 <template>
   <div class="tab-data">
-    <div class="tab-data-header">
-      <h2>{{ targetTabName || store.currentTabName || 'Данные вкладки' }}</h2>
-      <div v-if="store.hasStandards" class="standard-selector">
-        <label>Стандарт отображения:</label>
-        <select v-model="store.currentStandard">
-          <option v-for="s in store.standards" :key="s._id" :value="s">
-            {{ s.name }} {{ s.isDefault ? '(по умолчанию)' : '' }}
-          </option>
-        </select>
-      </div>
+    <MoloLoaders wndLoader v-if="loading" class="loading">
+    </MoloLoaders>
+    <div v-else-if="!store.currentTab" class="error">
+      <span>⚠️</span>
+      <p>Вкладка не найдена</p>
     </div>
-
-    <div v-if="store.entriesLoading" class="loading">Загрузка...</div>
-    <div v-else-if="!store.currentTab" class="error">Вкладка не найдена</div>
+    <div v-else-if="!store.hasStandards" class="empty">
+      <span>📭</span>
+      <p>Нет стандартов отображения</p>
+      <small>Создайте стандарт в конструкторе вкладок</small>
+    </div>
     <div v-else-if="store.currentStandard" class="preview-container">
-      <!-- Всегда показываем предпросмотр, даже если нет записей -->
       <MockDataPreview
           :fields="store.currentTabFields"
+          :groups="store.currentTab?.groups || []"
           :viewType="store.currentStandard.type"
           :standard="store.currentStandard"
-          :rowsCount="5"
+          :rowsCount="store.hasEntries ? undefined : 5"
           :realData="store.hasEntries ? store.entries : undefined"
       />
-      <div v-if="!store.hasEntries" class="empty-entries-note">
-        ⚡ Нет записей. Показываются демо-данные для настройки внешнего вида.
-      </div>
     </div>
     <div v-else class="empty">
       <p>Нет стандартов отображения. Создайте стандарт в конструкторе.</p>
@@ -84,60 +100,46 @@ onMounted(() => {
 .tab-data {
   padding: 20px;
   color: #e0e0e0;
-  background: #0f0f12;
   min-height: 100%;
 }
-.tab-data-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 24px;
-  flex-wrap: wrap;
-  gap: 16px;
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
-.tab-data-header h2 {
-  margin: 0;
-  font-size: 20px;
-  font-weight: 500;
-}
-.standard-selector {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  background: #1a1a1f;
-  padding: 6px 12px;
-  border-radius: 8px;
-}
-.standard-selector label {
-  font-size: 13px;
-  color: #8e8e9e;
-}
-.standard-selector select {
-  background: #25252c;
-  border: 1px solid #3a3a44;
-  padding: 6px 10px;
-  border-radius: 6px;
-  color: white;
-  font-size: 13px;
-}
-.loading,
+
 .empty,
 .error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
   text-align: center;
-  padding: 40px;
+  padding: 60px 20px;
   color: #8e8e9e;
 }
+
+.empty span,
+.error span {
+  font-size: 48px;
+  opacity: 0.5;
+}
+
+.empty p,
+.error p {
+  margin: 0;
+  font-size: 16px;
+}
+
+.empty small {
+  font-size: 12px;
+  color: #555;
+}
+
 .preview-container {
-  background: #0c0c10;
   border-radius: 12px;
   overflow: hidden;
-}
-.empty-entries-note {
-  text-align: center;
-  padding: 12px;
-  font-size: 12px;
-  color: #6496ff;
-  background: rgba(100, 150, 255, 0.1);
-  border-top: 1px solid #25252c;
 }
 </style>

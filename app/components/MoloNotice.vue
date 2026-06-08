@@ -88,6 +88,7 @@ const getAccentColor = computed(() => {
 
 <style scoped>
 .main-notice {
+  border-radius: 12px;
   z-index: 1000;
   gap: 10px;
   width: 380px;

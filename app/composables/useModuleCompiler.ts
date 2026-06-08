@@ -101,16 +101,25 @@ function cleanModuleCode(code: string): string {
 // Встраивание локальных файлов
 // ======================================================
 function inlineLocalFiles(mainCode: string, localFiles: Map<string, string>) {
+    // Расширенное регулярное выражение, которое ловит:
+    // import x from './file'
+    // import {x} from './file'
+    // import * as x from './file'
+    // import './file'
     return mainCode.replace(
-        /import\s+\{([^}]+)\}\s+from\s+['"](\.\/[^'"]+)['"];?\s*/g,
-        (match, imports, path) => {
-            const cleanPath = path.replace(/^\.\//, '')
-            let code =
-                localFiles.get(cleanPath) ||
+        /import\s+(?:(\w+|\{.*\}|\*\s+as\s+\w+))\s+from\s+['"](\.\/[^'"]+)['"]|import\s+['"](\.\/[^'"]+)['"]/g,
+        (match, imports, path1, path2) => {
+            const importPath = path1 || path2
+            if (!importPath) return match
+
+            const cleanPath = importPath.replace(/^\.\//, '')
+            let code = localFiles.get(cleanPath) ||
                 localFiles.get(cleanPath + '.js') ||
                 localFiles.get(cleanPath + '.ts') ||
                 localFiles.get(cleanPath + '.vue')
+
             if (!code) {
+                // Поиск по имени без расширения
                 for (const [key, value] of localFiles) {
                     if (key.replace(/\.(js|ts|vue)$/, '') === cleanPath) {
                         code = value
@@ -118,8 +127,13 @@ function inlineLocalFiles(mainCode: string, localFiles: Map<string, string>) {
                     }
                 }
             }
-            if (!code) return match
-            return `\n// INLINED: ${path}\n${code}\n`
+
+            if (!code) {
+                console.warn(`[ModuleCompiler] Inline failed: file not found for path ${importPath}`)
+                return match
+            }
+
+            return `\n// INLINED: ${importPath}\n${code}\n`
         }
     )
 }

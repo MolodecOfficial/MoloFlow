@@ -8,7 +8,6 @@ const { addLog } = useLogger('Управление предприятием')
 
 const store = useAppStore()
 
-// Используем computed из стора
 const enterpriseInfo = computed(() => store.enterpriseData)
 const isAuthenticated = computed(() => store.isEnterpriseLoaded)
 const tabs = computed(() => store.tabs)
@@ -50,25 +49,17 @@ function openConfigurator() {
 function openTabData(tab: any) {
   if (!store.getEnterpriseId()) return
 
-  // Используем статический itemId 'tab-data', но передаём tabId в windowData
-  // Уникальность окна определяется по itemId + tabId в windowData
+  store.preloadTabData(tab._id)
+
   openWindow(
       'company',
-      'tab-data',  // 👈 статическое имя компонента
+      `Tab-data`,
       'enterprise',
-      {
-        width: 800,
-        height: 600,
-        minWidth: 600,
-        minHeight: 400
-      },
+      { width: 800, height: 600, minWidth: 600, minHeight: 400 },
       false,
       null,
       null,
-      {
-        tabId: tab._id,
-        tabName: tab.name
-      },
+      { tabId: tab._id, tabName: tab.name },
       `Данные: ${tab.name}`
   )
 }
@@ -77,6 +68,7 @@ onMounted(() => {
   store.loadEnterpriseFromStorage()
   if (store.getEnterpriseId()) {
     store.loadTabs()
+    store.preloadAllTabsData()
   } else {
     addLog('warning', 'Не авторизован в предприятии')
   }
@@ -85,7 +77,6 @@ onMounted(() => {
 
 <template>
   <div class="control-page">
-    <!-- Не авторизован -->
     <div v-if="!isAuthenticated" class="auth-placeholder">
       <div class="auth-icon">🔒</div>
       <h3>Вы не авторизованы</h3>
@@ -93,9 +84,7 @@ onMounted(() => {
       <MoloButton class="confirm" @click="notAuth">Войти</MoloButton>
     </div>
 
-    <!-- Авторизован -->
     <div v-else-if="enterpriseInfo" class="content">
-      <!-- Шапка -->
       <div class="header">
         <div class="title-section">
           <h1>{{ enterpriseInfo.ownershipForm }} {{ enterpriseInfo.enterpriseName }}</h1>
@@ -111,18 +100,17 @@ onMounted(() => {
 
       <hr>
 
-      <!-- Список вкладок -->
       <div class="tabs-section">
         <div class="tabs-header">
-          <span>Вкладки</span>
-          <span class="counter">{{ tabs.length }}</span>
+          <section class="tabs-length">
+            <span>Вкладки</span>
+            <span class="counter">{{ tabs.length }}</span>
+          </section>
+          <MoloButton class="confirm small" @click="openConfigurator">Создать</MoloButton>
         </div>
-        <div v-if="loading" class="loading">
-          <div class="spinner"></div>
-        </div>
+        <MoloLoaders wndLoader v-if="loading"/>
         <div v-else-if="tabs.length === 0" class="empty">
           <p>Нет вкладок</p>
-          <MoloButton class="confirm small" @click="openConfigurator">Создать</MoloButton>
         </div>
 
         <div v-else class="tabs-list">
@@ -138,9 +126,7 @@ onMounted(() => {
             <div class="tab-info">
               <div class="tab-name">{{ tab.name }}</div>
               <div class="tab-meta">
-                <span>{{ tab.category || 'custom' }}</span>
-                <span>{{ (tab.groups || []).reduce((acc, g) => acc + (g.fields?.length || 0), 0) }} полей</span>
-                <span>{{ tab.defaultViewType || 'table' }}</span>
+                <span> {{ tab.description }} </span>
               </div>
             </div>
             <div class="arrow">→</div>
@@ -167,7 +153,6 @@ onMounted(() => {
   gap: 20px;
 }
 
-/* Шапка */
 .header {
   display: flex;
   justify-content: space-between;
@@ -191,11 +176,6 @@ onMounted(() => {
   color: #8e8e9e;
 }
 
-.config-btn {
-  padding: 8px 16px;
-}
-
-/* Вкладки */
 .tabs-section {
   background: var(--half_opacity_bg);
   border-radius: 12px;
@@ -208,6 +188,13 @@ onMounted(() => {
   align-items: center;
   gap: 12px;
   padding: 10px 20px;
+  justify-content: space-between;
+}
+
+.tabs-length {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .counter {
@@ -216,7 +203,6 @@ onMounted(() => {
   color: #8e8e9e;
 }
 
-/* Список */
 .tabs-list {
   display: flex;
   flex-direction: column;
@@ -295,7 +281,6 @@ onMounted(() => {
   color: #6496ff;
 }
 
-/* Загрузка */
 .loading {
   display: flex;
   justify-content: center;
@@ -317,7 +302,6 @@ onMounted(() => {
   }
 }
 
-/* Не авторизован */
 .auth-placeholder {
   display: flex;
   flex-direction: column;
@@ -345,7 +329,6 @@ onMounted(() => {
   color: #8e8e9e;
 }
 
-/* Пустое состояние */
 .empty {
   text-align: center;
   padding: 40px;

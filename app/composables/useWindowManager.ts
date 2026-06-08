@@ -166,7 +166,6 @@ export function useWindowManager() {
             },
             isModal,
             data: moduleData || extraData || {},
-            // Сохраняем ключ для возможности обновления настроек
             windowKey,
         }
 
@@ -180,8 +179,8 @@ export function useWindowManager() {
         'settings': 'Настройки',
         'employees': 'Сотрудники',
         'modules': 'Модули',
-        // Пункты
         'tabs': 'Вкладки',
+        'creature': 'Создание',
         'standards': 'Стандарты отображения',
         'configurator': 'Конфигуратор',
         'control': 'Управление',

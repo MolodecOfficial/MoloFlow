@@ -1,4 +1,3 @@
-// server/models/standard.model.ts
 import mongoose from 'mongoose'
 
 const columnSchema = new mongoose.Schema({
@@ -15,59 +14,25 @@ const standardSchema = new mongoose.Schema({
         ref: 'Enterprise',
         required: true
     },
-
     tabId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Tab',
         required: true
     },
-
-    name: {
-        type: String,
-        required: true,
-        trim: true
-    },
-
-    description: {
-        type: String,
-        default: ''
-    },
-
-    type: {
-        type: String,
-        enum: ['table', 'card', 'list'],
-        required: true
-    },
-
-    isDefault: {
-        type: Boolean,
-        default: false
-    },
-
-    isTemplate: {
-        type: Boolean,
-        default: false
-    },
-
-    templateName: {
-        type: String,
-        default: ''
-    },
-
-    // Основные настройки
-    settings: {
-        type: mongoose.Schema.Types.Mixed,
-        default: {}
-    },
-
-    // Для совместимости со старыми данными
+    name: { type: String, required: true, trim: true },
+    description: { type: String, default: '' },
+    styles: { type: Object, default: {} },
+    type: { type: String, enum: ['table', 'card', 'list'], required: true },
+    isDefault: { type: Boolean, default: false },
+    isTemplate: { type: Boolean, default: false },
+    templateName: { type: String, default: '' },
+    settings: { type: mongoose.Schema.Types.Mixed, default: {} },
     tableSettings: {
         columns: [columnSchema],
         density: { type: String, enum: ['compact', 'normal', 'spacious'], default: 'normal' },
         striped: { type: Boolean, default: true },
         hoverable: { type: Boolean, default: true }
     },
-
     cardSettings: {
         title: String,
         subtitle: String,
@@ -77,35 +42,24 @@ const standardSchema = new mongoose.Schema({
         showFooter: { type: Boolean, default: true },
         showStatus: { type: Boolean, default: true }
     },
-
     listSettings: {
         title: String,
         subtitle: String,
         showIcon: { type: Boolean, default: true },
         showDivider: { type: Boolean, default: true }
     },
-
-    // Общие настройки
     showSearch: { type: Boolean, default: true },
     showFilters: { type: Boolean, default: true },
     showPagination: { type: Boolean, default: true },
     itemsPerPage: { type: Number, default: 20 },
     emptyStateMessage: { type: String, default: 'Нет данных для отображения' },
     emptyStateIcon: { type: String, default: '📭' },
+    isActive: { type: Boolean, default: true }
+}, { timestamps: true })
 
-    isActive: {
-        type: Boolean,
-        default: true
-    }
-}, {
-    timestamps: true
-})
-
-// Индексы
 standardSchema.index({ enterpriseId: 1, tabId: 1, type: 1 })
 standardSchema.index({ enterpriseId: 1, isTemplate: 1 })
 
-// Перед сохранением: если isDefault = true, снимаем флаг с других стандартов того же типа
 standardSchema.pre('save', async function(next) {
     if (this.isDefault) {
         await mongoose.model('Standard').updateMany(

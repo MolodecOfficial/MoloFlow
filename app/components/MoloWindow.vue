@@ -150,10 +150,11 @@ const handleMouseUp = () => {
 
 const containerStyle = computed(() => {
   const disableTransition = isDragging.value || isResizing.value
+  const currentZIndex = props.window?.zIndex || 100
 
   if (isMaximized.value) {
     return {
-      zIndex: props.window.zIndex,
+      zIndex: currentZIndex,
       left: '20px',
       top: '20px',
       width: 'calc(100vw - 40px)',
@@ -163,7 +164,7 @@ const containerStyle = computed(() => {
   }
 
   return {
-    zIndex: props.window.zIndex,
+    zIndex: currentZIndex,
     left: windowPosition.value.x + 'px',
     top: windowPosition.value.y + 'px',
     width: windowSize.value.width + 'px',
@@ -254,6 +255,12 @@ onUnmounted(() => {
   document.removeEventListener('mousemove', handleMouseMove)
   document.removeEventListener('mouseup', handleMouseUp)
 })
+
+watch(() => props.window?.zIndex, (newZIndex) => {
+  if (newZIndex && containerRef.value) {
+    containerRef.value.style.zIndex = String(newZIndex)
+  }
+}, { immediate: true })
 </script>
 
 <template>

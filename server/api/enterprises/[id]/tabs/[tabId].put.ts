@@ -39,6 +39,8 @@ export default defineEventHandler(async (event) => {
             description: group.description || '',
             order: group.order ?? idx,
             icon: group.icon || 'folder',
+            image: group.image || null,
+            link: group.link || '',
             fields: (group.fields || []).map((field: any, fidx: number) => {
                 const { _id, __v, ...cleanField } = field
                 cleanField.key = cleanField.key?.toLowerCase().trim() || ''

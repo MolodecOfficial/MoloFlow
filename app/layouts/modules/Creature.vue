@@ -40,7 +40,7 @@ const previewWindowId = ref<string | null>(null)
 
 const showDocumentation = ref(false)
 const loadingUPD = ref(false)
-
+const loadingDEP = ref(false)
 const newDepName = ref('')
 const newDepVersion = ref('')
 
@@ -347,7 +347,8 @@ const deleteFile = async (filePath: string) => {
 
 const addDependency = async () => {
   if (!newDepName.value || !selectedModuleId.value) return
-
+  loadingDEP.value = true
+  addLog('info', `Начинаю установку зависимости "${newDepName.value}"...`)
   try {
     await moduleApi.addDependency(
         enterpriseInfo.value._id,
@@ -358,12 +359,13 @@ const addDependency = async () => {
     )
 
     await loadDependencies()
-
+    addLog('success', `Зависимость "${newDepName.value} успешно установлена!"`)
     addNotification('info', 'Зависимость добавлена')
 
     newDepName.value = ''
     newDepVersion.value = ''
-  } catch {
+  } catch (error) {
+    addLog('error', `Ошибка установки зависимости - ${error}`)
     addNotification(
         'error',
         'Ошибка добавления зависимости'
@@ -1409,6 +1411,7 @@ onUnmounted(() => {
               class="confirm"
               @click="addDependency"
           >
+
             Добавить
           </MoloButton>
         </div>
@@ -1771,16 +1774,9 @@ onUnmounted(() => {
 }
 
 .modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.7);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
 }
 
 .modal-content {

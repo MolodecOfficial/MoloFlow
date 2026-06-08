@@ -4,7 +4,6 @@ import mongoose from 'mongoose'
 const optionSchema = new mongoose.Schema({
     label: { type: String, required: true },
     value: { type: String, required: true },
-    color: { type: String, default: '#6496ff' }
 }, { _id: false })
 
 const fieldSchema = new mongoose.Schema({
@@ -20,6 +19,7 @@ const fieldSchema = new mongoose.Schema({
     placeholder: { type: String, default: '' },
     description: { type: String, default: '' },
     options: { type: [optionSchema], default: [] },
+    link: { type: String, default: '' },
     validation: {
         type: new mongoose.Schema({
             min: Number, max: Number, minLength: Number, maxLength: Number, pattern: String, customMessage: String
@@ -47,50 +47,49 @@ const fieldSchema = new mongoose.Schema({
     order: { type: Number, default: 0 }
 }, { _id: false })
 
-// Группы - это просто логические секции для организации полей в форме создания/редактирования
 const groupSchema = new mongoose.Schema({
     name: { type: String, required: true },
     description: { type: String, default: '' },
     order: { type: Number, default: 0 },
     icon: { type: String, default: 'folder' },
-    fields: [fieldSchema] // Поля, относящиеся к этой группе (для формы)
+    image: { type: String, default: null },
+    link: { type: String, default: '' },
+    fields: [fieldSchema]
 }, { _id: true })
 
 const tabSchema = new mongoose.Schema({
     enterpriseId: {
-        type: mongoose.Schema.Types.ObjectId, ref: 'Enterprise', required: true, index: true
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Enterprise',
+        required: true,
+        index: true
     },
     name: { type: String, required: true, trim: true },
     slug: { type: String, required: true, lowercase: true },
     description: { type: String, default: '' },
-    icon: { type: String, default: 'folder' },
-    color: { type: String, default: '#6496ff' },
-    category: { type: String, default: 'custom' },
     defaultViewType: {
-        type: String, enum: ['table', 'card', 'list', 'grid', 'kanban', 'calendar', 'map', 'timeline'], default: 'table'
+        type: String,
+        enum: ['table', 'card', 'list', 'grid', 'kanban', 'calendar', 'map', 'timeline'],
+        default: 'table'
     },
-    groups: [groupSchema], // Группы для организации полей в форме
+    groups: [groupSchema],
     actions: [{
-        name: String, label: String, icon: String, color: String, action: String, isBulk: Boolean
+        name: String, label: String, action: String, isBulk: Boolean
     }],
-    permissions: {
-        canView: { type: Boolean, default: true },
-        canCreate: { type: Boolean, default: true },
-        canEdit: { type: Boolean, default: true },
-        canDelete: { type: Boolean, default: true },
-        canExport: { type: Boolean, default: false },
-        rolesAllowed: [String]
+    // ЕДИНЫЙ стандарт по умолчанию для вкладки (любого типа)
+    defaultStandardId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Standard',
+        default: null
     },
     isActive: { type: Boolean, default: true }
 }, {
     timestamps: true,
-    // Виртуальное поле для получения всех полей из всех групп
     toJSON: { virtuals: true },
     toObject: { virtuals: true }
 })
 
-// Виртуальное поле - все поля из всех групп (плоский список)
-tabSchema.virtual('allFields').get(function() {
+tabSchema.virtual('allFields').get(function () {
     const fields: any[] = [];
     if (this.groups && Array.isArray(this.groups)) {
         this.groups.forEach((group: any) => {
@@ -114,39 +113,6 @@ tabSchema.pre('validate', function (next) {
     }
     next()
 })
-
-// Миграция старых вкладок
-async function migrateLegacyTabs() {
-    const TabModel = mongoose.model('Tab')
-    const legacyTabs = await TabModel.find({ groups: { $exists: false }, fields: { $exists: true } })
-    for (const tab of legacyTabs) {
-        const oldFields = tab.fields || []
-        if (oldFields.length) {
-            const defaultGroup = {
-                name: 'Основные',
-                description: 'Системная группа',
-                order: 0,
-                icon: 'folder',
-                fields: oldFields.map((f: any) => {
-                    const { _id, ...field } = f.toObject()
-                    return { ...field, order: field.order ?? 0 }
-                })
-            }
-            tab.groups = [defaultGroup]
-            tab.fields = undefined
-            await tab.save()
-            console.log(`Migrated tab ${tab._id} (${tab.name})`)
-        } else {
-            tab.groups = []
-            tab.fields = undefined
-            await tab.save()
-        }
-    }
-}
-
-setTimeout(() => {
-    migrateLegacyTabs().catch(err => console.error('Migration error:', err))
-}, 1000)
 
 export const Tab = mongoose.models.Tab || mongoose.model('Tab', tabSchema)
 export default Tab

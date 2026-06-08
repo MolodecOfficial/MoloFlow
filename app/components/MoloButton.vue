@@ -26,7 +26,9 @@ const handleClick = (event: MouseEvent) => {
       class="molo-btn"
       :class="{
         'confirm': $attrs.variant === 'confirm',
-        'close': $attrs.variant === 'close'
+        'close': $attrs.variant === 'close',
+        'small': $attrs.variant === 'small',
+        'action': $attrs.variant === 'action',
       }"
       :disabled="disabled || loading"
       @click="handleClick"
@@ -101,10 +103,21 @@ const handleClick = (event: MouseEvent) => {
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
+.molo-btn.small {
+  padding: 4px 12px;
+}
+
+.molo-btn.action {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
 .molo-btn.confirm {
   background: var(--borber-color_main);
   color: #020b18;
+  border: 1px solid transparent;
   &:hover {
+    border: 1px solid var(--borber-color_main);
     background: var(--border-color_hover);
     transform: translateY(-1px);
     box-shadow: 0 4px 12px rgba(var(--borber-color_main), 0.3);
@@ -121,16 +134,16 @@ const handleClick = (event: MouseEvent) => {
 }
 
 .molo-btn.close {
-  background: #ef1e1e;
+  background: #e04141;
   color: white;
+  border: 1px solid transparent;
   &:hover {
     background: #a61616;
     transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(239, 30, 30, 0.3);
+    border: 1px solid red;
   }
   &:active {
     transform: translateY(1px);
-    box-shadow: 0 2px 6px rgba(239, 30, 30, 0.2);
   }
   &:disabled {
     background: #600f0f;

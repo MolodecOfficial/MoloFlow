@@ -32,7 +32,7 @@ const emit = defineEmits<{
 
 const modulesStore = useModulesStore()
 const { addNotification } = useNotifications('Меню')
-const { addLog } = useLogger()
+const { addLog } = useLogger('Меню')
 
 const enterpriseDataStr = ref<string | null>(null)
 const token = ref<string | null>(null)
@@ -42,7 +42,6 @@ const dynamicModules = ref<any[]>([])
 const runningModules = ref<Map<string, any>>(new Map())
 
 const enterprises = ref([])
-const loadingEnterprises = ref(false)
 const loading = ref(false)
 
 const isLockedHover = ref(false)
@@ -63,7 +62,7 @@ const expandedModulesItems = ref<Set<string>>(new Set())
 ========================= */
 
 const updateAuthData = () => {
-  addLog('info', 'Загружаю информацию о предприятии')
+  addLog('info', 'Загружаю информацию о предприятии...')
 
   enterpriseDataStr.value = localStorage.getItem('currentEnterprise')
   token.value = localStorage.getItem('enterprise_token')
@@ -71,7 +70,7 @@ const updateAuthData = () => {
   if (enterpriseDataStr.value) {
     try {
       currentEnterprise.value = JSON.parse(enterpriseDataStr.value)
-      addLog('success', 'Предприятие загружено')
+      addLog('success', 'Информация загружена!')
     } catch (e) {
       addLog('error', `Ошибка парсинга предприятия: ${e}`)
     }
@@ -258,10 +257,13 @@ const handleMenuItemClick = (event: MouseEvent, groupId: string, item: any, isMo
 
   const sizeOptions = getWindowSizeOptions(item.id)
 
+  // 🔥 КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: для модулей всегда используем customTitle
+  const customTitle = item.title || item.moduleData?.name || item.name || 'Модуль'
+
   if (item.format === 'vue' && item.moduleId) {
     emit('open-window',
         groupId,
-        item.id,
+        item.id,  // item.id остаётся для идентификации
         undefined,
         sizeOptions,
         false,
@@ -270,7 +272,10 @@ const handleMenuItemClick = (event: MouseEvent, groupId: string, item: any, isMo
           ...item.moduleData,
           moduleId: item.moduleId,
           _id: item.moduleId,
-        }
+          name: customTitle  // передаём название в данные
+        },
+        undefined,  // extraData не нужен
+        customTitle  // ← ПЕРЕДАЁМ customTitle!
     )
   } else {
     emit('open-window',
@@ -280,7 +285,9 @@ const handleMenuItemClick = (event: MouseEvent, groupId: string, item: any, isMo
         sizeOptions,
         false,
         item.componentPath || item.componentName,
-        item.moduleData
+        item.moduleData,
+        undefined,
+        customTitle  // ← И сюда тоже для обычных элементов
     )
   }
 }
@@ -568,11 +575,11 @@ onUnmounted(() => {
 
 /* ПАНЕЛИ */
 .menu-panel {
-  background: rgba(255,255,255,0.04);
-  border: 1px solid rgba(255,255,255,0.08);
+  background: var(--half_opacity_bg);
+  border: 1px solid var(--half_opacity_border);
   backdrop-filter: blur(18px);
-  border-radius: 16px;
-  padding: 8px 16px;
+  border-radius: 10px;
+  padding: 8px 10px;
   transition: 0.25s ease;
 }
 
@@ -601,7 +608,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 8px;
   padding: 8px 16px;
-  border-radius: 12px;
+  border-radius: 6px;
   cursor: pointer;
   color: rgba(255,255,255,0.8);
   font-size: 14px;
@@ -629,13 +636,13 @@ onUnmounted(() => {
 /* ВЫПАДАЮЩИЙ СПИСОК (вниз) */
 .items-dropdown {
   position: absolute;
-  top: calc(100% + 8px);
+  top: calc(100% + 14px);
   left: 0;
   min-width: 220px;
   background: var(--half_opacity_bg);
   backdrop-filter: blur(20px);
   border: 1px solid var(--half_opacity_border);
-  border-radius: 12px;
+  border-radius: 6px;
   padding: 8px 0;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3);
   z-index: 1000;
@@ -680,16 +687,15 @@ onUnmounted(() => {
   margin-left: 12px;
 }
 
-/* ДЕТИ (вылетают вбок) */
 .children-dropdown {
   position: absolute;
-  top: -8px;
-  left: calc(100% + 4px);
+  left: calc(100% + 6px);
+  top: -9px;
   min-width: 200px;
   background: var(--half_opacity_bg);
   backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 12px;
+  border: 1px solid var(--half_opacity_border);
+  border-radius: 6px;
   padding: 8px 0;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3);
   z-index: 1001;

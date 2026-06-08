@@ -34,6 +34,7 @@ const error = ref<string | null>(null)
 const loadedModuleData = ref<any>(null)
 const isLoadingModule = ref(false)
 const { addLog } = useLogger('Загрузчик модуля')
+const moduleService = useModuleService()
 
 // Получение enterpriseId из разных источников
 const getEnterpriseId = (): string | null => {
@@ -75,76 +76,46 @@ const getModuleId = (): string | null => {
   return null
 }
 
-// Загрузка полных данных модуля с сервера
-async function fetchFullModuleData() {
-  // Если есть код в переданных данных
-  if (props.moduleData?.code && props.moduleData?.code.trim()) {
-    addLog('info', 'Использую переданные данные')
-    return props.moduleData
-  }
-
-  const id = getModuleId()
-  if (!id) {
-    addLog('error', 'Нет ID модуля')
-    return null
-  }
-
-  const enterpriseId = getEnterpriseId()
-  if (!enterpriseId) {
-    addLog('error', 'Нет ID предприятия')
-    return null
-  }
-
-  try {
-    isLoadingModule.value = true
-    const response = await $fetch(`/api/enterprises/${enterpriseId}/dynamicModules/${id}/files`)
-
-    if (response?.mainFile?.code) {
-      return {
-        _id: id,
-        name: response.mainFile.name || 'Модуль',
-        format: response.mainFile.format || 'vue',
-        code: response.mainFile.code,
-        files: response.files || []
-      }
-    }
-    return null
-  } catch (err) {
-    addLog('error', 'Ошибка:', err)
-    return null
-  } finally {
-    isLoadingModule.value = false
-  }
-}
 async function loadModule() {
   error.value = null
 
-  // Сначала пробуем получить полные данные
   let fullData = props.moduleData
 
-  if (!fullData?.code || !fullData.code.trim()) {
-    fullData = await fetchFullModuleData()
+  // Если нет кода, но есть moduleId – загружаем через сервис
+  if ((!fullData?.code || !fullData.code.trim()) && getModuleId()) {
+    const enterpriseId = getEnterpriseId()
+    const moduleId = getModuleId()
+    if (enterpriseId && moduleId) {
+      isLoadingModule.value = true
+
+      try {
+        fullData = await moduleService.fetchFullModuleData(moduleId, enterpriseId, true)
+      } catch (e) {
+        error.value = 'Не удалось загрузить модуль с сервера'
+        emit('error', error.value)
+        return
+      } finally {
+        isLoadingModule.value = false
+      }
+    }
   }
 
   if (!fullData) {
-    error.value = 'Не удалось загрузить модуль. Проверьте, что модуль сохранен и содержит код.'
-    emit('error', error.value)
+    error.value = 'Нет данных модуля'
     return
   }
 
+  const moduleName = fullData.name || 'Модуль'
   const code = fullData.code || ''
-  const files = props.additionalFiles || fullData.files || []
+  const files = fullData.files || []
   const deps = fullData.dependencies || {}
 
-  addLog('info', 'Компиляция модуля...')
-
   if (!code.trim()) {
-    error.value = 'Нет кода модуля. Пожалуйста, сохраните модуль с кодом.'
-    emit('error', error.value)
+    error.value = 'Нет кода модуля'
     return
   }
 
-  loadedModuleData.value = fullData
+  loadedModuleData.value = { ...fullData, name: moduleName }
   await compileModule(code, files, deps, props.moduleId || fullData._id)
 }
 
@@ -186,6 +157,7 @@ onUnmounted(() => {
   <div class="dynamic-module-loader">
     <div v-if="isLoadingModule" class="loading-state">
       <MoloLoaders wndLoader/>
+      <span>Загрузка данных модуля...</span>
     </div>
     <div v-else-if="error" class="error-state">
       <div class="error-icon">⚠️</div>
