@@ -49,7 +49,6 @@ function getFieldValue(fieldKey: string) {
   return formatValue(value)
 }
 
-// Обработчик клика по аватару
 function handleAvatarClick(event: MouseEvent) {
   event.stopPropagation()
   if (props.groupLink) {
@@ -58,7 +57,6 @@ function handleAvatarClick(event: MouseEvent) {
   }
 }
 
-// Обработчик клика по ссылке группы
 function handleGroupLinkClick(event: MouseEvent) {
   event.stopPropagation()
   if (props.groupLink) {
@@ -67,7 +65,6 @@ function handleGroupLinkClick(event: MouseEvent) {
   }
 }
 
-// Обработчик клика по полю
 function handleFieldClick(event: MouseEvent, fieldKey: string) {
   event.stopPropagation()
   const field = getField(fieldKey)
@@ -93,8 +90,8 @@ function handleFieldClick(event: MouseEvent, fieldKey: string) {
       padding: styles?.cardPadding || '18px'
     }"
   >
+    <!-- Шапка с аватаром -->
     <div class="card-header">
-      <!-- Аватар с фото или буквой (кликабельный) -->
       <div
           class="group-avatar"
           :class="{ 'has-link': groupLink }"
@@ -109,27 +106,20 @@ function handleFieldClick(event: MouseEvent, fieldKey: string) {
         <span v-else class="group-avatar-letter">
           {{ (groupName || '?').charAt(0).toUpperCase() }}
         </span>
-        <!-- Индикатор ссылки на аватаре -->
-        <div v-if="groupLink" class="avatar-link-indicator">
-          🔗
-        </div>
+        <div v-if="groupLink" class="avatar-link-indicator">🔗</div>
       </div>
 
       <div class="header-info">
         <h3 class="group-title">
           {{ groupName || 'Без названия' }}
-          <!-- Кликабельная ссылка-иконка группы -->
           <a
               v-if="groupLink"
               :href="groupLink"
               :target="linkTarget || '_blank'"
               class="group-link"
               @click.stop="handleGroupLinkClick"
-          >
-            🔗
-          </a>
+          >🔗</a>
         </h3>
-
         <p v-if="groupDescription" class="group-description">
           {{ groupDescription }}
         </p>
@@ -138,20 +128,20 @@ function handleFieldClick(event: MouseEvent, fieldKey: string) {
 
     <div class="card-divider" />
 
-    <div class="card-content">
+    <!-- Поля: лейбл слева | значение справа (как в читательском формуляре) -->
+    <div class="card-fields">
       <div
           v-for="fieldKey in settings?.fields"
           :key="fieldKey"
-          class="card-field"
+          class="card-field-row"
           :class="{ 'has-link': getFieldLink(fieldKey) }"
           @click="(e) => handleFieldClick(e, fieldKey)"
       >
-        <div class="field-top">
+        <div class="field-label">
           {{ getFieldLabel(fieldKey) }}
           <span v-if="getFieldLink(fieldKey)" class="field-link-icon">🔗</span>
         </div>
-
-        <div class="field-bottom">
+        <div class="field-value">
           {{ getFieldDescription(fieldKey) || getFieldValue(fieldKey) }}
         </div>
       </div>
@@ -184,13 +174,11 @@ function handleFieldClick(event: MouseEvent, fieldKey: string) {
   content: '';
   position: absolute;
   inset: 0;
-
   background: radial-gradient(
       circle at top right,
       rgba(100, 150, 255, .18),
       transparent 40%
   );
-
   pointer-events: none;
 }
 
@@ -200,17 +188,12 @@ function handleFieldClick(event: MouseEvent, fieldKey: string) {
   gap: 14px;
 }
 
-/* Аватар */
 .group-avatar {
   position: relative;
   width: 70px;
   height: 70px;
   border-radius: 16px;
-  background: linear-gradient(
-      135deg,
-      #6496ff,
-      #4f74ff
-  );
+  background: linear-gradient(135deg, #6496ff, #4f74ff);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -239,7 +222,6 @@ function handleFieldClick(event: MouseEvent, fieldKey: string) {
   color: white;
 }
 
-/* Индикатор ссылки на аватаре */
 .avatar-link-indicator {
   position: absolute;
   bottom: 2px;
@@ -269,20 +251,16 @@ function handleFieldClick(event: MouseEvent, fieldKey: string) {
 
 .group-title {
   margin: 0;
-
   font-size: 18px;
   font-weight: 700;
-
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-
   display: flex;
   align-items: center;
   gap: 6px;
 }
 
-/* Кликабельная ссылка-иконка группы */
 .group-link {
   display: inline-flex;
   align-items: center;
@@ -303,22 +281,17 @@ function handleFieldClick(event: MouseEvent, fieldKey: string) {
 
 .group-description {
   margin-top: 4px;
-
   font-size: 13px;
   line-height: 1.4;
-
   color: rgba(255, 255, 255, .55);
-
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
-
   overflow: hidden;
 }
 
 .card-divider {
   height: 1px;
-
   background: linear-gradient(
       90deg,
       transparent,
@@ -327,43 +300,55 @@ function handleFieldClick(event: MouseEvent, fieldKey: string) {
   );
 }
 
-.card-content {
-  display: grid;
-  gap: 4px;
+/* ========== ГЛАВНОЕ: поля как в читательском формуляре ========== */
+.card-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
-/* Поле карточки */
-.card-field {
+.card-field-row {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  border-radius: 4px;
-  padding: 8px 0;
-  transition: all .2s ease;
+  align-items: baseline;
+  gap: 20px;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  transition: all 0.2s ease;
   cursor: default;
 }
 
-.card-field.has-link {
+.card-field-row.has-link {
   cursor: pointer;
 }
 
-.card-field.has-link:hover {
-  background: var(--half_opacity_border);
-  transform: translateX(4px);
+.card-field-row.has-link:hover {
+  background: rgba(100, 150, 255, 0.08);
+  margin: 0 -8px;
+  padding: 6px 8px;
+  border-radius: 10px;
+  border-bottom-color: transparent;
 }
 
-.card-field:hover {
-  background: rgba(255, 255, 255, .07);
-}
-
-.field-top {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: .08em;
-  color: rgba(255, 255, 255, .45);
+.field-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.65);
+  min-width: 140px;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
+}
+
+/* Значение — справа, прижато к правому краю, переносится */
+.field-value {
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.95);
+  text-align: right;
+  word-break: break-word;
+  flex: 1;
 }
 
 .field-link-icon {
@@ -371,16 +356,9 @@ function handleFieldClick(event: MouseEvent, fieldKey: string) {
   opacity: 0.5;
 }
 
-.card-field.has-link:hover .field-link-icon {
+.card-field-row.has-link:hover .field-link-icon {
   opacity: 1;
   color: #6496ff;
-}
-
-.field-bottom {
-  font-size: 14px;
-  font-weight: 500;
-  color: rgba(255, 255, 255, .92);
-  line-height: 1.4;
 }
 
 @media (max-width: 700px) {
@@ -401,8 +379,13 @@ function handleFieldClick(event: MouseEvent, fieldKey: string) {
     font-size: 16px;
   }
 
-  .field-bottom {
-    font-size: 13px;
+  .field-label {
+    min-width: 100px;
+    font-size: 11px;
+  }
+
+  .field-value {
+    font-size: 12px;
   }
 }
 </style>

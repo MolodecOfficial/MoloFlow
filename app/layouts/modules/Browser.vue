@@ -233,22 +233,6 @@ onMounted(() => {
       />
     </aside>
 
-    <!-- Кнопка редактора -->
-    <div class="editor-control">
-      <MoloButton
-          v-if="!hasEditorAccess"
-          class="action-btn"
-          @click="editorMode"
-      >
-        Режим редактора
-      </MoloButton>
-      <div v-else class="editor-active">
-        <span class="editor-badge">Режим редактора активен</span>
-        <MoloButton class="close" @click="disableEditor">Выключить</MoloButton>
-        <MoloButton class="confirm" @click="openModuleEditor">Создать модуль</MoloButton>
-      </div>
-    </div>
-
     <!-- Правая часть с модулями -->
     <div class="modules-content">
       <MoloLoaders wndLoader v-if="loading"/>

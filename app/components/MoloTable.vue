@@ -1,5 +1,6 @@
 <script lang="ts" setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
+import * as XLSX from 'xlsx'
 
 const props = defineProps<{
   columns: any[]
@@ -12,7 +13,10 @@ const props = defineProps<{
 const emit = defineEmits<{
   rowClick: [row: any]
   cellClick: [value: any, column: any, row: any]
+  dataImported: [data: any[]]
 }>()
+
+const fileInput = ref<HTMLInputElement | null>(null)
 
 // Стили таблицы из стандарта
 const tableStyles = computed(() => ({
@@ -36,10 +40,158 @@ const cellPadding = computed(() => {
     default: return '12px 20px'
   }
 })
+
+// Подготовка данных для экспорта (плоская таблица)
+const exportData = computed(() => {
+  const rows: any[] = []
+
+  for (const group of (props.groups || [])) {
+    if (!group.fields || group.fields.length === 0) continue
+
+    for (const field of group.fields) {
+      rows.push({
+        'Группа': group.name,
+        'Поле (ключ)': field.key,
+        'Название поля': field.label,
+        'Описание / Значение': field.description || '—',
+        'Обязательное': field.required ? 'Да' : 'Нет',
+        'Уникальное': field.isUnique ? 'Да' : 'Нет',
+        'Тип': field.type || 'string',
+        'Ссылка': field.link || ''
+      })
+    }
+  }
+
+  return rows
+})
+
+// Экспорт в Excel
+function exportToExcel() {
+  if (exportData.value.length === 0) {
+    alert('Нет данных для экспорта')
+    return
+  }
+
+  const worksheet = XLSX.utils.json_to_sheet(exportData.value)
+  const workbook = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Структура полей')
+
+  // Автоширина колонок
+  const maxWidth = 30
+  worksheet['!cols'] = [
+    { wch: 20 }, // Группа
+    { wch: 25 }, // Поле (ключ)
+    { wch: 25 }, // Название поля
+    { wch: 50 }, // Описание
+    { wch: 10 }, // Обязательное
+    { wch: 10 }, // Уникальное
+    { wch: 12 }, // Тип
+    { wch: 30 }  // Ссылка
+  ]
+
+  XLSX.writeFile(workbook, `"Экспорт_таблицы"_${new Date().toISOString().slice(0, 19)}.xlsx`)
+}
+
+// Импорт из Excel
+function importFromExcel(event: Event) {
+  const input = event.target as HTMLInputElement
+  if (!input.files || input.files.length === 0) return
+
+  const file = input.files[0]
+  const reader = new FileReader()
+
+  reader.onload = (e) => {
+    const data = e.target?.result
+    const workbook = XLSX.read(data, { type: 'binary' })
+    const sheetName = workbook.SheetNames[0]
+    const worksheet = workbook.Sheets[sheetName]
+    const importedRows = XLSX.utils.sheet_to_json(worksheet)
+
+    if (importedRows.length === 0) {
+      alert('Файл пуст или имеет неверный формат')
+      return
+    }
+
+    // Конвертируем импортированные данные в структуру полей
+    const updatedGroups = [...(props.groups || [])]
+
+    for (const row of importedRows as any[]) {
+      const groupName = row['Группа']
+      const fieldKey = row['Поле (ключ)']
+      const fieldLabel = row['Название поля']
+      const description = row['Описание / Значение']
+      const required = row['Обязательное'] === 'Да'
+      const isUnique = row['Уникальное'] === 'Да'
+      const type = row['Тип'] || 'string'
+      const link = row['Ссылка'] || ''
+
+      if (!groupName || !fieldKey || !fieldLabel) continue
+
+      let group = updatedGroups.find(g => g.name === groupName)
+      if (!group) {
+        group = { name: groupName, description: '', fields: [] }
+        updatedGroups.push(group)
+      }
+
+      const existingFieldIndex = group.fields.findIndex((f: any) => f.key === fieldKey)
+      const fieldData = {
+        key: fieldKey,
+        label: fieldLabel,
+        description: description !== '—' ? description : '',
+        required,
+        isUnique,
+        type,
+        link,
+        isArray: false,
+        isSearchable: true,
+        isFilterable: true,
+        isSortable: true,
+        isReadonly: false,
+        isHidden: false,
+        order: existingFieldIndex >= 0 ? group.fields[existingFieldIndex].order : group.fields.length
+      }
+
+      if (existingFieldIndex >= 0) {
+        group.fields[existingFieldIndex] = fieldData
+      } else {
+        group.fields.push(fieldData)
+      }
+    }
+
+    emit('dataImported', updatedGroups)
+    alert(`Импортировано ${importedRows.length} полей`)
+  }
+
+  reader.readAsBinaryString(file)
+  input.value = '' // сброс input
+}
+
+// Триггер файлового инпута
+function triggerFileInput() {
+  fileInput.value?.click()
+}
 </script>
 
 <template>
   <div class="tables-container">
+    <!-- Кнопки экспорта/импорта -->
+    <div class="export-import-bar">
+      <MoloButton class="action" @click="exportToExcel" title="Экспорт в Excel">
+        <img src="/excel.png"/>
+        Экспорт в Excel
+      </MoloButton>
+      <MoloButton class="action" @click="triggerFileInput" title="Импорт из Excel">
+        📂 Импорт из Excel
+      </MoloButton>
+      <input
+          ref="fileInput"
+          type="file"
+          accept=".xlsx, .xls, .csv"
+          style="display: none"
+          @change="importFromExcel"
+      />
+    </div>
+
     <div v-for="(group, idx) in groups" :key="idx" class="table-section">
       <div class="table-header">
         <h3 class="table-title">{{ group.name }}</h3>
@@ -60,7 +212,7 @@ const cellPadding = computed(() => {
           <thead>
           <tr>
             <th :style="headerStyles">Поле</th>
-            <th :style="headerStyles">Описание / Значение</th>
+            <th :style="headerStyles">Описание</th>
           </tr>
           </thead>
           <tbody>
@@ -100,6 +252,21 @@ const cellPadding = computed(() => {
   gap: 32px;
 }
 
+  .export-import-bar {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  width: 100%;
+  align-items: center;
+}
+.action img {
+  width: 12px;
+  height: 16px;
+  vertical-align: middle;
+}
+
 .table-section {
   display: flex;
   flex-direction: column;
@@ -124,9 +291,9 @@ const cellPadding = computed(() => {
 .table-wrapper {
   width: 100%;
   overflow-x: auto;
-  border-radius: 14px;
-  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
   backdrop-filter: blur(2px);
+  border: 1px solid var(--half_opacity_border);
 }
 
 .molo-table {
@@ -183,15 +350,21 @@ const cellPadding = computed(() => {
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
+.table-cell {
+  text-align: right;
+}
+
 /* Содержимое ячеек */
 .cell-content {
   display: flex;
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
+  text-align: right;
 }
 
 .field-label {
+  text-align: right;
   font-weight: 500;
   color: rgba(255, 255, 255, 0.92);
   font-size: 0.875rem;

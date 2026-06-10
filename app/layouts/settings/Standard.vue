@@ -370,7 +370,7 @@ function closeWindow() {
                 :disabled="settingDefault"
                 @click.stop="setAsDefault(std)"
             >⭐</MoloButton>
-            <MoloButton class="action small" title="Удалить" @click.stop="openDeleteModal(std)">×</MoloButton>
+            <MoloButton class="close small" title="Удалить" @click.stop="openDeleteModal(std)">×</MoloButton>
           </div>
         </div>
       </div>
@@ -389,7 +389,7 @@ function closeWindow() {
           </div>
         </div>
 
-        <div class="form-section">
+        <MoloSection>
           <big>Основное</big>
           <div class="form-grid">
             <MoloInput v-model="form.name" tLabel="Название" lRequired/>
@@ -405,55 +405,7 @@ function closeWindow() {
             <span>Сделать стандартом по умолчанию для этой вкладки</span>
           </label>
           <p v-if="form.isDefault" class="section-hint">⚠️ При сохранении этот стандарт станет стандартом по умолчанию только для текущей вкладки</p>
-        </div>
-
-        <div v-if="form.type === 'table'" class="form-section">
-          <big>Настройки таблицы</big>
-          <label class="checkbox-label">
-            <input type="checkbox" v-model="form.settings.useGroupsAsColumns">
-            <span><strong>Колонки по группам</strong> — каждая группа вкладки = колонка таблицы</span>
-          </label>
-          <div v-if="form.settings.useGroupsAsColumns" class="form-row">
-            <MoloSelect
-                v-model="form.settings.groupCellFormat"
-                :parent="[{label:'В одну строку (через запятую)', value:'inline'}, {label:'Каждое поле с новой строки', value:'block'}]"
-                children="label" valueKey="value" tLabel="Формат ячейки"
-            />
-            <p class="section-hint">Поля группы будут отображаться в одной ячейке</p>
-          </div>
-          <template v-if="!form.settings.useGroupsAsColumns">
-            <div class="form-row">
-              <MoloSelect
-                  v-model="form.settings.tableDensity"
-                  :parent="[{label:'Компактная', value:'compact'},{label:'Нормальная', value:'normal'},{label:'Просторная', value:'spacious'}]"
-                  children="label" valueKey="value" tLabel="Плотность"
-              />
-            </div>
-            <div class="checkbox-group">
-              <label class="checkbox-label"><input type="checkbox" v-model="form.settings.tableStriped"> Полосатая</label>
-              <label class="checkbox-label"><input type="checkbox" v-model="form.settings.tableHoverable"> Подсветка строк</label>
-            </div>
-            <div class="columns-editor">
-              <div class="columns-header">
-                <big>Колонки</big>
-                <button class="add-btn" @click="form.settings.columns.push({ field: '', label: '', width: 'auto', align: 'left', sortable: true })">+</button>
-              </div>
-              <div class="columns-list">
-                <div v-for="(col, idx) in form.settings.columns" :key="idx" class="column-item">
-                  <MoloSelect v-model="col.field" :parent="localTabFields" children="label" valueKey="key" disabled="Выберите поле" tLabel="Выберите поле" lRequired />
-                  <MoloInput v-model="col.label" placeholder="Заголовок" tLabel="Заголовок"/>
-                  <MoloButton class="remove-btn" @click="form.settings.columns.splice(idx, 1)">×</MoloButton>
-                </div>
-              </div>
-            </div>
-          </template>
-          <div v-if="form.type === 'table' && form.settings.useGroupsAsColumns" class="form-row">
-            <label class="checkbox-label">
-              <input type="checkbox" v-model="form.settings.groupShowFieldLabels">
-              Показывать названия полей
-            </label>
-          </div>
-        </div>
+        </MoloSection>
 
         <div v-if="form.type === 'card'" class="form-section">
           <big>Карточки</big>
@@ -462,7 +414,7 @@ function closeWindow() {
           </div>
         </div>
 
-        <div class="form-section">
+        <MoloSection>
           <big>Стилизация</big>
           <p class="section-hint">Оставьте поля пустыми, чтобы использовать стандартный вид</p>
           <div class="form-grid">
@@ -490,7 +442,7 @@ function closeWindow() {
               <MoloInput v-model="form.styles.listPadding" tLabel="Отступы" placeholder="12px"/>
             </template>
           </div>
-        </div>
+        </MoloSection>
 
         <div class="editor-preview">
           <div class="preview-header">

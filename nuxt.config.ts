@@ -17,16 +17,12 @@ export default defineNuxtConfig({
       'ws:clients': { driver: 'memory' }
     },
   },
+
   vite: {
     json: {
       stringify: true
     },
-    ssr: {
-      noExternal: ['velocityjs']
-    }
   },
-  build: {
-    transpile: ['velocityjs']
-  },
+
   modules: ['@pinia/nuxt'],
 })

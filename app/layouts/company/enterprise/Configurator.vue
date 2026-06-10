@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import {onMounted, onUnmounted, ref, computed} from 'vue'
+import {onMounted, onUnmounted, ref, computed, watch} from 'vue'
 import MoloModal from '~/components/MoloModal.vue'
 import { useAppStore } from '~~/stores/appStore'
 
@@ -69,7 +69,8 @@ const fieldForm = ref<any>({
   isFilterable: true,
   isSortable: true,
   isReadonly: false,
-  isHidden: false
+  isHidden: false,
+  _manualKey: false // флаг ручного редактирования ключа
 })
 const newOption = ref({label: '', value: '', color: '#6496ff'})
 
@@ -110,6 +111,54 @@ const viewTypes = [
 const tabs = computed(() => store.tabs)
 const tabsLoading = computed(() => store.tabsLoading)
 
+// Транслитерация кириллицы в латиницу
+function transliterate(text: string): string {
+  const map: Record<string, string> = {
+    'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'yo','ж':'zh',
+    'з':'z','и':'i','й':'y','к':'k','л':'l','м':'m','н':'n','о':'o',
+    'п':'p','р':'r','с':'s','т':'t','у':'u','ф':'f','х':'kh','ц':'ts',
+    'ч':'ch','ш':'sh','щ':'shch','ъ':'','ы':'y','ь':'','э':'e','ю':'yu','я':'ya'
+  }
+  return text.replace(/[а-яё]/gi, (ch) => {
+    const lower = ch.toLowerCase()
+    const translit = map[lower] || lower
+    return ch === lower ? translit : translit.charAt(0).toUpperCase() + translit.slice(1)
+  })
+}
+
+// Автогенерация ключа из названия
+function generateKeyFromLabel(label: string): string {
+  if (!label) return ''
+  let generated = label
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-zа-яё0-9]/g, '_') // любые символы кроме букв и цифр в _
+      .replace(/_+/g, '_')             // дубли _ в один
+      .replace(/^_|_$/g, '')           // _ в начале и конце долой
+
+  generated = transliterate(generated)
+  return generated || 'field'
+}
+
+// Следим за изменением label и генерируем ключ, если не ручной режим
+watch(() => fieldForm.value.label, (newLabel) => {
+  if (fieldForm.value._manualKey) return
+  fieldForm.value.key = generateKeyFromLabel(newLabel)
+})
+
+// Следим за ручным изменением ключа — включаем ручной режим
+let manualKeyWatcherStop: (() => void) | null = null
+
+function setupManualKeyWatcher() {
+  if (manualKeyWatcherStop) manualKeyWatcherStop()
+  const stop = watch(() => fieldForm.value.key, (newKey, oldKey) => {
+    if (newKey !== oldKey && !fieldForm.value._manualKey && oldKey !== undefined) {
+      fieldForm.value._manualKey = true
+    }
+  })
+  manualKeyWatcherStop = stop
+}
+
 function getEnterpriseId(): string {
   if (props.enterpriseId) return props.enterpriseId
   return store.getEnterpriseId() || ''
@@ -149,8 +198,6 @@ async function loadTabs() {
   const enterpriseId = getEnterpriseId()
   if (!enterpriseId) return
 
-  // НЕ используем force=true, чтобы не перезагружать уже загруженные данные
-  // Если данные уже загружены в store, они просто вернутся из кэша
   if (store.tabsLoaded) {
     addLog('info', 'Вкладки уже загружены, использую кэш')
     return
@@ -158,7 +205,7 @@ async function loadTabs() {
 
   loading.value = true
   try {
-    await store.loadTabs(false) // force = false
+    await store.loadTabs(false)
   } catch (error: any) {
     addNotification('error', 'Ошибка загрузки вкладок')
   } finally {
@@ -321,9 +368,16 @@ function moveGroup(index: number, direction: 'up' | 'down') {
 function openFieldModal(groupIndex: number, fieldIndex: number | null = null) {
   editingGroupIdForField.value = groupIndex
   editingFieldIndex.value = fieldIndex
+
+  // Сбрасываем флаг ручного редактирования
+  fieldForm.value._manualKey = false
+
   if (fieldIndex !== null) {
     const field = tabForm.value.groups[groupIndex].fields[fieldIndex]
-    fieldForm.value = JSON.parse(JSON.stringify(field))
+    fieldForm.value = {
+      ...JSON.parse(JSON.stringify(field)),
+      _manualKey: true // при редактировании существующего поля - ручной режим
+    }
   } else {
     fieldForm.value = {
       key: '',
@@ -352,10 +406,12 @@ function openFieldModal(groupIndex: number, fieldIndex: number | null = null) {
       isFilterable: true,
       isSortable: true,
       isReadonly: false,
-      isHidden: false
+      isHidden: false,
+      _manualKey: false
     }
   }
   newOption.value = {label: '', value: '', color: '#6496ff'}
+  setupManualKeyWatcher()
   fieldModalOpen.value = true
 }
 
@@ -364,23 +420,31 @@ function saveField() {
     addNotification('warning', 'Заполните ключ и название поля')
     return
   }
-  const sanitizedKey = fieldForm.value.key.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_')
+
+  // Очищаем ключ от недопустимых символов
+  let sanitizedKey = fieldForm.value.key.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_')
   if (sanitizedKey !== fieldForm.value.key) {
     fieldForm.value.key = sanitizedKey
-    addNotification('warning', 'Ключ изменён на латиницу')
+    addNotification('warning', 'Ключ изменён: только латиница, цифры и _')
     return
   }
+
   const group = tabForm.value.groups[editingGroupIdForField.value!]
   const isUnique = group.fields.every((f: any, idx: number) => f.key !== sanitizedKey || idx === editingFieldIndex.value)
   if (!isUnique) {
     addNotification('error', 'Поле с таким ключом уже существует в этой группе')
     return
   }
+
+  // Убираем служебное поле _manualKey перед сохранением
+  const { _manualKey, ...cleanField } = fieldForm.value
+
   const fieldData = {
-    ...fieldForm.value,
+    ...cleanField,
     key: sanitizedKey,
     order: editingFieldIndex.value !== null ? group.fields[editingFieldIndex.value].order : group.fields.length
   }
+
   if (editingFieldIndex.value !== null) {
     group.fields[editingFieldIndex.value] = fieldData
   } else {
@@ -466,12 +530,11 @@ onMounted(async () => {
   currentEnterpriseId.value = getEnterpriseId()
   if (currentEnterpriseId.value) {
     await loadTabs()
-    // Не вызываем preloadAllTabsData повторно, так как данные уже загружены в Control.vue
-    // store.preloadAllTabsData() - убираем, чтобы не дублировать
   }
 })
 
 onUnmounted(() => {
+  if (manualKeyWatcherStop) manualKeyWatcherStop()
 })
 </script>
 
@@ -498,15 +561,14 @@ onUnmounted(() => {
     <hr/>
 
     <div class="configurator-content">
-      <div v-if="activeSection === 'tabs'" class="section-content">
+      <div v-if="activeSection === 'tabs'" class="section-content tabs-section">
         <MoloLoaders wndLoader v-if="loading || tabsLoading"/>
         <div v-else-if="tabs.length === 0" class="empty-state">
           <div class="empty-icon">📁</div>
           <p>Нет созданных вкладок</p>
-          <MoloButton class="confirm" @click="createNewTab">Создать первую вкладку</MoloButton>
         </div>
         <div v-else class="tabs-grid">
-          <div v-for="tab in tabs" :key="tab._id" class="tab-card">
+          <MoloSection v-for="tab in tabs" :key="tab._id" class="tab-card">
             <div class="card-info" @click="selectTab(tab)">
               <div :style="{ background: tab.color || '#6496ff' }" class="tab-icon">
                 <span>{{ tab.name.charAt(0).toUpperCase() }}</span>
@@ -521,16 +583,18 @@ onUnmounted(() => {
               </div>
             </div>
             <div class="tab-actions">
-              <MoloButton class="action-btn-small" title="Редактировать" @click.stop="selectTab(tab)">✎</MoloButton>
-              <MoloButton class="action-btn-small" title="Стандарты" @click.stop="openStandardsEditor(tab)">🎨</MoloButton>
-              <MoloButton class="action-btn-small" title="Предпросмотр" @click.stop="previewTab(tab)">👁</MoloButton>
-              <MoloButton class="action-btn-small delete" title="Удалить" @click.stop="deleteTab(tab._id)">×</MoloButton>
+              <section class="actions">
+                <MoloButton class="action small" title="Редактировать" @click.stop="selectTab(tab)">✎</MoloButton>
+                <MoloButton class="action small" title="Стандарты" @click.stop="openStandardsEditor(tab)">🎨</MoloButton>
+                <MoloButton class="action small" title="Предпросмотр" @click.stop="previewTab(tab)">👁</MoloButton>
+              </section>
+              <MoloButton class="action small close" title="Удалить" @click.stop="deleteTab(tab._id)">×</MoloButton>
             </div>
-          </div>
+          </MoloSection>
         </div>
       </div>
 
-      <div v-if="activeSection === 'tab-editor' && showTabForm" class="section-content">
+      <div v-if="activeSection === 'tab-editor' && showTabForm" class="section-content editor-section-content">
         <div class="tab-editor">
           <div class="editor-section">
             <div class="editor-header">
@@ -559,7 +623,6 @@ onUnmounted(() => {
             <div v-if="tabForm.groups.length === 0" class="empty-fields">
               <span>📭</span>
               <p>Нет групп</p>
-              <MoloButton class="confirm small" @click="openGroupModal()">Создать первую группу</MoloButton>
             </div>
 
             <div class="group-section">
@@ -602,8 +665,8 @@ onUnmounted(() => {
                       </button>
                     </div>
                     <div class="field-icon">
-                      <span>{{ field.label[0] }}</span>
-                      <span>{{ field.label.slice(-1) }}</span>
+                      <span>{{ field.label ? field.label[0] : '' }}</span>
+                      <span>{{ field.label ? field.label.slice(-1) : '' }}</span>
                     </div>
                     <div class="field-info">
                       <div class="field-name">
@@ -637,7 +700,7 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <div v-if="activeSection === 'preview' && selectedTab" class="section-content">
+      <div v-if="activeSection === 'preview' && selectedTab" class="section-content preview-section-content">
         <div class="preview-page">
           <div class="preview-toolbar">
             <span>Предпросмотр: {{ selectedTab.name }}</span>
@@ -659,6 +722,7 @@ onUnmounted(() => {
       </div>
     </div>
 
+    <!-- Модалки остаются без изменений -->
     <MoloModal
         v-model="deleteTabModalOpen"
         title="Удаление вкладки"
@@ -743,8 +807,8 @@ onUnmounted(() => {
     >
       <template #body>
         <div class="modal-field-grid">
-          <MoloInput v-model="fieldForm.key" tLabel="Ключ поля" lRequired placeholder="project_name"/>
           <MoloInput v-model="fieldForm.label" tLabel="Название" lRequired placeholder="Название проекта"/>
+          <MoloInput v-model="fieldForm.key" tLabel="Ключ" lRequired placeholder="project_name" help-text="Автоматически генерируется из названия, можно редактировать вручную"/>
           <MoloInput v-model="fieldForm.description" tLabel="Описание"/>
           <MoloInput v-model="fieldForm.link" tLabel="Ссылка"/>
         </div>
@@ -794,14 +858,16 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-/* Стили остаются без изменений */
 .configurator {
   display: flex;
   flex-direction: column;
   height: 100%;
+  width: 100%;
   color: #e0e0e0;
   padding: 20px;
   gap: 15px;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .configurator-header {
@@ -841,32 +907,39 @@ onUnmounted(() => {
 
 .configurator-content {
   flex: 1;
-  overflow: auto;
   min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .section-content {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   overflow: auto;
+  padding: 4px;
+}
+
+/* Секция с вкладками — особое внимание */
+.tabs-section {
+  overflow-y: auto;
 }
 
 .tabs-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
-  gap: 16px;
+  display: flex;
+  gap: 20px;
   padding: 4px;
+  flex: 1;
 }
 
 .tab-card {
   display: flex;
   justify-content: space-between;
-  gap: 16px;
+  gap: 12px;
   padding: 16px;
   background: var(--half_opacity_bg);
   border: 1px solid var(--half_opacity_border);
-  border-radius: 10px;
+  border-radius: 12px;
   transition: all 0.2s ease;
   min-width: 0;
 }
@@ -884,12 +957,12 @@ onUnmounted(() => {
   flex: 1;
   min-width: 0;
   cursor: pointer;
-
 }
 
 .tab-icon {
   width: 48px;
   height: 48px;
+  min-width: 48px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -899,25 +972,28 @@ onUnmounted(() => {
   flex-shrink: 0;
 }
 
+.tab-info {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
 .tab-info h3 {
   margin: 0 0 4px 0;
   font-size: 16px;
   font-weight: 600;
-}
-
-.tab-info {
-  flex: 1;
-  min-width: 0; /* Важно для обрезки текста */
+  white-space: nowrap;
   overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .tab-info p {
   margin: 0 0 8px 0;
   font-size: 12px;
   color: #8e8e9e;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .tab-meta {
@@ -932,6 +1008,7 @@ onUnmounted(() => {
   background: #25252c;
   border-radius: 20px;
   color: #bbb;
+  white-space: nowrap;
 }
 
 .tab-actions {
@@ -940,6 +1017,17 @@ onUnmounted(() => {
   gap: 6px;
   flex-direction: row;
   align-items: flex-start;
+  justify-content: space-between;
+}
+
+.actions {
+  display: flex;
+  gap: 10px;
+}
+
+/* Редактор вкладок */
+.editor-section-content {
+  overflow-y: auto;
 }
 
 .tab-editor {
@@ -947,7 +1035,6 @@ onUnmounted(() => {
   flex-direction: column;
   gap: 20px;
   padding: 4px;
-  overflow: auto;
 }
 
 .editor-section {
@@ -991,6 +1078,7 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   padding: 0 16px 16px 16px;
+  gap: 16px;
 }
 
 .group-form {
@@ -1004,11 +1092,6 @@ onUnmounted(() => {
   border: 1px solid var(--half_opacity_border);
   border-radius: 12px;
   padding: 16px;
-  margin-bottom: 16px;
-}
-
-.group-card:last-child {
-  margin-bottom: 0;
 }
 
 .group-header {
@@ -1140,6 +1223,7 @@ onUnmounted(() => {
 .field-icon {
   width: 40px;
   height: 40px;
+  min-width: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1218,6 +1302,10 @@ onUnmounted(() => {
 
 .field-name {
   font-size: 13px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
 }
 
 .field-key {
@@ -1251,6 +1339,7 @@ onUnmounted(() => {
   background: #25252c;
   padding: 2px 8px;
   border-radius: 12px;
+  color: #aaa;
 }
 
 .field-badge {
@@ -1280,6 +1369,7 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   align-items: center;
+  padding: 20px;
 }
 
 .empty-fields span {
@@ -1300,6 +1390,7 @@ onUnmounted(() => {
   font-size: 48px;
   opacity: 0.5;
 }
+
 .editor-actions {
   display: flex;
   gap: 12px;
@@ -1393,12 +1484,15 @@ onUnmounted(() => {
   margin: 0;
 }
 
+.preview-section-content {
+  overflow-y: auto;
+}
+
 .preview-page {
   background: var(--half_opacity_bg);
   border: 1px solid var(--half_opacity_border);
   border-radius: 14px;
   padding: 20px;
-  overflow: auto;
 }
 
 .preview-toolbar {
@@ -1426,5 +1520,25 @@ onUnmounted(() => {
 
 .preview-note p {
   margin: 4px 0;
+}
+
+/* Адаптивность */
+@media (max-width: 768px) {
+  .configurator {
+    padding: 12px;
+  }
+
+  .tabs-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .modal-field-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .group-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 }
 </style>

@@ -185,6 +185,8 @@ export function useWindowManager() {
         'configurator': 'Конфигуратор',
         'control': 'Управление',
         'customisation': 'Кастомизация',
+        'register': 'Регистрация',
+        'login': 'Вход',
         // Подгруппы / детали
         'standard': 'Стандарт',
         'tab': 'Вкладка',
