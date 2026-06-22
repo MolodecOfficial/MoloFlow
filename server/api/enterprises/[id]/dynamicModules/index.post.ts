@@ -49,7 +49,7 @@ export default defineEventHandler(async (event) => {
     // СОЗДАЕМ МОДУЛЬ С КОДОМ
     const dynamicModule = await DynamicModule.create({
         name: body.name,
-        fileName: body.fileName || body.name, // Важно! Сохраняем имя файла
+        fileName: body.fileName || body.name,
         format: body.format,
         code: body.code, // Сохраняем код!
         description: body.description || '',

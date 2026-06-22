@@ -1,5 +1,5 @@
 // server/api/menu/init.post.ts
-import {Menu} from '~~/server/models/menu.model';
+import { Menu } from '~~/server/models/menu.model';
 
 export default defineEventHandler(async (event) => {
     try {
@@ -15,71 +15,8 @@ export default defineEventHandler(async (event) => {
 
         const fullMenu: any[] = [
             {
-                id: 'dashboard',
-                title: 'Панель',
-                order: 1,
-                requiredRole: ['Сотрудник', 'Управляющий'],
-                isActive: true,
-                type: 'menu',
-                items: [
-                    {
-                        id: 'employee_tasks',
-                        title: 'Мои задачи',
-                        type: 'item',
-                        requiredRole: ['Сотрудник', 'Управляющий'],
-                        isActive: true,
-                        componentName: 'dashboardEmployeeTasks'
-                    },
-                    {
-                        id: 'employee_documents',
-                        title: 'Документы',
-                        type: 'item',
-                        requiredRole: ['Сотрудник', 'Управляющий'],
-                        isActive: true,
-                        componentName: 'dashboardEmployeeDocuments'
-                    },
-                    {
-                        id: 'employee_schedule',
-                        title: 'График работы',
-                        type: 'item',
-                        requiredRole: ['Сотрудник', 'Управляющий'],
-                        isActive: true
-                    },
-                    {
-                        id: 'employee_reports',
-                        title: 'Отчеты',
-                        type: 'item',
-                        requiredRole: ['Сотрудник', 'Управляющий'],
-                        isActive: true
-                    }
-                ]
-            },
-            {
-                id: 'sfd',
-                title: 'СФД',
-                order: 2,
-                requiredRole: ['Сотрудник', 'Управляющий'],
-                isActive: true,
-                type: 'menu',
-                items: [
-                    {
-                        id: 'sfd1',
-                        title: 'Движение Денежных Средств',
-                        type: 'item',
-                        requiredRole: ['Сотрудник', 'Управляющий'],
-                        isActive: true
-                    },
-                    {
-                        id: 'sfd2',
-                        title: 'Инкассация',
-                        type: 'item',
-                        requiredRole: ['Сотрудник', 'Управляющий'],
-                        isActive: true
-                    }
-                ]
-            },
-            {
                 id: 'company',
+                placeName: 'company',
                 title: 'Настройки предприятия',
                 order: 3,
                 requiredRole: ['Управляющий'],
@@ -88,6 +25,7 @@ export default defineEventHandler(async (event) => {
                 items: [
                     {
                         id: 'enterprise',
+                        placeName: 'enterprise',
                         title: 'Предприятие',
                         type: 'item',
                         requiredRole: ['Управляющий'],
@@ -95,6 +33,7 @@ export default defineEventHandler(async (event) => {
                         items: [
                             {
                                 id: 'register',
+                                placeName: 'register',
                                 title: 'Регистрация предприятия',
                                 type: 'item',
                                 requiredRole: ['Управляющий'],
@@ -104,53 +43,27 @@ export default defineEventHandler(async (event) => {
                             },
                             {
                                 id: 'login',
+                                placeName: 'login',
                                 title: 'Войти в предприятие',
                                 type: 'item',
                                 requiredRole: ['Управляющий'],
                                 isActive: true,
                                 componentName: 'Login',
-                                componentPath: 'company/enterprise/Login'
                             },
                             {
                                 id: 'control',
+                                placeName: 'control',
                                 title: 'Управление предприятием',
                                 type: 'item',
                                 requiredRole: ['Управляющий'],
                                 isActive: true,
                                 componentName: 'Control',
-                                componentPath: 'company/enterprise/Control'
                             },
-                            {
-                                id: 'createPoint',
-                                title: 'Создание точки',
-                                type: 'item',
-                                requiredRole: ['Управляющий'],
-                                isActive: false,
-                                componentName: 'CreatePoint',
-                                componentPath: 'company/enterprise/CreatePoint'
-                            },
-                            {
-                                id: 'createEmployee',
-                                title: 'Создание сотрудника',
-                                type: 'item',
-                                requiredRole: ['Управляющий'],
-                                isActive: false,
-                                componentName: 'CreateEmployee',
-                                componentPath: 'company/enterprise/CreateEmployee'
-                            },
-                            {
-                                id: 'createPlan',
-                                title: 'Создание плана',
-                                type: 'item',
-                                requiredRole: ['Управляющий'],
-                                isActive: false,
-                                componentName: 'CreatePlan',
-                                componentPath: 'company/enterprise/CreatePlan'
-                            }
                         ]
                     },
                     {
                         id: 'points',
+                        placeName: 'points',
                         title: 'Точки',
                         type: 'item',
                         requiredRole: ['Управляющий'],
@@ -158,6 +71,7 @@ export default defineEventHandler(async (event) => {
                         items: [
                             {
                                 id: 'ProblemPoints',
+                                placeName: 'ProblemPoints',
                                 title: 'Проблемные точки',
                                 type: 'item',
                                 requiredRole: ['Управляющий'],
@@ -166,6 +80,7 @@ export default defineEventHandler(async (event) => {
                             },
                             {
                                 id: 'ConfigurePoints',
+                                placeName: 'ConfigurePoints',
                                 title: 'Конфигурация точки',
                                 type: 'item',
                                 requiredRole: ['Управляющий'],
@@ -176,6 +91,7 @@ export default defineEventHandler(async (event) => {
                     },
                     {
                         id: 'termsOfUse',
+                        placeName: 'termsOfUse',
                         title: 'Условия пользования',
                         type: 'item',
                         requiredRole: ['Управляющий'],
@@ -186,6 +102,7 @@ export default defineEventHandler(async (event) => {
             },
             {
                 id: 'settings',
+                placeName: 'settings',
                 title: 'Настройки',
                 order: 4,
                 requiredRole: ['Сотрудник', 'Управляющий'],
@@ -194,6 +111,7 @@ export default defineEventHandler(async (event) => {
                 items: [
                     {
                         id: 'customisation',
+                        placeName: 'customisation',
                         title: 'Кастомизация',
                         type: 'item',
                         requiredRole: ['Сотрудник', 'Управляющий'],
@@ -202,6 +120,7 @@ export default defineEventHandler(async (event) => {
                     },
                     {
                         id: 'confirm',
+                        placeName: 'confirm',
                         title: 'Подтверждение',
                         type: 'item',
                         requiredRole: ['Сотрудник', 'Управляющий'],
@@ -212,6 +131,7 @@ export default defineEventHandler(async (event) => {
             },
             {
                 id: 'modules',
+                placeName: 'modules',
                 title: 'Модули',
                 order: 5,
                 requiredRole: ['Управляющий'],
@@ -220,6 +140,7 @@ export default defineEventHandler(async (event) => {
                 items: [
                     {
                         id: 'creature',
+                        placeName: 'creature',
                         title: 'Создание модуля',
                         type: 'item',
                         requiredRole: ['Управляющий'],
@@ -229,6 +150,7 @@ export default defineEventHandler(async (event) => {
                     },
                     {
                         id: 'preview',
+                        placeName: 'preview',
                         title: 'Предпоказ модуля',
                         type: 'item',
                         requiredRole: ['Управляющий'],
@@ -240,6 +162,7 @@ export default defineEventHandler(async (event) => {
             },
             {
                 id: 'search',
+                placeName: 'search',
                 title: 'Поиск модуля',
                 order: 6,
                 requiredRole: ['Управляющий'],
@@ -248,6 +171,7 @@ export default defineEventHandler(async (event) => {
                 items: [
                     {
                         id: 'browser',
+                        placeName: 'browser',
                         title: 'Браузер',
                         type: 'item',
                         requiredRole: ['Управляющий'],

@@ -1,10 +1,16 @@
 // stores/moduleEditorStore.ts
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
+import { useModuleApi } from '~~/app/composables/useModuleApi'
 
 export const useModuleEditorStore = defineStore('moduleEditor', () => {
+    // Получаем API-функции
+    const { fetchModules, loadModuleFiles, loadDependencies } = useModuleApi()
+
     // Модули
     const modules = ref<any[]>([])
+    const modulesLoaded = ref(false)
+    const modulesLoading = ref(false)
     const selectedModuleId = ref<string | null>(null)
     const loading = ref(false)
 
@@ -61,7 +67,42 @@ export const useModuleEditorStore = defineStore('moduleEditor', () => {
     const clientFiles = computed(() => moduleFiles.value.filter(f => !f.isServerFile))
     const serverFiles = computed(() => moduleFiles.value.filter(f => f.isServerFile))
 
-    // Actions
+    // ============================================
+    // ACTIONS
+    // ============================================
+
+    const loadModules = async (enterpriseId: string) => {
+        if (modulesLoaded.value || modulesLoading.value) return
+        modulesLoading.value = true
+        try {
+            modules.value = await fetchModules(enterpriseId)
+            modulesLoaded.value = true
+        } catch (error) {
+            console.error('loadModules error:', error)
+        } finally {
+            modulesLoading.value = false
+        }
+    }
+
+    const loadModuleFilesById = async (enterpriseId: string, moduleId: string) => {
+        loadingFiles.value = true
+        try {
+            moduleFiles.value = await loadModuleFiles(enterpriseId, moduleId)
+        } finally {
+            loadingFiles.value = false
+        }
+    }
+
+    const loadModuleDependencies = async (enterpriseId: string, moduleId: string) => {
+        try {
+            const result = await loadDependencies(enterpriseId, moduleId)
+            formData.value.dependencies = result.dependencies
+            formData.value.devDependencies = result.devDependencies
+        } catch (error) {
+            console.error('loadModuleDependencies error:', error)
+        }
+    }
+
     const resetForm = () => {
         formData.value = {
             name: '', fileName: '', description: '', format: 'vue', code: '',
@@ -118,6 +159,8 @@ export const useModuleEditorStore = defineStore('moduleEditor', () => {
     return {
         // State
         modules,
+        modulesLoaded,
+        modulesLoading,
         selectedModuleId,
         loading,
         formData,
@@ -144,6 +187,9 @@ export const useModuleEditorStore = defineStore('moduleEditor', () => {
         resetForm,
         loadModule,
         openFileEditor,
-        closeFileEditor
+        closeFileEditor,
+        loadModules,
+        loadModuleFilesById,
+        loadModuleDependencies,
     }
 })

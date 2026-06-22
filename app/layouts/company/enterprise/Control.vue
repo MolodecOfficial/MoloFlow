@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { onMounted, computed } from 'vue'
-import { useAppStore } from '~~/stores/appStore'
+import {computed, onMounted} from 'vue'
+import {useAppStore} from '~~/stores/appStore'
 
-const { openWindow } = useWindowManager()
-const { addNotification } = useNotifications('Управление предприятием')
-const { addLog } = useLogger('Управление предприятием')
+const {openWindow} = useWindowManager()
+const {addNotification} = useNotifications('Управление предприятием')
+const {addLog} = useLogger('Управление предприятием')
 
 const store = useAppStore()
 
@@ -55,11 +55,11 @@ function openTabData(tab: any) {
       'company',
       `Tab-data`,
       'enterprise',
-      { width: 800, height: 600, minWidth: 600, minHeight: 400 },
+      {width: 800, height: 600, minWidth: 600, minHeight: 400},
       false,
       null,
       null,
-      { tabId: tab._id, tabName: tab.name },
+      {tabId: tab._id, tabName: tab.name},
       `Данные: ${tab.name}`
   )
 }
@@ -76,6 +76,7 @@ onMounted(() => {
 </script>
 
 <template>
+
   <div class="control-page">
     <div v-if="!isAuthenticated" class="auth-placeholder">
       <div class="auth-icon">🔒</div>
@@ -84,30 +85,38 @@ onMounted(() => {
       <MoloButton class="confirm" @click="notAuth">Войти</MoloButton>
     </div>
 
-    <div v-else-if="enterpriseInfo" class="content">
-      <div class="header">
-        <div class="title-section">
-          <h1>{{ enterpriseInfo.ownershipForm }} {{ enterpriseInfo.enterpriseName }}</h1>
-          <div class="details">
-            <span>ИНН: {{ enterpriseInfo.inn }}</span>
-            <span v-if="enterpriseInfo.ogrn">ОГРН: {{ enterpriseInfo.ogrn }}</span>
-          </div>
-        </div>
+    <MoloSection v-else-if="enterpriseInfo">
+      <template #header>
+        <span style="font-weight: bold; font-size: 22px">
+          {{ enterpriseInfo.ownershipForm }} {{ enterpriseInfo.enterpriseName }}
+        </span>
         <MoloButton class="confirm" @click="openConfigurator">
           Конфигуратор
         </MoloButton>
-      </div>
-
-      <hr>
-
-      <div class="tabs-section">
-        <div class="tabs-header">
-          <section class="tabs-length">
-            <span>Вкладки</span>
-            <span class="counter">{{ tabs.length }}</span>
+      </template>
+      <template #main>
+        <div class="details">
+          <section class="main-details">
+            <span>ИНН: {{ enterpriseInfo.inn }}</span>
+            <span>ОГРН: {{ enterpriseInfo.ogrn }}</span>
+            <span>КПП: {{ enterpriseInfo.kpp }}</span>
           </section>
-          <MoloButton class="confirm small" @click="openConfigurator">Создать</MoloButton>
+          <section class="director">
+            <span>Директор: {{ enterpriseInfo.director }}</span>
+          </section>
         </div>
+      </template>
+    </MoloSection>
+    <hr>
+    <MoloSection v-if="enterpriseInfo">
+      <template #header>
+        <section class="tabs-length">
+          <span>Вкладки</span>
+          <span class="counter">{{ tabs.length }}</span>
+        </section>
+        <MoloButton class="confirm small" @click="openConfigurator">Создать</MoloButton>
+      </template>
+      <template #main>
         <MoloLoaders wndLoader v-if="loading"/>
         <div v-else-if="tabs.length === 0" class="empty">
           <p>Нет вкладок</p>
@@ -120,9 +129,9 @@ onMounted(() => {
               class="tab-row"
               @click="openTabData(tab)"
           >
-            <div class="tab-icon" :style="{ backgroundColor: tab.color || '#6496ff' }">
+            <section class="tab-icon" :style="{ backgroundColor: tab.color || '#6496ff' }">
               <span class="material-icons">{{ tab.name.charAt(0) }}</span>
-            </div>
+            </section>
             <div class="tab-info">
               <div class="tab-name">{{ tab.name }}</div>
               <div class="tab-meta">
@@ -132,8 +141,8 @@ onMounted(() => {
             <div class="arrow">→</div>
           </button>
         </div>
-      </div>
-    </div>
+      </template>
+    </MoloSection>
   </div>
 </template>
 
@@ -147,48 +156,17 @@ onMounted(() => {
   gap: 20px;
 }
 
-.content {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-
-.header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  border: 1px solid var(--half_opacity_border);
-  padding: 20px;
-  border-radius: 10px;
-  background: var(--half_opacity_bg);
-}
-
-.title-section h1 {
-  margin: 0 0 8px;
-  font-size: 24px;
-  font-weight: 600;
-}
-
 .details {
   display: flex;
   gap: 16px;
   font-size: 13px;
   color: #8e8e9e;
-}
-
-.tabs-section {
-  background: var(--half_opacity_bg);
-  border-radius: 12px;
-  border: 1px solid var(--half_opacity_border);
-  overflow: hidden;
-}
-
-.tabs-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 20px;
   justify-content: space-between;
+}
+
+.main-details {
+  display: flex;
+  gap: 10px;
 }
 
 .tabs-length {
@@ -206,16 +184,16 @@ onMounted(() => {
 .tabs-list {
   display: flex;
   flex-direction: column;
+  gap: 20px;
 }
 
 .tab-row {
   display: flex;
   align-items: center;
   gap: 16px;
-  padding: 14px 20px;
   background: transparent;
   border: none;
-  border-bottom: 1px solid #1e1e24;
+  padding: 8px;
   cursor: pointer;
   width: 100%;
   text-align: left;
@@ -225,11 +203,6 @@ onMounted(() => {
 .tab-row:last-child {
   border-bottom: none;
 }
-
-.tab-row:hover {
-  background: #1c1c22;
-}
-
 .tab-icon {
   width: 40px;
   height: 40px;
@@ -281,26 +254,6 @@ onMounted(() => {
   color: #6496ff;
 }
 
-.loading {
-  display: flex;
-  justify-content: center;
-  padding: 40px;
-}
-
-.spinner {
-  width: 32px;
-  height: 32px;
-  border: 2px solid #2a2a30;
-  border-top-color: #6496ff;
-  border-radius: 50%;
-  animation: spin 0.6s linear infinite;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
 
 .auth-placeholder {
   display: flex;

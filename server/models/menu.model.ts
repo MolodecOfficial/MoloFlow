@@ -3,6 +3,7 @@ import mongoose, { Schema, Document } from "mongoose";
 export interface IMenuItem {
     id: string;
     title: string;
+    placeName: string;
     requiredRole: ('Пользователь' | 'Сотрудник' | 'Управляющий')[];
     isActive: boolean;
     componentName?: string;
@@ -18,6 +19,7 @@ export interface IMenuItem {
 export interface IMenuGroup extends Document {
     id: string;
     title: string;
+    placeName: string,
     order: number;
     requiredRole: string[];
     isActive: boolean;
@@ -28,6 +30,7 @@ export interface IMenuGroup extends Document {
 const MenuItemSchema = new Schema({
     id: { type: String, required: true },
     title: { type: String, required: true },
+    placeName: { type: String, required: true},
     type: {
         type: String,
         enum: ['folder', 'item'],
@@ -51,6 +54,7 @@ const MenuItemSchema = new Schema({
 const menuSchema = new Schema({
     id: { type: String, required: true, unique: true },
     title: { type: String, required: true },
+    placeName: { type: String, required: true },
     order: { type: Number, default: 0 },
     requiredRole: [{
         type: String,

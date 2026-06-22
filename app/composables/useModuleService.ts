@@ -27,6 +27,7 @@ export function useModuleService() {
             const moduleData: any = {
                 _id: moduleId,
                 name: mainFile?.name || 'Без названия',
+                placeName: mainFile.placeName,
                 format: mainFile?.format || 'vue',
                 code: includeCode ? (mainFile?.code || '') : '',
                 dependencies: response.dependencies || {},
@@ -56,6 +57,7 @@ export function useModuleService() {
         return {
             _id: moduleData._id,
             moduleId: moduleData._id,
+            placeName: moduleData.placeName,
             name: customTitle || moduleData.name,
             format: moduleData.format,
             code: moduleData.code,

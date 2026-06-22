@@ -111,7 +111,7 @@ export function useWindowManager() {
         }
 
         let initialSize = { ...defaultSize }
-        let initialPosition = { x: 50 + windows.value.length * 30, y: 50 + windows.value.length * 30 }
+        let initialPosition = { x: 80 + windows.value.length * 30, y: 10 + windows.value.length * 50 }
         let isMaximized = false
 
         if (savedSettings && !isModal) {
@@ -121,8 +121,8 @@ export function useWindowManager() {
                 minWidth: defaultSize.minWidth,
                 minHeight: defaultSize.minHeight,
             }
-            initialPosition = savedSettings.position
-            isMaximized = savedSettings.isMaximized || false
+            // initialPosition = savedSettings.position
+            // isMaximized = savedSettings.isMaximized || false
         }
 
         // Проверка на уже открытое (не модальное) окно
@@ -223,14 +223,6 @@ export function useWindowManager() {
 
     const closeWindow = (id: string) => {
         const win = windows.value.find(w => w.id === id)
-        if (win && !win.isModal && win.windowKey) {
-            // Сохраняем текущие размеры и позицию перед закрытием
-            saveWindowSettings(win.windowKey, {
-                size: { width: win.size.width, height: win.size.height },
-                position: win.position,
-                isMaximized: win.size.isMaximized,
-            })
-        }
         const index = windows.value.findIndex(w => w.id === id)
         if (index !== -1) windows.value.splice(index, 1)
     }

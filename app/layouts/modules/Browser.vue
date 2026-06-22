@@ -1,183 +1,115 @@
 <script setup>
-import {ref, onMounted} from 'vue'
-import {useDebounceFn} from '@vueuse/core'
+import { ref, onMounted } from 'vue'
+import { storeToRefs } from 'pinia'
+import { useModulesStore } from '~~/stores/moduleStore'
 import isOfficial from '~~/public/isOfficial.svg'
-import jsIcon from "~~/public/js.png";
-import tsIcon from "~~/public/ts.png";
-import vueIcon from "~~/public/vue.png";
+import jsIcon from "~~/public/js.png"
+import tsIcon from "~~/public/ts.png"
+import vueIcon from "~~/public/vue.png"
 
-const {openWindow} = useWindowManager()
-const {addNotification} = useNotifications('Браузер')
-const {addLog} = useLogger('Браузер')
+const { openWindow } = useWindowManager()
+const { addNotification } = useNotifications('Браузер')
+const { addLog } = useLogger('Браузер')
 
-const modules = ref([])
-const loading = ref(false)
-const loadingImportMap = ref(new Map())
-const searchQuery = ref('')
-const formatFilter = ref('')
-const sortBy = ref('downloads')
-const page = ref(1)
-const totalPages = ref(1)
-const limit = 12
-const hasEditorAccess = ref(false)  // ← переименовал для ясности
+const moduleStore = useModulesStore()
+const {
+  browserModules: modules,
+  browserLoading: loading,
+  browserTotalPages: totalPages,
+  browserCurrentPage: currentPage,
+  browserSearchQuery: searchQuery,
+  browserFormatFilter: formatFilter,
+  browserSortBy: sortBy,
+  hasEditorAccess
+} = storeToRefs(moduleStore)
+
+const {
+  setBrowserSearchQuery,
+  setBrowserFormatFilter,
+  setBrowserSortBy,
+  setBrowserPage,
+  importBrowserModule,
+  isImportingModule,
+  checkEditorAccess,
+  enableEditor,
+  disableEditor
+} = moduleStore
 
 const activeTooltip = ref(null)
-
+const currentEnterprise = ref(null)
 
 const formats = [
-  {label: 'Javascript', value: 'js'},
-  {label: 'TypeScript', value: 'ts'},
-  {label: 'Vue', value: 'vue'}
+  { label: 'Javascript', value: 'js' },
+  { label: 'TypeScript', value: 'ts' },
+  { label: 'Vue', value: 'vue' }
 ]
 
 const sorts = [
-  {label: 'Количество загрузок', value: 'downloads'},
-  {label: 'Рейтинг', value: 'rating'},
-  {label: 'Новинки', value: 'createdAt'}
+  { label: 'Количество загрузок', value: 'downloads' },
+  { label: 'Рейтинг', value: 'rating' },
+  { label: 'Новинки', value: 'createdAt' }
 ]
-
-const currentEnterprise = ref(null)
-
 
 const showTooltip = (moduleId) => {
   activeTooltip.value = moduleId
-  // Автоматически скрыть через 3 секунды
   setTimeout(() => {
-    if (activeTooltip.value === moduleId) {
-      activeTooltip.value = null
-    }
+    if (activeTooltip.value === moduleId) activeTooltip.value = null
   }, 3000)
 }
 
-
-const fetchModules = async () => {
-  loading.value = true
-  addLog('info', 'Загружаю модули из базы')
-  try {
-    const params = new URLSearchParams({
-      search: searchQuery.value,
-      format: formatFilter.value,
-      sortBy: sortBy.value,
-      page: page.value,
-      limit: limit.toString()
-    })
-    const data = await $fetch(`/api/browser/modules?${params.toString()}`)
-    modules.value = data.modules
-    totalPages.value = data.pagination.pages
-    addLog('success', 'Модули из базы загружены')
-  } catch (err) {
-    addLog('error', `Ошибка загрузки модулей ${err}`)
-    addNotification('error', 'Ошибка загрузки модулей')
-  } finally {
-    loading.value = false
-  }
-}
-
-const debouncedFetch = useDebounceFn(fetchModules, 300)
-
-const changePage = (newPage) => {
-  page.value = newPage
-  fetchModules()
-}
-
-// Импорт модуля в своё предприятие
-const importModule = async (mod) => {
-  loadingImportMap.value.set(mod._id, true)
-  addLog('info', 'Импортирую модуль в предприятие')
+const handleImport = async (mod) => {
   if (!currentEnterprise.value?._id) {
     addNotification('warning', 'Не удалось определить текущее предприятие')
-    loadingImportMap.value.set(mod._id, false)
     return
   }
-
+  addLog('info', `Импорт модуля "${mod.name}"`)
   try {
-    await $fetch(`/api/browser/modules/${mod._id}/import`, {
-      method: 'POST',
-      body: {targetEnterpriseId: currentEnterprise.value._id}
-    })
-    addNotification('info', `Модуль импортирован в ваше предприятие`)
-    addLog('info', `Модуль "${mod.name}" импортирован в ваше предприятие`)
-    window.dispatchEvent(new Event('module-imported'))
+    await importBrowserModule(mod._id, currentEnterprise.value._id)
+    addNotification('success', `Модуль "${mod.name}" импортирован`)
+    addLog('success', `Модуль "${mod.name}" импортирован`)
   } catch (err) {
     addNotification('error', 'Ошибка импорта')
-    addLog('error', `Модуль не импортирован - ${err?.data?.message}`)
-  } finally {
-    loadingImportMap.value.set(mod._id, false)
+    addLog('error', `Ошибка импорта: ${err?.data?.message || err.message}`)
   }
 }
 
-const isLoadingModule = (moduleId) => {
-  return loadingImportMap.value.get(moduleId) || false
-}
-
-// Открыть редактор модулей
 const openModuleEditor = () => {
-  openWindow(
-      'modules',
-      'creature',
-      null,
-      {width: 1200, height: 800, minWidth: 800, minHeight: 600},
-      false,
-      'modules/creature'
-  )
+  openWindow('modules', 'creature', null, { width: 1200, height: 800, minWidth: 800, minHeight: 600 }, false, 'modules/creature')
 }
 
-// Режим редактора с передачей инпутов
 const editorMode = () => {
-  openWindow(
-      'settings',
-      'confirm',
-      null,
-      {width: 450, height: 300, minWidth: 350, minHeight: 220},
-      true,
-      null,
-      null,
-      {
-        type: 'access',
-        message: 'Введите код доступа к режиму редактора',
-        fields: [
-          {
-            key: 'accessCode',
-            type: 'text',
-            label: 'Код доступа',
-            placeholder: 'Введите код доступа',
-            required: true
-          }
-        ],
-        onConfirm: async (payload) => {
-          // Получаем код доступа (поддерживаем оба формата)
-          const accessCode = typeof payload === 'string' ? payload : payload?.accessCode
-
-          addLog('info', `Проверка кода доступа...`)
-
-          if (accessCode === 'admin123') {
-            // Сохраняем доступ в localStorage
-            localStorage.setItem('editor_access', accessCode)
-            hasEditorAccess.value = true
-            addNotification('success', 'Доступ к редактору разрешён')
-            addLog('success', 'Режим редактора активирован')
-
-            // Открываем редактор
-            openModuleEditor()
-          } else {
-            addLog('warning', `Неверный код доступа: ${accessCode}`)
-            addNotification('error', 'Неверный код доступа')
-            throw new Error('Неверный код доступа')
-          }
-        }
+  openWindow('settings', 'confirm', null, { width: 450, height: 300, minWidth: 350, minHeight: 220 }, true, null, null, {
+    type: 'access',
+    message: 'Введите код доступа к режиму редактора',
+    fields: [{
+      key: 'accessCode',
+      type: 'text',
+      label: 'Код доступа',
+      placeholder: 'Введите код доступа',
+      required: true
+    }],
+    onConfirm: async (payload) => {
+      const accessCode = typeof payload === 'string' ? payload : payload?.accessCode
+      addLog('info', 'Проверка кода доступа...')
+      if (enableEditor(accessCode)) {
+        addNotification('success', 'Доступ к редактору разрешён')
+        addLog('success', 'Режим редактора активирован')
+        openModuleEditor()
+      } else {
+        addLog('warning', `Неверный код доступа: ${accessCode}`)
+        addNotification('error', 'Неверный код доступа')
+        throw new Error('Неверный код доступа')
       }
-  )
+    }
+  })
 }
 
-// Выключить режим редактора
-const disableEditor = () => {
-  localStorage.removeItem('editor_access')
-  hasEditorAccess.value = false
+const disableEditorMode = () => {
+  disableEditor()
   addLog('info', 'Режим редактора деактивирован')
   addNotification('info', 'Режим редактора выключен')
 }
 
-// Проверить доступ при монтировании
 onMounted(() => {
   const entData = localStorage.getItem('currentEnterprise')
   if (entData) {
@@ -187,138 +119,128 @@ onMounted(() => {
       console.error('Error parsing enterprise data', e)
     }
   }
-
-  // Проверяем доступ к редактору
-  const savedAccess = localStorage.getItem('editor_access')
-  if (savedAccess === 'admin123') {
-    hasEditorAccess.value = true
-    addLog('success', 'Доступ к редактированию разрешён')
-  } else {
-    addLog('warning', 'Нет доступа к редактированию модулей в браузере...')
-  }
-
-  fetchModules()
+  checkEditorAccess()
+  // Первая загрузка модулей (кеш будет использован автоматически)
+  moduleStore.fetchBrowserModules()
 })
 </script>
 
 <template>
   <div class="browser-container">
-    <!-- Левая панель с фильтрами -->
-    <aside class="filters-panel">
-      <MoloInput
-          v-model="searchQuery"
-          type="text"
-          tLabel="Найдите модуль в поиске"
-          placeholder="Поиск по названию, описанию, тегам..."
-          @input="debouncedFetch"
-      />
-      <MoloSelect
-          v-model="formatFilter"
-          @change="fetchModules"
-          :parent="formats"
-          tLabel="Выберите формат"
-          disabled="Формат файла"
-          children="label"
-          valueKey="value"
-          all="Все форматы"
-      />
-      <MoloSelect
-          v-model="sortBy"
-          @change="fetchModules"
-          :parent="sorts"
-          tLabel="Выберите фильтр"
-          disabled="Выбранный фильтр"
-          children="label"
-          valueKey="value"
-      />
-    </aside>
+    <MoloSection style="width: 35%">
+      <template #header>
+        Фильтры
+      </template>
+      <template #main>
+        <MoloInput
+            v-model="searchQuery"
+            type="text"
+            tLabel="Найдите модуль в поиске"
+            placeholder="Поиск по названию, описанию, тегам..."
+            @input="setBrowserSearchQuery"
+        />
+        <MoloSelect
+            v-model="formatFilter"
+            @change="setBrowserFormatFilter"
+            :parent="formats"
+            tLabel="Выберите формат"
+            disabled="Формат файла"
+            children="label"
+            valueKey="value"
+            all="Все форматы"
+        />
+        <MoloSelect
+            v-model="sortBy"
+            @change="setBrowserSortBy"
+            :parent="sorts"
+            tLabel="Выберите фильтр"
+            disabled="Выбранный фильтр"
+            children="label"
+            valueKey="value"
+        />
+      </template>
+    </MoloSection>
 
-    <!-- Правая часть с модулями -->
     <div class="modules-content">
-      <MoloLoaders wndLoader v-if="loading"/>
+      <MoloLoaders wndLoader v-if="loading" />
 
       <div v-else-if="modules.length === 0" class="empty">
         Модулей не найдено
       </div>
 
       <div v-else class="modules-grid">
-        <div v-for="mod in modules" :key="mod._id" class="module-card">
-          <section class="card-logo-import">
-            <div class="card-logo">
+        <MoloSection v-for="mod in modules" :key="mod._id">
+          <template #header>
+            <section class="card-name">
+              <span>{{ mod.name }}</span>
               <img
-                  :src="mod.previewImage || '/default-module.png'"
-                  :alt="mod.name"
-                  class="logo"
+                  v-if="mod.isOfficial"
+                  :src="isOfficial"
+                  class="official-badge"
+                  alt="Прошёл проверку"
               />
-            </div>
-            <section class="buttons-active">
-              <div class="files-tooltip-container">
-                <MoloButton
-                    v-if="mod.files?.length"
-                    class="action-btn confirm"
-                    @click="showTooltip(mod._id)"
-                >
-                  Файлы
-                </MoloButton>
-
-                <Transition name="tooltip">
-                  <div v-if="activeTooltip === mod._id" class="files-tooltip">
-                    <div class="tooltip-content">
-                      <div v-for="file in mod.files" :key="file.path" class="tooltip-file">
-                        <img :src="vueIcon" class="file-icon" alt="" v-if="file.format == 'vue'">
-                        <img :src="tsIcon" class="file-icon" alt="" v-else-if="file.format == 'ts'">
-                        <img :src="jsIcon" class="file-icon" alt="" v-else>
-                        <code>{{ file.name }}</code>
-                      </div>
+            </section>
+            <section class="actions">
+              <MoloButton
+                  v-if="mod.files?.length"
+                  class="confirm small"
+                  @click="showTooltip(mod._id)"
+              >
+                Файлы
+              </MoloButton>
+              <Transition name="tooltip">
+                <div v-if="activeTooltip === mod._id" class="files-tooltip">
+                  <div class="tooltip-content">
+                    <div v-for="file in mod.files" :key="file.path" class="tooltip-file">
+                      <img :src="vueIcon" class="file-icon" alt="" v-if="file.format == 'vue'">
+                      <img :src="tsIcon" class="file-icon" alt="" v-else-if="file.format == 'ts'">
+                      <img :src="jsIcon" class="file-icon" alt="" v-else>
+                      <code>{{ file.name }}</code>
                     </div>
                   </div>
-                </Transition>
-              </div>
-
+                </div>
+              </Transition>
               <MoloButton
-                  class="action-btn confirm importMod"
-                  @click="importModule(mod)"
-                  :disabled="isLoadingModule(mod._id)"
+                  class="confirm small"
+                  @click="handleImport(mod)"
+                  :disabled="isImportingModule(mod._id)"
               >
-                <MoloLoaders btnLoader v-if="isLoadingModule(mod._id)"/>
+                <MoloLoaders btnLoader v-if="isImportingModule(mod._id)" />
                 <span v-else>Импорт</span>
               </MoloButton>
             </section>
-          </section>
+          </template>
+          <template #main>
+            <section class="card-info">
+              <div class="card-header">
+                <div class="card-logo">
+                  <img
+                      :src="mod.previewImage || '/default-module.png'"
+                      :alt="mod.name"
+                      class="logo"
+                  />
+                </div>
+              </div>
+              <section class="card-info-main">
+                <p class="description">{{ mod.description || 'Нет описания' }}</p>
 
-
-          <section class="card-info">
-            <div class="card-header">
-              <h3>{{ mod.name }}</h3>
-              <section class="card-points">
-                <img
-                    v-if="mod.isOfficial"
-                    :src="isOfficial"
-                    class="official-badge"
-                    alt="Прошёл проверку"
-                />
-                <span class="badge">{{ mod.format }}</span>
+                <div class="stats">
+                  <span>⬇️ {{ mod.stats?.downloads || 0 }}</span>
+                  <span>⭐ {{ mod.stats?.ratings?.average || 0 }} ({{ mod.stats?.ratings?.count || 0 }})</span>
+                </div>
+                <div class="tags">
+                  <span v-for="tag in mod.tags" :key="tag" class="tag">{{ tag }}</span>
+                </div>
               </section>
-            </div>
-
-            <p class="description">{{ mod.description || 'Нет описания' }}</p>
-            <hr>
-            <div class="stats">
-              <span>⬇️ {{ mod.stats?.downloads || 0 }}</span>
-              <span>⭐ {{ mod.stats?.ratings?.average || 0 }} ({{ mod.stats?.ratings?.count || 0 }})</span>
-            </div>
-
-            <div class="tags">
-              <span v-for="tag in mod.tags" :key="tag" class="tag">{{ tag }}</span>
-            </div>
-          </section>
-        </div>
+            </section>
+          </template>
+        </MoloSection>
       </div>
 
       <div class="pagination" v-if="totalPages > 1">
-        <MoloButton :disabled="page === 1" @click="changePage(page - 1)">←</MoloButton>
-        <span>Страница {{ page }} из {{ totalPages }}</span>
-        <button :disabled="page === totalPages" @click="changePage(page + 1)">→</button>
+        <MoloButton :disabled="currentPage === 1" @click="setBrowserPage(currentPage - 1)">←</MoloButton>
+        <span>Страница {{ currentPage }} из {{ totalPages }}</span>
+        <MoloButton :disabled="currentPage === totalPages" @click="setBrowserPage(currentPage + 1)">→</MoloButton>
       </div>
     </div>
   </div>
@@ -332,21 +254,7 @@ onMounted(() => {
   color: #e0e0e0;
   font-family: sans-serif;
   min-height: 100%;
-}
-
-.filters-panel {
-  width: 280px;
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  padding: 10px 20px;
-  align-self: flex-start;
-  max-height: calc(100vh - 40px);
-  overflow-y: auto;
-  border-radius: 10px;
-  background: var(--half_opacity_bg);
-  border: 1px solid var(--half_opacity_border);
+  width: fit-content;
 }
 
 .modules-content {
@@ -363,22 +271,11 @@ onMounted(() => {
   gap: 20px;
 }
 
-.module-card {
-  position: relative;
+.card-name {
   display: flex;
   flex-direction: row;
-  background: var(--half_opacity_bg);
-  border-radius: 12px;
-  padding: 16px;
-  border: 1px solid var(--half_opacity_border);
-  transition: all 0.2s ease;
-  gap: 16px;
-  min-width: 0;
-}
-
-.module-card:hover {
-  border-color: var(--border-color_hover);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  align-items: center;
+  gap: 10px;
 }
 
 .card-logo {
@@ -394,12 +291,6 @@ onMounted(() => {
   border: 1px solid var(--half_opacity_border);
 }
 
-.card-logo-import {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-}
 
 .logo {
   width: 100%;
@@ -413,8 +304,13 @@ onMounted(() => {
   flex: 1;
   min-width: 0;
   display: flex;
-  flex-direction: column;
   gap: 8px;
+}
+
+.card-info-main {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .card-header {
@@ -444,7 +340,7 @@ onMounted(() => {
 
 .badge {
   background: #2c2c2c;
-  padding: 2px 8px;
+  padding: 4px 6px;
   border-radius: 20px;
   font-size: 0.7rem;
   font-weight: bold;
@@ -489,18 +385,16 @@ onMounted(() => {
   color: #ccc;
 }
 
-.buttons-active {
+.actions {
   display: flex;
-  flex-direction: column;
   gap: 10px;
-  align-items: start;
-  width: 100%;
+  position: relative;
 }
-
 
 .files-tooltip {
   position: absolute;
-  left: 70px;
+  right: 100%;
+  top: 75%;
   z-index: 100;
   min-width: 200px;
 }
@@ -536,31 +430,6 @@ onMounted(() => {
   width: 20px;
 }
 
-/* Контрол редактора */
-.editor-control {
-  position: fixed;
-  bottom: 20px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 100;
-  width: fit-content;
-}
-
-.editor-active {
-  background: var(--half_opacity_bg);
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  backdrop-filter: blur(10px);
-  padding: 8px 16px;
-  border-radius: 10px;
-  border: 1px solid var(--half_opacity_border);
-}
-
-.editor-badge {
-  font-size: 14px;
-  font-weight: 600;
-}
 
 .pagination {
   display: flex;

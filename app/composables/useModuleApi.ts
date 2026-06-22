@@ -1,4 +1,3 @@
-// composables/useModuleApi.ts
 export function useModuleApi(){
     const { addLog } = useLogger('API модулей')
     const { addNotification } = useNotifications('API модулей')
@@ -57,7 +56,6 @@ export function useModuleApi(){
                 method: 'PUT',
                 body: data
             });
-
         } else {
             return await $fetch(`/api/enterprises/${enterpriseId}/dynamicModules`, {
                 method: 'POST',

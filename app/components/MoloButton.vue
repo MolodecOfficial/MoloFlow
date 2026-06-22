@@ -29,6 +29,9 @@ const handleClick = (event: MouseEvent) => {
         'close': $attrs.variant === 'close',
         'small': $attrs.variant === 'small',
         'action': $attrs.variant === 'action',
+        'full': $attrs.variant === 'full',
+        'fit': $attrs.variant === 'fit',
+        'transparent': $attrs.variant === 'transparent'
       }"
       :disabled="disabled || loading"
       @click="handleClick"
@@ -43,17 +46,105 @@ const handleClick = (event: MouseEvent) => {
 
 <style scoped>
 .molo-btn {
-  padding: 6px 16px;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-weight: 600;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  background: var(--half_opacity_border);
-  color: white;
   position: relative;
   overflow: hidden;
-  transform: translateY(0);
+  isolation: isolate;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 18px;
+  color: white;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 5px;
+  border: 1px solid rgba(255, 255, 255, .18);
+  background: linear-gradient(
+      180deg,
+      rgba(255, 255, 255, .12) 0%,
+      rgba(255, 255, 255, .04) 100%
+  );
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35),
+  inset 0 -1px 0 rgba(255, 255, 255, .05),
+  0 10px 30px rgba(0, 0, 0, .15);
+  transition: transform .25s ease,
+  box-shadow .25s ease,
+  border-color .25s ease,
+  background .25s ease;
+}
+
+.molo-btn::before {
+  backdrop-filter:
+      blur(24px)
+      saturate(200%)
+      contrast(110%);
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(
+      180deg,
+      rgba(255, 255, 255, .35) 0%,
+      rgba(255, 255, 255, .12) 20%,
+      transparent 55%
+  );
+  pointer-events: none;
+}
+
+.molo-btn::after {
+  content: '';
+  position: absolute;
+  width: 180%;
+  height: 180%;
+  left: -140%;
+  top: -40%;
+  background: radial-gradient(
+      circle,
+      rgba(255, 255, 255, .25) 0%,
+      rgba(255, 255, 255, .08) 25%,
+      transparent 65%
+  );
+  transition: left .7s cubic-bezier(.2, .8, .2, 1);
+  pointer-events: none;
+}
+
+.molo-btn:hover {
+  transform: translateY(-2px);
+  border-color: rgba(255, 255, 255, .3);
+  background: linear-gradient(
+      180deg,
+      rgba(255, 255, 255, .16),
+      rgba(255, 255, 255, .06)
+  );
+  box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, .45),
+      inset 0 -1px 0 rgba(255, 255, 255, .08),
+      0 16px 40px rgba(0, 0, 0, .22);
+  animation: liquidBorder 2s infinite;
+
+}
+
+
+@keyframes liquidBorder {
+  0% {
+    border-color: rgba(255,255,255,.15);
+  }
+  50% {
+    border-color: rgba(255,255,255,.35);
+  }
+  100% {
+    border-color: rgba(255,255,255,.15);
+  }
+}
+
+.molo-btn:hover::after {
+  left: 100%;
+}
+
+.molo-btn:active {
+  transform: scale(.97);
 }
 
 /* Эффект нажатия - масштабирование */
@@ -67,6 +158,7 @@ const handleClick = (event: MouseEvent) => {
   transform: scale(1);
   cursor: wait;
 }
+
 .molo-btn:disabled {
   cursor: wait;
 }
@@ -80,7 +172,7 @@ const handleClick = (event: MouseEvent) => {
   width: 0;
   height: 0;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(255,255,255,0.3) 0%, rgba(255,255,255,0) 100%);
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.3) 0%, rgba(255, 255, 255, 0) 100%);
   transform: translate(-50%, -50%);
   transition: width 0.4s ease-out, height 0.4s ease-out;
   pointer-events: none;
@@ -107,15 +199,46 @@ const handleClick = (event: MouseEvent) => {
   padding: 4px 12px;
 }
 
+.molo-btn.full {
+  width: 100%;
+}
+
+.molo-btn.fit {
+  width: fit-content;
+}
+
+.molo-btn.transparent {
+  background: transparent;
+  border: 1px solid rgba(30, 30, 30, 0.1);
+  padding: 0;
+
+  &:hover {
+    border: transparent;
+    background: rgba(224, 224, 224, 0.09);
+  }
+}
+
+
 .molo-btn.action {
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.1);
   display: flex;
-  justify-content: space-between;
+  justify-content: center;
   align-items: center;
+  text-align: center;
   gap: 10px;
+
   &:hover {
     border: 1px solid #b9b9b9;
+  }
+
+  &:disabled {
+    background: rgba(117, 117, 117, 0.58);
+
+    &:hover {
+      border: 1px solid red;
+      cursor: not-allowed;
+    }
   }
 }
 
@@ -123,16 +246,19 @@ const handleClick = (event: MouseEvent) => {
   background: var(--borber-color_main);
   color: #020b18;
   border: 1px solid transparent;
+
   &:hover {
     border: 1px solid var(--borber-color_main);
     background: var(--border-color_hover);
     transform: translateY(-1px);
     box-shadow: 0 4px 12px rgba(var(--borber-color_main), 0.3);
   }
+
   &:active {
     transform: translateY(1px);
     box-shadow: 0 2px 6px rgba(var(--borber-color_main), 0.2);
   }
+
   &:disabled {
     background: var(--border-color_disabled);
     transform: translateY(0);
@@ -144,14 +270,17 @@ const handleClick = (event: MouseEvent) => {
   background: #e04141;
   color: white;
   border: 1px solid transparent;
+
   &:hover {
     background: #a61616;
     transform: translateY(-1px);
     border: 1px solid red;
   }
+
   &:active {
     transform: translateY(1px);
   }
+
   &:disabled {
     background: #600f0f;
     transform: translateY(0);
@@ -172,14 +301,15 @@ const handleClick = (event: MouseEvent) => {
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .molo-btn.confirm:hover:not(:disabled) {
   animation: pulse 0.5s ease-out;
 }
 
-/* Сглаживание для всех переходов */
 .molo-btn * {
   pointer-events: none;
 }

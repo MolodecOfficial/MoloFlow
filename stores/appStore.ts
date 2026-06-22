@@ -45,15 +45,18 @@ export interface TabField {
     display?: any
 }
 
+// Убираем tabId - стандарты глобальные
 export interface Standard {
     _id: string
     name: string
     description?: string
     type: 'table' | 'card' | 'list'
     isDefault: boolean
-    tabId: string
     settings?: any
     styles?: any
+    tableRows?: any[]
+    cardSettings?: any
+    listSettings?: any
 }
 
 export const useAppStore = defineStore('app', () => {
@@ -68,12 +71,12 @@ export const useAppStore = defineStore('app', () => {
     const tabsLoaded = ref(false)
     const tabsLoadingPromise = ref<Promise<any> | null>(null)
 
-    // Кэш стандартов: ключ - tabId, значение - массив стандартов
-    const standardsCache = ref<Map<string, Standard[]>>(new Map())
+    // Стандарты теперь глобальные - один массив, не привязанный к tabId
+    const standards = ref<Standard[]>([])
     const standardsLoading = ref(false)
     const currentStandard = ref<Standard | null>(null)
 
-    // Кэш записей
+    // Кэш записей (остаётся по tabId)
     const entriesCache = ref<Map<string, any[]>>(new Map())
     const entriesLoading = ref(false)
 
@@ -87,10 +90,12 @@ export const useAppStore = defineStore('app', () => {
     }
 
     const clearCache = () => {
-        standardsCache.value.clear()
         entriesCache.value.clear()
         tabsLoaded.value = false
         tabs.value = []
+        // Стандарты не очищаем при смене предприятия (они глобальные)
+        // но для полной очистки можно:
+        standards.value = []
         currentStandard.value = null
     }
 
@@ -187,14 +192,9 @@ export const useAppStore = defineStore('app', () => {
             }
             currentTabFields.value = fields
 
-            // Выбираем стандарт по умолчанию из кэша
-            const cached = standardsCache.value.get(tabId) || []
-            if (found.defaultStandardId) {
-                const defaultStd = cached.find(s => s._id === found.defaultStandardId)
-                currentStandard.value = defaultStd || cached[0] || null
-            } else {
-                currentStandard.value = cached[0] || null
-            }
+            // Выбираем стандарт по умолчанию из глобального списка
+            const defaultStd = standards.value.find(s => s.isDefault === true)
+            currentStandard.value = defaultStd || standards.value[0] || null
         }
     }
 
@@ -208,7 +208,6 @@ export const useAppStore = defineStore('app', () => {
 
         tabsLoaded.value = false
         if (editingId) {
-            standardsCache.value.delete(editingId)
             entriesCache.value.delete(editingId)
         }
         await loadTabs(true)
@@ -220,7 +219,6 @@ export const useAppStore = defineStore('app', () => {
         if (!id) throw new Error('Нет предприятия')
         await $fetch(`/api/enterprises/${id}/tabs/${tabId}`, { method: 'DELETE' })
 
-        standardsCache.value.delete(tabId)
         entriesCache.value.delete(tabId)
         await loadTabs(true)
 
@@ -231,33 +229,15 @@ export const useAppStore = defineStore('app', () => {
         }
     }
 
-    // ========== СТАНДАРТЫ (упрощённый кэш) ==========
-    const loadStandards = async (tabId: string, force = false): Promise<Standard[]> => {
-        const id = getEnterpriseId()
-        if (!id || !tabId) return []
-
-        // Если не force и есть в кэше – возвращаем
-        if (!force && standardsCache.value.has(tabId)) {
-            const cached = standardsCache.value.get(tabId)!
-            if (currentTabId.value === tabId) standardsLoading.value = false
-            return cached
-        }
+    // ========== СТАНДАРТЫ (глобальные, без привязки к вкладкам) ==========
+    const loadStandards = async (force = false): Promise<Standard[]> => {
+        if (!force && standards.value.length) return standards.value
 
         standardsLoading.value = true
         try {
-            const response = await $fetch(`/api/enterprises/${id}/standards?tabId=${tabId}`)
-            const loaded = response.standards || []
-            standardsCache.value.set(tabId, loaded)
-            if (currentTabId.value === tabId) {
-                // обновляем currentStandard, если есть defaultStandardId
-                const defaultId = currentTab.value?.defaultStandardId
-                if (defaultId) {
-                    currentStandard.value = loaded.find(s => s._id === defaultId) || loaded[0] || null
-                } else {
-                    currentStandard.value = loaded[0] || null
-                }
-            }
-            return loaded
+            const response = await $fetch('/api/standards')
+            standards.value = response.standards || []
+            return standards.value
         } catch (error) {
             console.error('Ошибка загрузки стандартов', error)
             return []
@@ -266,50 +246,25 @@ export const useAppStore = defineStore('app', () => {
         }
     }
 
-    const loadStandardsForTab = async (tabId: string, force = false): Promise<Standard[]> => {
-        return loadStandards(tabId, force)
-    }
-
     const saveStandard = async (standardData: any, editingId?: string | null) => {
-        const id = getEnterpriseId()
-        if (!id) throw new Error('Нет предприятия')
-
-        const url = editingId ? `/api/enterprises/${id}/standards/${editingId}` : `/api/enterprises/${id}/standards`
+        const url = editingId ? `/api/standards/${editingId}` : '/api/standards'
         const method = editingId ? 'PUT' : 'POST'
-        const response: any = await $fetch(url, { method, body: standardData })
-
-        if (standardData.tabId) {
-            // Принудительно сбрасываем кэш для этой вкладки
-            standardsCache.value.delete(standardData.tabId)
-            await loadStandards(standardData.tabId, true)
-            await loadTabById(standardData.tabId, true)
-        }
+        const response = await $fetch(url, { method, body: standardData })
+        await loadStandards(true)
         return response.standard
     }
 
-    const deleteStandard = async (standardId: string, tabId: string) => {
-        const id = getEnterpriseId()
-        if (!id) throw new Error('Нет предприятия')
-        await $fetch(`/api/enterprises/${id}/standards/${standardId}`, { method: 'DELETE' })
-        standardsCache.value.delete(tabId)
-        await loadStandards(tabId, true)
-        await loadTabById(tabId, true)
+    const deleteStandard = async (standardId: string) => {
+        await $fetch(`/api/standards/${standardId}`, { method: 'DELETE' })
+        await loadStandards(true)
     }
 
-    const setDefaultStandard = async (standardId: string, tabId: string) => {
-        const id = getEnterpriseId()
-        if (!id) throw new Error('Нет предприятия')
-        await $fetch(`/api/enterprises/${id}/standards/${standardId}`, {
+    const setDefaultStandard = async (standardId: string) => {
+        await $fetch(`/api/standards/${standardId}`, {
             method: 'PUT',
-            body: { isDefault: true, tabId }
+            body: { isDefault: true }
         })
-        standardsCache.value.delete(tabId)
-        await loadStandards(tabId, true)
-        await loadTabById(tabId, true)
-    }
-
-    const getStandardsByTabId = (tabId: string): Standard[] => {
-        return standardsCache.value.get(tabId) || []
+        await loadStandards(true)
     }
 
     // ========== ЗАПИСИ ==========
@@ -341,14 +296,23 @@ export const useAppStore = defineStore('app', () => {
     }
 
     const preloadTabData = async (tabId: string): Promise<void> => {
-        await Promise.all([loadStandards(tabId), loadEntries(tabId)])
+        // Стандарты глобальные, не нужно загружать для каждой вкладки
+        // Загружаем только записи для конкретной вкладки
+        await loadEntries(tabId)
     }
 
     const preloadAllTabsData = async (): Promise<void> => {
         const id = getEnterpriseId()
         if (!id) return
+
+        // Загружаем стандарты один раз (глобально)
+        await loadStandards()
+
+        // Загружаем вкладки
         const tabsList = await loadTabs()
-        await Promise.all(tabsList.map(tab => preloadTabData(tab._id)))
+
+        // Загружаем записи для всех вкладок
+        await Promise.all(tabsList.map(tab => loadEntries(tab._id)))
     }
 
     // Геттеры
@@ -356,7 +320,7 @@ export const useAppStore = defineStore('app', () => {
     const enterpriseName = computed(() => enterpriseData.value?.enterpriseName || '')
     const currentTabName = computed(() => currentTab.value?.name || '')
     const hasEntries = computed(() => (currentTabId.value ? (entriesCache.value.get(currentTabId.value)?.length || 0) > 0 : false))
-    const hasStandards = computed(() => (currentTabId.value ? (standardsCache.value.get(currentTabId.value)?.length || 0) > 0 : false))
+    const hasStandards = computed(() => standards.value.length > 0)
 
     return {
         enterpriseId,
@@ -367,7 +331,7 @@ export const useAppStore = defineStore('app', () => {
         currentTabId,
         currentTab,
         currentTabFields,
-        standardsCache,
+        standards,           // ← теперь standards (не standardsCache)
         standardsLoading,
         currentStandard,
         entriesCache,
@@ -391,11 +355,9 @@ export const useAppStore = defineStore('app', () => {
         deleteTab,
 
         loadStandards,
-        loadStandardsForTab,
         saveStandard,
         deleteStandard,
         setDefaultStandard,
-        getStandardsByTabId,
 
         loadEntries,
         loadEntriesForTab,

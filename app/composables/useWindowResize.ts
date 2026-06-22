@@ -1,9 +1,9 @@
 // composables/useWindowResize.ts
-import { ref, watch } from 'vue'
+import { ref, watch, type Ref } from 'vue'
 
 export interface UseWindowResizeOptions {
     initialSize: { width: number; height: number; minWidth?: number; minHeight?: number }
-    position: { x: number; y: number }
+    position: Ref<{ x: number; y: number }>   // <- теперь Ref
     onResize: (size: { width: number; height: number }) => void
     onMove: (position: { x: number; y: number }) => void
 }
@@ -26,20 +26,17 @@ export function useWindowResize(options: UseWindowResizeOptions) {
         height: options.initialSize.height
     })
 
-    const currentPosition = ref({
-        x: options.position.x,
-        y: options.position.y
-    })
+    const currentPosition = ref({ x: options.position.value.x, y: options.position.value.y })
 
     const minWidth = options.initialSize.minWidth || 300
     const minHeight = options.initialSize.minHeight || 200
 
-    // Следим за изменениями извне
     watch(() => options.initialSize, (newSize) => {
         currentSize.value = { width: newSize.width, height: newSize.height }
     }, { deep: true })
 
-    watch(() => options.position, (newPos) => {
+    // Теперь следим за изменением позиции через .value
+    watch(() => options.position.value, (newPos) => {
         currentPosition.value = { x: newPos.x, y: newPos.y }
     }, { deep: true })
 
@@ -72,7 +69,6 @@ export function useWindowResize(options: UseWindowResizeOptions) {
         let newX = startState.value.x
         let newY = startState.value.y
 
-        // Максимальные размеры с учётом отступов
         const maxWidth = window.innerWidth - 40
         const maxHeight = window.innerHeight - 40
 
@@ -93,7 +89,6 @@ export function useWindowResize(options: UseWindowResizeOptions) {
             newY = startState.value.y + (startState.value.height - newHeight)
         }
 
-        // Округляем до целых чисел
         newWidth = Math.round(newWidth)
         newHeight = Math.round(newHeight)
         newX = Math.round(newX)

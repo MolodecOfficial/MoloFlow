@@ -111,8 +111,8 @@ const {
   handleDrag,
   handleDragEnd
 } = useWindowDrag({
-  initialPosition: windowPosition.value,
-  windowSize: windowSize.value,
+  initialPosition: windowPosition,
+  windowSize: windowSize,
   onMove: (position) => {
     windowPosition.value = position
     emit('move', position)
@@ -291,7 +291,7 @@ watch(() => props.window?.zIndex, (newZIndex) => {
       <div class="window-header" @mousedown="handleDragStart">
         <div class="window-title">{{ displayTitle }}</div>
         <div class="header-logger" v-if="role === 'Управляющий'">
-          <span>{{ groupId }}/</span><span>{{ subGroupId }}</span>/<span>{{ windowId }}</span>
+          <span>{{ groupId }}</span><span>{{ subGroupId }}</span><span>{{ windowId }}</span>
         </div>
         <div class="window-controls">
           <button class="control-btn refresh" @click="refreshContent" @mousedown.stop>
@@ -397,7 +397,6 @@ watch(() => props.window?.zIndex, (newZIndex) => {
   background: var(--window-content-bg, var(--half_opacity_bg));
   border: 1px solid var(--window-border-color, var(--half_opacity_border));
   border-radius: var(--window-border-radius, 10px);
-  backdrop-filter: var(--window-backdrop-blur, blur(20px));
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -405,7 +404,28 @@ watch(() => props.window?.zIndex, (newZIndex) => {
   width: 100%;
   height: 100%;
   transition: border-radius 0.2s ease;
+  backdrop-filter:
+      blur(20px)
+      saturate(100%)
+      brightness(100%);
+
+  -webkit-backdrop-filter:
+      blur(30px)
+      saturate(180%)
+      brightness(110%);
+
+  box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.29),
+      inset 0 -1px 0 rgba(255, 255, 255, 0.03),
+      0 15px 40px rgba(0, 0, 0, 0);
+
+  transition:
+      border-radius .25s ease,
+      transform .25s ease,
+      box-shadow .25s ease;
 }
+
+
 
 .window.maximized {
   border-radius: 10px;

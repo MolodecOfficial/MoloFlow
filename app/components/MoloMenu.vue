@@ -21,12 +21,14 @@ const emit = defineEmits<{
   'lock-hover': [value: boolean]
   'open-window': [
     groupId: string,
-    itemId: string,
-    subGroupId?: string,
+    placeName: string,
+    subGroupPlaceName?: string,
     sizeOptions?: WindowSizeOptions,
     isModal?: boolean,
     componentPath?: string,
-    moduleData?: any
+    moduleData?: any,
+    extraData?: any,
+    customTitle?: string
   ]
 }>()
 
@@ -108,18 +110,23 @@ const createDynamicMenuItems = () => {
 
   return dynamicModules.value
       .filter(module => module && module._id)
-      .map(module => ({
-        id: `module_${module._id}`,
-        title: module.name || 'Без названия',
-        format: module.format,
-        requiredRole: ['Управляющий', 'Сотрудник'],
-        isActive: true,
-        isModule: true,
-        moduleId: module._id,
-        moduleData: safeModuleData(module),
-        componentName: module.format === 'vue' ? 'DynamicModuleLoader' : undefined,
-        isScript: module.format !== 'vue'
-      }))
+      .map(module => {
+        // Используем fileName как уникальный идентификатор
+        const placeName = module.fileName || `module_${module._id}`
+        return {
+          id: placeName,                 // для совместимости
+          placeName: placeName,          // основной идентификатор
+          title: module.name || 'Без названия',
+          format: module.format,
+          requiredRole: ['Управляющий', 'Сотрудник'],
+          isActive: true,
+          isModule: true,
+          moduleId: module._id,
+          moduleData: safeModuleData(module),
+          componentName: module.format === 'vue' ? 'DynamicModuleLoader' : undefined,
+          isScript: module.format !== 'vue'
+        }
+      })
 }
 
 /* =========================
@@ -136,6 +143,16 @@ const loadMenuFromAPI = async () => {
 
     menuGroups.value = (response as any[])
         .filter(g => g && g.type === 'menu')
+        .map(group => ({
+          ...group,
+          items: (group.items || []).map(item => ({
+            ...item,
+            placeName: item.placeName || item.id,
+            format: item.format || 'vue',
+            componentName: item.componentName || (item.moduleId ? 'DynamicModuleLoader' : undefined),
+            componentPath: item.componentPath || (item.moduleId ? 'modules/DynamicModuleLoader' : undefined)
+          }))
+        }))
 
     const modulesData = (response as any[])
         .filter(g => g && g.type === 'module')
@@ -256,14 +273,13 @@ const handleMenuItemClick = (event: MouseEvent, groupId: string, item: any, isMo
   }
 
   const sizeOptions = getWindowSizeOptions(item.id)
-
-  // 🔥 КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: для модулей всегда используем customTitle
+  const placeName = item.placeName || item.id
   const customTitle = item.title || item.moduleData?.name || item.name || 'Модуль'
 
   if (item.format === 'vue' && item.moduleId) {
     emit('open-window',
         groupId,
-        item.id,  // item.id остаётся для идентификации
+        placeName,
         undefined,
         sizeOptions,
         false,
@@ -272,22 +288,23 @@ const handleMenuItemClick = (event: MouseEvent, groupId: string, item: any, isMo
           ...item.moduleData,
           moduleId: item.moduleId,
           _id: item.moduleId,
-          name: customTitle  // передаём название в данные
+          name: customTitle,
+          format: item.format
         },
-        undefined,  // extraData не нужен
-        customTitle  // ← ПЕРЕДАЁМ customTitle!
+        undefined,
+        customTitle
     )
   } else {
     emit('open-window',
         groupId,
-        item.id,
+        placeName,
         undefined,
         sizeOptions,
         false,
         item.componentPath || item.componentName,
         item.moduleData,
         undefined,
-        customTitle  // ← И сюда тоже для обычных элементов
+        customTitle
     )
   }
 }
@@ -296,15 +313,20 @@ const handleChildItemClick = (groupId: string, parentItem: any, child: any, isMo
   if (!child) return
 
   const sizeOptions = getWindowSizeOptions(child.id)
+  const placeName = child.placeName || child.id
+  const parentPlaceName = parentItem.placeName || parentItem.id
+  const customTitle = child.title || child.name || 'Модуль'
 
   emit('open-window',
       groupId,
-      child.id || parentItem.id,
-      child.id ? parentItem.id : undefined,
+      placeName,
+      parentPlaceName,
       sizeOptions,
       false,
       child.componentPath || parentItem.componentPath,
-      child.moduleData || parentItem.moduleData
+      child.moduleData || parentItem.moduleData,
+      undefined,
+      customTitle
   )
 }
 

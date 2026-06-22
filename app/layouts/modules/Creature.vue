@@ -6,8 +6,7 @@ import {initMonacoTypeScript, registerMonacoSnippets} from '~~/app/utils/monaco-
 import {useUserStore} from '~~/stores/userStore'
 import {useMenuEditorStore} from '~~/stores/menuEditorStore'
 import {useModuleEditorStore} from '~~/stores/moduleEditorStore'
-import {useMenuApi} from '~/composables/useMenuApi'
-import {useModuleApi} from '~/composables/useModuleApi'
+import {storeToRefs} from 'pinia'
 
 import jsIcon from '~~/public/js.png'
 import tsIcon from '~~/public/ts.png'
@@ -28,9 +27,6 @@ const userStore = useUserStore()
 const menuStore = useMenuEditorStore()
 const moduleStore = useModuleEditorStore()
 
-const menuApi = useMenuApi()
-const moduleApi = useModuleApi()
-
 /* =========================================
    ЛОКАЛЬНОЕ СОСТОЯНИЕ
 ========================================= */
@@ -43,6 +39,11 @@ const loadingUPD = ref(false)
 const loadingDEP = ref(false)
 const newDepName = ref('')
 const newDepVersion = ref('')
+const initialDataLoaded = ref(false)
+
+const menuLocationModalOpen = ref(false)
+const menuLocationModalMode = ref<'create' | 'edit'>('create')
+const editingLocationData = ref<any>(null)
 
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -53,6 +54,8 @@ let debounceTimer: ReturnType<typeof setTimeout> | null = null
 // module store
 const {
   modules,
+  modulesLoaded,
+  modulesLoading,
   selectedModuleId,
   loading,
   formData,
@@ -74,6 +77,8 @@ const {
 // menu store
 const {
   locations,
+  locationsLoaded,
+  locationsLoading,
   selectedGroupId,
   selectedParentId,
   adding,
@@ -84,7 +89,9 @@ const {
   expanded,
   allExpanded,
   deletingGroup,
-  deletingItem
+  deletingItem,
+  treeLoaded,
+  treeLoading
 } = storeToRefs(menuStore)
 
 /* =========================================
@@ -106,6 +113,63 @@ const availableFormats = [
   {label: '.js', value: 'js'},
   {label: '.ts', value: 'ts'}
 ]
+
+// Форма для модалки создания места с выбором родителя
+const modalLocationForm = ref({
+  title: '',
+  placeName: '',
+  type: 'menu' as 'menu' | 'module',
+  order: 0,
+  requiredRole: ['Управляющий'] as string[],
+  parentId: null as string | null
+})
+
+// Рекурсивный сбор папок с указанием groupId
+const collectFolderItems = (items: any[], groupId: string, level: number = 0): any[] => {
+  const result: any[] = []
+  if (!items || !Array.isArray(items)) return result
+
+  for (const item of items) {
+    if (item.items && Array.isArray(item.items) && item.items.length > 0) {
+      const indent = '  '.repeat(level)
+      result.push({
+        id: item.id,
+        groupId: groupId,
+        title: `${indent}📂 ${item.title}`,
+        level: level,
+        type: 'folder'
+      })
+      const children = collectFolderItems(item.items, groupId, level + 1)
+      result.push(...children)
+    }
+  }
+  return result
+}
+
+// Опции для выбора родителя (содержат groupId)
+const parentLocationOptions = computed(() => {
+  const options: { id: string | null; groupId: string | null; title: string; level: number; type: string }[] = [
+    {id: null, groupId: null, title: '📁 Корень меню (верхний уровень)', level: 0, type: 'root'}
+  ]
+
+  for (const group of tree.value) {
+    if (group.id && group.title) {
+      options.push({
+        id: group.id,
+        groupId: group.id,
+        title: `📁 ГРУППА: ${group.title}`,
+        level: 0,
+        type: 'group'
+      })
+      if (group.items && group.items.length) {
+        const folders = collectFolderItems(group.items, group.id, 1)
+        options.push(...folders)
+      }
+    }
+  }
+
+  return options
+})
 
 /* =========================================
    COMPUTED
@@ -140,22 +204,22 @@ const availableParents = computed(() => {
 const getPlaceholder = () => {
   if (formData.value.format === 'vue') {
     return `<script setup>
-import { ref } from 'vue'
+  import { ref } from 'vue'
 
-const message = ref('Привет из динамического модуля!')
+  const message = ref('Привет из динамического модуля!')
 
-const handleClick = () => {
-  message.value = 'Работает!'
-}
-<\/script>
+  const handleClick = () => {
+    message.value = 'Работает!'
+  }
+  <\/script>
 
-<template>
-  <div>
-    <h1>{{ message }}</h1>
-    <button @click="handleClick">Click me</button>
-  </div>
-</template>
-`
+  <template>
+    <div>
+      <h1>{{ message }}</h1>
+      <button @click="handleClick">Click me</button>
+    </div>
+  </template>
+  `
   }
 
   return '// module code...'
@@ -164,48 +228,14 @@ const handleClick = () => {
 /* =========================================
    MODULE API METHODS
 ========================================= */
-const fetchModules = async () => {
-  if (!enterpriseInfo.value?._id) {
-    addLog('error', 'Нет ID предприятия')
-    return
-  }
-
-  loading.value = true
-
-  try {
-    modules.value = await moduleApi.fetchModules(
-        enterpriseInfo.value._id
-    )
-  } finally {
-    loading.value = false
-  }
-}
-
 const loadModuleFiles = async () => {
   if (!selectedModuleId.value || !enterpriseInfo.value?._id) return
-
-  loadingFiles.value = true
-
-  try {
-    moduleFiles.value = await moduleApi.loadModuleFiles(
-        enterpriseInfo.value._id,
-        selectedModuleId.value
-    )
-  } finally {
-    loadingFiles.value = false
-  }
+  await moduleStore.loadModuleFilesById(enterpriseInfo.value._id, selectedModuleId.value)
 }
 
 const loadDependencies = async () => {
   if (!selectedModuleId.value || !enterpriseInfo.value?._id) return
-
-  const result = await moduleApi.loadDependencies(
-      enterpriseInfo.value._id,
-      selectedModuleId.value
-  )
-
-  formData.value.dependencies = result.dependencies
-  formData.value.devDependencies = result.devDependencies
+  await moduleStore.loadModuleDependencies(enterpriseInfo.value._id, selectedModuleId.value)
 }
 
 const saveModule = async () => {
@@ -227,6 +257,9 @@ const saveModule = async () => {
   loading.value = true
 
   try {
+    const {useModuleApi} = await import('~/composables/useModuleApi')
+    const moduleApi = useModuleApi()
+
     const payload = {
       ...formData.value,
       code: formData.value.code || getPlaceholder(),
@@ -240,7 +273,7 @@ const saveModule = async () => {
         selectedModuleId.value || undefined
     )
 
-    await fetchModules()
+    await moduleStore.loadModules(enterpriseInfo.value._id)
 
     if (!isEditing.value) {
       selectedModuleId.value = response.module._id
@@ -268,13 +301,10 @@ const normalizePath = (
     format: string
 ) => {
   let basePath = pathInput?.trim() || name.trim()
-
   basePath = basePath.replace(/^\.\//, '')
-
   if (!basePath.match(/\.[a-z]+$/)) {
     basePath += `.${format}`
   }
-
   return basePath
 }
 
@@ -288,6 +318,9 @@ const saveFile = async () => {
 
   try {
     loadingUPD.value = true
+
+    const {useModuleApi} = await import('~/composables/useModuleApi')
+    const moduleApi = useModuleApi()
 
     const filePath = normalizePath(
         fileForm.value.name,
@@ -313,9 +346,7 @@ const saveFile = async () => {
 
     addNotification(
         'info',
-        editingFilePath.value
-            ? 'Файл обновлён'
-            : 'Файл добавлен'
+        editingFilePath.value ? 'Файл обновлён' : 'Файл добавлен'
     )
 
     await loadModuleFiles()
@@ -332,6 +363,9 @@ const deleteFile = async (filePath: string) => {
   if (!selectedModuleId.value || !enterpriseInfo.value?._id) return
 
   try {
+    const {useModuleApi} = await import('~/composables/useModuleApi')
+    const moduleApi = useModuleApi()
+
     await moduleApi.deleteFile(
         enterpriseInfo.value._id,
         selectedModuleId.value,
@@ -347,9 +381,14 @@ const deleteFile = async (filePath: string) => {
 
 const addDependency = async () => {
   if (!newDepName.value || !selectedModuleId.value) return
+
   loadingDEP.value = true
   addLog('info', `Начинаю установку зависимости "${newDepName.value}"...`)
+
   try {
+    const {useModuleApi} = await import('~/composables/useModuleApi')
+    const moduleApi = useModuleApi()
+
     await moduleApi.addDependency(
         enterpriseInfo.value._id,
         selectedModuleId.value,
@@ -359,26 +398,26 @@ const addDependency = async () => {
     )
 
     await loadDependencies()
-    addLog('success', `Зависимость "${newDepName.value} успешно установлена!"`)
+    addLog('success', `Зависимость "${newDepName.value}" успешно установлена!`)
     addNotification('info', 'Зависимость добавлена')
 
     newDepName.value = ''
     newDepVersion.value = ''
   } catch (error) {
     addLog('error', `Ошибка установки зависимости - ${error}`)
-    addNotification(
-        'error',
-        'Ошибка добавления зависимости'
-    )
+    addNotification('error', 'Ошибка добавления зависимости')
+  } finally {
+    loadingDEP.value = false
   }
 }
 
-const removeDependency = async (
-    packageName: string
-) => {
+const removeDependency = async (packageName: string) => {
   if (!selectedModuleId.value) return
 
   try {
+    const {useModuleApi} = await import('~/composables/useModuleApi')
+    const moduleApi = useModuleApi()
+
     await moduleApi.removeDependency(
         enterpriseInfo.value._id,
         selectedModuleId.value,
@@ -387,13 +426,9 @@ const removeDependency = async (
     )
 
     await loadDependencies()
-
     addNotification('info', 'Зависимость удалена')
   } catch {
-    addNotification(
-        'error',
-        'Ошибка удаления зависимости'
-    )
+    addNotification('error', 'Ошибка удаления зависимости')
   }
 }
 
@@ -403,107 +438,132 @@ const clearModuleCache = async () => {
   try {
     clearingCache.value = true
 
+    const {useModuleApi} = await import('~/composables/useModuleApi')
+    const moduleApi = useModuleApi()
+
     const result = await moduleApi.clearCache(
         selectedModuleId.value,
         enterpriseInfo.value._id
     )
 
     console.log('Cache clear result:', result)
-
     addNotification('info', 'Кеш модуля очищен')
   } catch (error: any) {
     console.error('Clear cache error:', error)
-
-    addNotification(
-        'error',
-        error?.data?.message ||
-        error?.message ||
-        'Ошибка очистки кеша'
-    )
+    addNotification('error', error?.data?.message || error?.message || 'Ошибка очистки кеша')
   } finally {
     clearingCache.value = false
   }
 }
 
+// Функция для обновления всех данных меню
+const refreshMenuData = async () => {
+  await menuStore.loadLocations()
+  await menuStore.loadTree()
+  await menuStore.refreshAllMenuData()
+}
+
 /* =========================================
-   MENU API METHODS
+   MENU API METHODS (ГЛАВНОЕ ИСПРАВЛЕНИЕ)
 ========================================= */
-const loadAvailableLocations = async () => {
-  locations.value = await menuApi.loadLocations()
-
-  if (
-      locations.value.length > 0 &&
-      !selectedGroupId.value
-  ) {
-    selectedGroupId.value =
-        locations.value[0].groupId
+function openCreateLocationModal() {
+  menuLocationModalMode.value = 'create'
+  modalLocationForm.value = {
+    title: '',
+    placeName: '',
+    type: 'menu',
+    order: 0,
+    requiredRole: ['Управляющий'],
+    parentId: null
   }
+  menuLocationModalOpen.value = true
 }
 
-const loadMenuTree = async () => {
-  tree.value = await menuApi.loadTree()
-  if (expanded.value.size === 0) {
-    menuStore.toggleAll()
-  }
-}
-
-const createNewLocation = async () => {
-  if (!newLocation.value.title.trim()) {
+async function handleSaveLocation() {
+  if (!modalLocationForm.value.title.trim()) {
     addNotification('warning', 'Введите название места')
+    return
+  }
+
+  if (!modalLocationForm.value.placeName.trim()) {
+    addNotification('warning', 'Введите ключ (название файла)')
     return
   }
 
   try {
     creating.value = true
 
-    await menuApi.createGroup(
-        newLocation.value.title,
-        newLocation.value.type,
-        newLocation.value.order
-    )
+    const {useMenuApi} = await import('~/composables/useMenuApi')
+    const menuApi = useMenuApi()
 
-    addNotification(
-        'info',
-        'Новое место в меню создано'
-    )
+    const parentId = modalLocationForm.value.parentId
+    const selectedOption = parentLocationOptions.value.find(opt => opt.id === parentId)
+    const groupId = selectedOption?.groupId
 
-    newLocation.value = {
-      title: '',
-      type: 'menu',
-      order: 0
+    if (parentId && groupId) {
+      // Создаём вложенную папку внутри выбранного родителя
+      await menuApi.addMenuItem(
+          groupId,
+          parentId,
+          modalLocationForm.value.title,
+          modalLocationForm.value.placeName,
+          modalLocationForm.value.type,
+          modalLocationForm.value.order,
+          modalLocationForm.value.requiredRole
+      )
+      addNotification('info', 'Вложенная папка создана')
+    } else {
+      // Создаём группу верхнего уровня
+      await menuApi.createGroup(
+          modalLocationForm.value.title,
+          modalLocationForm.value.placeName,
+          modalLocationForm.value.type,
+          modalLocationForm.value.order
+      )
+      addNotification('info', 'Новая группа меню создана')
     }
 
-    showNewForm.value = false
+    // Обновляем все данные меню
+    await refreshMenuData()
 
-    await loadAvailableLocations()
-    await loadMenuTree()
+    // Если создали группу верхнего уровня, автоматически выбираем её
+    if (!parentId) {
+      const newGroup = locations.value.find(
+          (g: any) => g.groupTitle === modalLocationForm.value.title
+      )
+      if (newGroup) {
+        selectedGroupId.value = newGroup.groupId
+      }
+    }
 
-    window.dispatchEvent(
-        new CustomEvent('modules-updated')
-    )
-  } catch {
-    addNotification(
-        'error',
-        'Ошибка создания места'
-    )
+    // Сбрасываем форму
+    modalLocationForm.value = {
+      title: '',
+      placeName: '',
+      type: 'menu',
+      order: 0,
+      requiredRole: ['Управляющий'],
+      parentId: null
+    }
+
+    window.dispatchEvent(new CustomEvent('modules-updated'))
+    menuLocationModalOpen.value = false
+  } catch (error: any) {
+    console.error('Create location error:', error)
+    addNotification('error', error?.message || 'Ошибка создания места')
   } finally {
     creating.value = false
   }
 }
 
-const deleteLocation = async (
-    groupId: string
-) => {
-  if (
-      !confirm(
-          `Удалить группу "${groupId}"?`
-      )
-  ) {
-    return
-  }
+const deleteLocation = async (groupId: string) => {
+  if (!confirm(`Удалить группу "${groupId}"?`)) return
 
   try {
     deletingGroup.value = groupId
+
+    const {useMenuApi} = await import('~/composables/useMenuApi')
+    const menuApi = useMenuApi()
 
     await menuApi.deleteGroup(groupId)
 
@@ -511,82 +571,47 @@ const deleteLocation = async (
       menuStore.resetSelection()
     }
 
-    await loadAvailableLocations()
-    await loadMenuTree()
+    await refreshMenuData()
 
-    addNotification(
-        'info',
-        'Группа удалена'
-    )
+    addNotification('info', 'Группа удалена')
   } catch {
-    addNotification(
-        'error',
-        'Ошибка удаления группы'
-    )
+    addNotification('error', 'Ошибка удаления группы')
   } finally {
     deletingGroup.value = null
   }
 }
 
-const deleteMenuItem = async (
-    groupId: string,
-    itemId: string
-) => {
-  if (
-      !confirm(
-          'Удалить этот элемент меню?'
-      )
-  ) {
-    return
-  }
+const deleteMenuItem = async (groupId: string, itemId: string) => {
+  if (!confirm('Удалить этот элемент меню?')) return
 
   try {
     deletingItem.value = itemId
 
-    await menuApi.deleteItem(
-        groupId,
-        itemId
-    )
+    const {useMenuApi} = await import('~/composables/useMenuApi')
+    const menuApi = useMenuApi()
 
-    await loadAvailableLocations()
-    await loadMenuTree()
+    await menuApi.deleteItem(groupId, itemId)
 
-    addNotification(
-        'info',
-        'Элемент меню удалён'
-    )
+    await refreshMenuData()
 
-    window.dispatchEvent(
-        new CustomEvent('modules-updated')
-    )
+    addNotification('info', 'Элемент меню удалён')
+    window.dispatchEvent(new CustomEvent('modules-updated'))
   } catch {
-    addNotification(
-        'error',
-        'Ошибка удаления элемента'
-    )
+    addNotification('error', 'Ошибка удаления элемента')
   } finally {
     deletingItem.value = null
   }
 }
 
-const addModuleToMenuItem = async (
-    groupId: string,
-    parentItemId: string
-) => {
+const addModuleToMenuItem = async (groupId: string, parentItemId: string) => {
   selectedGroupId.value = groupId
   selectedParentId.value = parentItemId
 
   await nextTick()
 
-  const el = document.querySelector(
-      '.menu-actions-row'
-  )
-
+  const el = document.querySelector('.menu-actions-row')
   if (el) {
-    el.scrollIntoView({
-      behavior: 'smooth',
-      block: 'center'
-    })
+    el.scrollIntoView({behavior: 'smooth', block: 'center'})
   }
 }
 
@@ -604,16 +629,11 @@ const addModuleToMenu = async () => {
   }
 
   if (!moduleId) {
-    addNotification(
-        'error',
-        'Не удалось сохранить модуль'
-    )
+    addNotification('error', 'Не удалось сохранить модуль')
     return
   }
 
-  const mod = modules.value.find(
-      (m: any) => m._id === moduleId
-  )
+  const mod = modules.value.find((m: any) => m._id === moduleId)
 
   if (!mod) {
     addNotification('error', 'Модуль не найден')
@@ -623,29 +643,20 @@ const addModuleToMenu = async () => {
   try {
     adding.value = true
 
-    await menuApi.addModule(
-        mod,
-        selectedGroupId.value,
-        selectedParentId.value
-    )
+    const {useMenuApi} = await import('~/composables/useMenuApi')
+    const menuApi = useMenuApi()
 
-    addNotification(
-        'info',
-        'Модуль добавлен в меню'
-    )
+    await menuApi.addModule(mod, selectedGroupId.value, selectedParentId.value)
 
+    addNotification('info', 'Модуль добавлен в меню')
     menuStore.resetSelection()
 
-    await loadMenuTree()
+    // Обновляем дерево меню после добавления модуля
+    await refreshMenuData()
 
-    window.dispatchEvent(
-        new CustomEvent('modules-updated')
-    )
+    window.dispatchEvent(new CustomEvent('modules-updated'))
   } catch {
-    addNotification(
-        'error',
-        'Модуль не добавлен в меню'
-    )
+    addNotification('error', 'Модуль не добавлен в меню')
   } finally {
     adding.value = false
   }
@@ -656,10 +667,7 @@ const addModuleToMenu = async () => {
 ========================================= */
 const openPreviewInWindow = () => {
   if (!formData.value.code?.trim()) {
-    addNotification(
-        'warning',
-        'Нет кода для предпросмотра'
-    )
+    addNotification('warning', 'Нет кода для предпросмотра')
     return
   }
 
@@ -680,15 +688,11 @@ const openPreviewInWindow = () => {
       'modules/preview',
       null,
       {
-        moduleName:
-            formData.value.name ||
-            'Без названия',
+        moduleName: formData.value.name || 'Без названия',
         code: formData.value.code,
         files: moduleFiles.value,
-        dependencies:
-        formData.value.dependencies,
-        moduleId:
-        selectedModuleId.value
+        dependencies: formData.value.dependencies,
+        moduleId: selectedModuleId.value
       }
   )
 }
@@ -696,21 +700,14 @@ const openPreviewInWindow = () => {
 /* =========================================
    IMAGE HANDLING
 ========================================= */
-const handleImageUpload = (
-    event: Event
-) => {
-  const input =
-      event.target as HTMLInputElement
-
+const handleImageUpload = (event: Event) => {
+  const input = event.target as HTMLInputElement
   if (!input.files?.[0]) return
 
   const reader = new FileReader()
-
   reader.onload = e => {
-    formData.value.previewImage =
-        e.target?.result as string
+    formData.value.previewImage = e.target?.result as string
   }
-
   reader.readAsDataURL(input.files[0])
 }
 
@@ -728,33 +725,34 @@ const openDocumentation = () => {
         height: 600,
         minWidth: 600,
         minHeight: 400
-      },
+      }
   )
 }
 
 /* =========================================
    HELPERS
 ========================================= */
-const toggleDocumentation = () => {
-  showDocumentation.value =
-      !showDocumentation.value
+const getEnterpriseId = (): string | null => {
+  const saved = localStorage.getItem('currentEnterprise')
+  if (saved) {
+    try {
+      return JSON.parse(saved)._id
+    } catch {
+      return null
+    }
+  }
+  return null
 }
 
 /* =========================================
    WATCHERS
 ========================================= */
 watch(tagsInput, value => {
-  formData.value.tags = value
-      .split(',')
-      .map(v => v.trim())
-      .filter(Boolean)
+  formData.value.tags = value.split(',').map(v => v.trim()).filter(Boolean)
 })
 
 watch(composablesInput, value => {
-  formData.value.composables = value
-      .split(',')
-      .map(v => v.trim())
-      .filter(Boolean)
+  formData.value.composables = value.split(',').map(v => v.trim()).filter(Boolean)
 })
 
 watch(
@@ -768,10 +766,7 @@ watch(
 
       if (!mods || mods.length === 0) return
 
-      const mod = mods.find(
-          (m: any) => m._id === id
-      )
-
+      const mod = mods.find((m: any) => m._id === id)
       if (!mod) return
 
       moduleStore.loadModule(mod)
@@ -783,17 +778,14 @@ watch(
       await loadModuleFiles()
       await loadDependencies()
     },
-    {
-      immediate: true
-    }
+    {immediate: true}
 )
 
 watch(
     () => formData.value.format,
     () => {
       if (!isEditing.value) {
-        formData.value.code =
-            getPlaceholder()
+        formData.value.code = getPlaceholder()
       }
     }
 )
@@ -806,24 +798,16 @@ watch(
     () => formData.value.code,
     code => {
       if (!previewWindowId.value) return
-
-      updateWindowData(
-          'modules',
-          previewWindowId.value,
-          {
-            moduleName:
-            formData.value.name,
-            code,
-            isEditing:
-            isEditing.value
-          }
-      )
+      updateWindowData('modules', previewWindowId.value, {
+        moduleName: formData.value.name,
+        code,
+        isEditing: isEditing.value
+      })
     }
 )
 
 watch(showDocumentation, async () => {
   await nextTick()
-
   setTimeout(() => {
     monacoRef.value?.editor?.layout?.()
   }, 50)
@@ -840,35 +824,44 @@ watch(moduleFiles, (newFiles) => {
    LIFECYCLE
 ========================================= */
 onMounted(async () => {
-  const saved = localStorage.getItem('currentEnterprise')
+  const enterpriseId = getEnterpriseId()
+  if (!enterpriseId) {
+    addNotification('warning', 'Нет информации о предприятии')
+    return
+  }
 
+  const saved = localStorage.getItem('currentEnterprise')
   if (saved) {
     try {
       enterpriseInfo.value = JSON.parse(saved)
-      await fetchModules()
     } catch {
-      addNotification(
-          'warning',
-          'Ошибка при получении предприятия'
-      )
+      addNotification('warning', 'Ошибка при получении предприятия')
     }
   }
 
-  await loadAvailableLocations()
-  await loadMenuTree()
+  if (!modulesLoaded.value && !modulesLoading.value) {
+    await moduleStore.loadModules(enterpriseId)
+  }
+
+  if (!locationsLoaded.value && !locationsLoading.value) {
+    await menuStore.loadLocations()
+  }
+
+  if (!treeLoaded.value && !treeLoading.value) {
+    await menuStore.loadTree()
+  }
+
+  if (locations.value.length > 0 && !selectedGroupId.value) {
+    selectedGroupId.value = locations.value[0].groupId
+  }
 
   if (selectedModuleId.value) {
-    const mod = modules.value.find(
-        (m: any) => m._id === selectedModuleId.value
-    )
-
+    const mod = modules.value.find((m: any) => m._id === selectedModuleId.value)
     if (mod) {
       moduleStore.loadModule(mod)
-
       if (!formData.value.code) {
         formData.value.code = getPlaceholder()
       }
-
       await loadModuleFiles()
       await loadDependencies()
     }
@@ -876,6 +869,8 @@ onMounted(async () => {
     moduleStore.resetForm()
     formData.value.code = getPlaceholder()
   }
+
+  initialDataLoaded.value = true
 })
 
 onUnmounted(() => {
@@ -933,60 +928,68 @@ onUnmounted(() => {
     <div class="editor-grid">
       <!-- ОСНОВНЫЕ НАСТРОЙКИ -->
       <div class="main-settings">
-        <div class="settings-group">
-          <h3>Основное</h3>
+        <MoloSection>
+          <template #header>
+            <span>Основное</span>
+          </template>
+          <template #main>
+            <div class="form-row">
+              <MoloInput
+                  v-model="formData.name"
+                  lRequired
+                  placeholder="Введите название"
+                  tLabel="Название"
+              />
 
-          <div class="form-row">
-            <MoloInput
-                v-model="formData.name"
-                lRequired
-                placeholder="Введите название"
-                tLabel="Название"
-            />
+              <MoloInput
+                  v-model="formData.fileName"
+                  lRequired
+                  placeholder="на_английском"
+                  tLabel="Имя файла"
+              />
 
-            <MoloInput
-                v-model="formData.fileName"
-                lRequired
-                placeholder="на_английском"
-                tLabel="Имя файла"
-            />
+              <MoloSelect
+                  v-model="formData.format"
+                  :parent="availableFormats"
+                  children="label"
+                  lRequired
+                  tLabel="Формат"
+                  valueKey="value"
+              />
+            </div>
+          </template>
+        </MoloSection>
 
-            <MoloSelect
-                v-model="formData.format"
-                :parent="availableFormats"
-                children="label"
-                lRequired
-                tLabel="Формат"
-                valueKey="value"
-            />
-          </div>
-        </div>
+        <MoloSection>
+          <template #header>
+            <span>Мета</span>
+          </template>
+          <template #main>
+            <div class="form-row">
+              <MoloInput
+                  v-model="formData.description"
+                  placeholder="Что делает модуль?"
+                  tLabel="Описание"
+              />
 
-        <div class="settings-group">
-          <h3>Мета</h3>
+              <MoloInput
+                  v-model="tagsInput"
+                  placeholder="ui, таблицы, графики"
+                  tLabel="Теги"
+              />
+            </div>
+          </template>
+        </MoloSection>
 
-          <div class="form-row">
-            <MoloInput
-                v-model="formData.description"
-                placeholder="Что делает модуль?"
-                tLabel="Описание"
-            />
-
-            <MoloInput
-                v-model="tagsInput"
-                placeholder="ui, таблицы, графики"
-                tLabel="Теги"
-            />
-          </div>
-        </div>
-
-        <div class="settings-group">
-          <div class="form-row low">
+        <MoloSection>
+          <template #header>
+            <span>Дополнительно</span>
             <label class="checkbox-label">
               <input v-model="formData.isPublic" type="checkbox"/>
               <span>Общедоступный</span>
             </label>
-
+          </template>
+          <template #main>
             <div class="preview-upload">
               <MoloInput
                   accept="image/*"
@@ -995,181 +998,150 @@ onUnmounted(() => {
                   @change="handleImageUpload"
               />
 
-              <div
-                  v-if="formData.previewImage"
-                  class="preview-image"
-              >
-                <img
-                    :src="formData.previewImage"
-                    alt="preview"
-                    style="width: 60px"
-                />
+              <div v-if="formData.previewImage" class="preview-image">
+                <img :src="formData.previewImage" alt="preview" style="width: 60px"/>
 
-                <MoloButton
-                    class="action-btn close small"
-                    @click="removePreview"
-                >
+                <MoloButton class="action-btn close small" @click="removePreview">
                   ✕
                 </MoloButton>
               </div>
             </div>
-          </div>
-        </div>
+          </template>
+        </MoloSection>
       </div>
 
-      <!-- УПРАВЛЕНИЕ МЕНЮ - ПРОСТАЯ ВЕРСИЯ -->
+      <!-- УПРАВЛЕНИЕ МЕНЮ -->
       <div class="menu-settings">
-        <div class="settings-group">
-          <h3>Добавить в меню</h3>
+        <MoloSection>
+          <template #header>
+            <span>Добавить в меню</span>
+          </template>
+          <template #main>
+            <MoloSelect
+                v-model="selectedGroupId"
+                :disabled="locations.length === 0 ? 'Нет доступных групп' : 'Выбрать группу'"
+                :parent="locations"
+                children="groupTitle"
+                tLabel="Группа"
+                valueKey="groupId"
+                :key="locations.length"
+            />
 
-          <MoloSelect
-              v-model="selectedGroupId"
-              :disabled="locations.length === 0 ? 'Нет доступных групп' : 'Выбрать группу'"
-              :parent="locations"
-              children="groupTitle"
-              tLabel="Группа"
-              valueKey="groupId"
-          />
+            <MoloSelect
+                v-if="availableParents.length"
+                v-model="selectedParentId"
+                :parent="availableParents"
+                children="title"
+                disabled="Выбрать родителя (опционально)"
+                tLabel="Родительский элемент"
+                valueKey="id"
+            />
 
-          <MoloSelect
-              v-if="availableParents.length"
-              v-model="selectedParentId"
-              :parent="availableParents"
-              children="title"
-              disabled="Выбрать родителя (опционально)"
-              tLabel="Родительский элемент"
-              valueKey="id"
-          />
+            <MoloButton
+                :disabled="!selectedGroupId || adding"
+                class="confirm"
+                @click="addModuleToMenu"
+            >
+              <span v-if="!adding">Добавить в меню</span>
+              <MoloLoaders v-else btnLoader/>
+            </MoloButton>
+          </template>
+        </MoloSection>
 
-          <MoloButton
-              :disabled="!selectedGroupId || adding"
-              class="confirm"
-              @click="addModuleToMenu"
-          >
-            <span v-if="!adding">Добавить в меню</span>
-            <MoloLoaders v-else btnLoader/>
-          </MoloButton>
-        </div>
-        <section class="settings-group">
-          <h3>Создать новое место</h3>
-          <MoloInput tLabel="Название места" placeholder="Новое место"/>
-
-          <MoloButton
-              class="confirm"
-
-          >
-            <span v-if="!adding">Добавить новое место</span>
-            <MoloLoaders v-else btnLoader/>
-          </MoloButton>
-        </section>
+        <MoloSection>
+          <template #header>
+            <span>Работа с меню</span>
+          </template>
+          <template #main>
+            <MoloButton
+                class="confirm full small"
+                @click="openCreateLocationModal"
+            >
+              Добавить место
+            </MoloButton>
+            <MoloButton
+                class="action full small"
+            >
+              Удалить место
+            </MoloButton>
+          </template>
+        </MoloSection>
       </div>
     </div>
 
     <hr/>
 
     <!-- КОД МОДУЛЯ -->
-    <div class="editor-section">
-      <div class="modal-header">
-        <h3>Код модуля</h3>
-
+    <MoloSection>
+      <template #header>
+        <span>Код модуля</span>
         <MoloButton
             v-if="selectedModuleId && enterpriseInfo?._id"
             :disabled="clearingCache"
-            class="confirm"
+            class="confirm small"
             @click="clearModuleCache"
         >
-          <MoloLoaders
-              v-if="clearingCache"
-              btnLoader
-          />
+          <MoloLoaders v-if="clearingCache" btnLoader/>
           <span v-else>Очистить кеш</span>
         </MoloButton>
-      </div>
-
-      <div
-          :class="{ 'with-docs': showDocumentation }"
-          class="code-container"
-      >
-        <ClientOnly>
-        <vue-monaco-editor
-            ref="monacoRef"
-            v-model:value="formData.code"
-            :language="editorLanguage"
-            :options="MONACO_EDITOR_OPTIONS"
-            class="monaco-editor-container"
-            theme="vs-dark"
-        />
-        </ClientOnly>
-
-        <div
-            v-if="showDocumentation"
-            class="documentation"
-        >
-          ...
+      </template>
+      <template #main>
+        <div class="code-container">
+          <ClientOnly>
+            <vue-monaco-editor
+                ref="monacoRef"
+                v-model:value="formData.code"
+                :language="editorLanguage"
+                :options="MONACO_EDITOR_OPTIONS"
+                class="monaco-editor-container"
+                theme="vs-dark"
+            />
+          </ClientOnly>
         </div>
-      </div>
-    </div>
+      </template>
+    </MoloSection>
 
     <hr/>
 
     <!-- ФАЙЛЫ МОДУЛЯ -->
-    <div class="files-section">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h3>Файлы модуля</h3>
-
-          <MoloButton
-              class="confirm"
-              @click="moduleStore.openFileEditor()"
-          >
-            Добавить файл
-          </MoloButton>
-        </div>
-
-        <div
-            v-if="loadingFiles"
-            class="loader-wrapper"
-        >
+    <MoloSection>
+      <template #header>
+        <span>Файлы модуля</span>
+        <MoloButton class="confirm small" @click="moduleStore.openFileEditor()">
+          Добавить файл
+        </MoloButton>
+      </template>
+      <template #main>
+        <div v-if="loadingFiles" class="loader-wrapper">
           <MoloLoaders wndLoader/>
         </div>
-
-        <section class="modal-body">
-          <!-- Клиентские файлы -->
-          <div
-              v-for="file in clientFiles"
-              :key="file.path"
-              class="file-item"
-          >
+        <div>
+          <div v-for="file in clientFiles" :key="file.path" class="file-item">
             <div class="file-info">
-              <span class="file-logo">
-                <img
-                    v-if="file.format === 'vue'"
-                    :src="vueIcon"
-                    alt=""
-                    class="file-icon"
-                />
-                <img
-                    v-else-if="file.format === 'ts'"
-                    :src="tsIcon"
-                    alt=""
-                    class="file-icon"
-                />
-                <img
-                    v-else
-                    :src="jsIcon"
-                    alt=""
-                    class="file-icon"
-                />
-                {{ file.name }}
-              </span>
+                <span class="file-logo">
+                  <img
+                      v-if="file.format === 'vue'"
+                      :src="vueIcon"
+                      alt=""
+                      class="file-icon"
+                  />
+                  <img
+                      v-else-if="file.format === 'ts'"
+                      :src="tsIcon"
+                      alt=""
+                      class="file-icon"
+                  />
+                  <img v-else :src="jsIcon" alt="" class="file-icon"/>
+                  {{ file.name }}
+                </span>
 
               <span class="file-badge">
-                {{ file.format }}
-              </span>
+                  {{ file.format }}
+                </span>
 
               <span class="file-path">
-                {{ file.path }}
-              </span>
+                  {{ file.path }}
+                </span>
             </div>
 
             <div class="file-actions">
@@ -1191,36 +1163,26 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <!-- Серверные файлы -->
-          <div
-              v-for="file in serverFiles"
-              :key="file.path"
-              class="file-item"
-          >
+          <div v-for="file in serverFiles" :key="file.path" class="file-item">
             <div class="file-info">
-              <span class="file-logo">
-                <img
-                    v-if="file.format === 'ts'"
-                    :src="tsIcon"
-                    alt=""
-                    class="file-icon"
-                />
-                <img
-                    v-else
-                    :src="jsIcon"
-                    alt=""
-                    class="file-icon"
-                />
-                {{ file.name }}
-              </span>
+                <span class="file-logo">
+                  <img
+                      v-if="file.format === 'ts'"
+                      :src="tsIcon"
+                      alt=""
+                      class="file-icon"
+                  />
+                  <img v-else :src="jsIcon" alt="" class="file-icon"/>
+                  {{ file.name }}
+                </span>
 
               <span class="file-badge server">
-                server | {{ file.format }}
-              </span>
+                  server | {{ file.format }}
+                </span>
 
               <span class="file-path">
-                {{ file.path }}
-              </span>
+                  {{ file.path }}
+                </span>
             </div>
 
             <div class="file-actions">
@@ -1248,9 +1210,9 @@ onUnmounted(() => {
           >
             Нет файлов
           </div>
-        </section>
-      </div>
-    </div>
+        </div>
+      </template>
+    </MoloSection>
 
     <!-- МОДАЛКА ФАЙЛА -->
     <div
@@ -1258,31 +1220,15 @@ onUnmounted(() => {
         class="modal-overlay"
         @click.self="moduleStore.closeFileEditor()"
     >
-      <div class="modal-content">
+      <div class="modal-content file-editor-modal">
         <div class="modal-header">
           <h3>
             {{ editingFilePath ? 'Редактирование файла' : 'Новый файл' }}
           </h3>
 
-          <div class="modal-footer">
-            <MoloButton
-                class="close"
-                @click="moduleStore.closeFileEditor()"
-            >
-              Отмена
-            </MoloButton>
-
-            <MoloButton
-                :disabled="loadingUPD"
-                class="confirm"
-                @click="saveFile"
-            >
-              <span v-if="!loadingUPD">
-                {{ editingFilePath ? 'Обновить' : 'Создать' }}
-              </span>
-              <MoloLoaders v-else btnLoader/>
-            </MoloButton>
-          </div>
+          <MoloButton class="close" @click="moduleStore.closeFileEditor()">
+            ✕
+          </MoloButton>
         </div>
 
         <div class="modal-body">
@@ -1312,26 +1258,35 @@ onUnmounted(() => {
 
           <div class="form-row">
             <label class="checkbox-label">
-              <input
-                  v-model="fileForm.isServer"
-                  type="checkbox"
-              />
+              <input v-model="fileForm.isServer" type="checkbox"/>
               <span>Серверный файл</span>
             </label>
           </div>
 
           <div class="file-editor-container">
             <ClientOnly>
-            <vue-monaco-editor
-                v-model:value="fileForm.code"
-                :language="getEditorLanguage(fileForm.format)"
-                :options="MONACO_EDITOR_OPTIONS"
-                class="file-monaco-editor"
-                theme="vs-dark"
-            />
+              <vue-monaco-editor
+                  v-model:value="fileForm.code"
+                  :language="getEditorLanguage(fileForm.format)"
+                  :options="MONACO_EDITOR_OPTIONS"
+                  class="file-monaco-editor"
+                  theme="vs-dark"
+              />
             </ClientOnly>
-
           </div>
+        </div>
+
+        <div class="modal-footer">
+          <MoloButton class="close" @click="moduleStore.closeFileEditor()">
+            Отмена
+          </MoloButton>
+
+          <MoloButton :disabled="loadingUPD" class="confirm" @click="saveFile">
+              <span v-if="!loadingUPD">
+                {{ editingFilePath ? 'Обновить' : 'Создать' }}
+              </span>
+            <MoloLoaders v-else btnLoader/>
+          </MoloButton>
         </div>
       </div>
     </div>
@@ -1340,65 +1295,65 @@ onUnmounted(() => {
 
     <!-- ЗАВИСИМОСТИ -->
     <div class="dependencies">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h3>Зависимости</h3>
-
+      <MoloSection>
+        <template #header>
+          <span>Зависимости</span>
           <div class="dep-tabs">
             <MoloButton
-                :class="activeDepTab === 'dependencies' ? 'confirm' : 'default'"
+                :class="activeDepTab === 'dependencies' ? 'confirm small' : 'default small'"
                 @click="activeDepTab = 'dependencies'"
             >
               dependencies
             </MoloButton>
 
             <MoloButton
-                :class="activeDepTab === 'devDependencies' ? 'confirm' : 'default'"
+                :class="activeDepTab === 'devDependencies' ? 'confirm small' : 'default small'"
                 @click="activeDepTab = 'devDependencies'"
             >
               devDependencies
             </MoloButton>
           </div>
-        </div>
+        </template>
+        <template #main>
+          <div class="dep-list-header">
+            <span>Название пакета</span>
+            <span>Версия</span>
+            <span>Действия</span>
+          </div>
 
-        <div class="dep-list-header">
-          <span>Название пакета</span>
-          <span>Версия</span>
-          <span>Действия</span>
-        </div>
-
-        <div class="dep-list">
-          <div
-              v-for="(version, pkg) in currentDeps"
-              :key="pkg"
-              class="dep-item"
-          >
-            <span class="dep-name">{{ pkg }}</span>
-            <span class="dep-version">{{ version }}</span>
-
-            <button
-                class="action-btn-small delete"
-                @click="removeDependency(pkg as string)"
+          <div class="dep-list">
+            <div
+                v-for="(version, pkg) in currentDeps"
+                :key="pkg"
+                class="dep-item"
             >
-              ×
-            </button>
+              <span class="dep-name">{{ pkg }}</span>
+              <span class="dep-version">{{ version }}</span>
+
+              <button
+                  class="action-btn-small delete"
+                  @click="removeDependency(pkg as string)"
+              >
+                ×
+              </button>
+            </div>
+
+            <div v-if="Object.keys(currentDeps).length === 0" class="dep-empty">
+              Нет зависимостей
+            </div>
           </div>
+        </template>
+      </MoloSection>
 
-          <div
-              v-if="Object.keys(currentDeps).length === 0"
-              class="dep-empty"
-          >
-            Нет зависимостей
-          </div>
-        </div>
-      </div>
-
-      <div class="modal-content">
-        <div class="modal-header">
-          <h3>Добавить зависимость</h3>
-        </div>
-
-        <div class="dependencies-new">
+      <MoloSection>
+        <template #header>
+          <span>Добавить зависимость</span>
+          <MoloButton :disabled="!newDepName || loadingDEP" class="confirm small" @click="addDependency">
+            <span v-if="!loadingDEP">Добавить</span>
+            <MoloLoaders v-else btnLoader/>
+          </MoloButton>
+        </template>
+        <template #main>
           <MoloInput
               v-model="newDepName"
               placeholder="package-name"
@@ -1410,43 +1365,82 @@ onUnmounted(() => {
               placeholder="latest"
               tLabel="Версия"
           />
-
-          <MoloButton
-              :disabled="!newDepName"
-              class="confirm"
-              @click="addDependency"
-          >
-
-            Добавить
-          </MoloButton>
-        </div>
-      </div>
+        </template>
+      </MoloSection>
     </div>
 
-    <hr/>
-
-    <!-- ДЕЙСТВИЯ -->
     <div class="editor-actions">
-      <MoloButton
-          class="close"
-          @click="emit('close')"
-      >
+      <MoloButton class="close" @click="emit('close')">
         Отмена
       </MoloButton>
 
-      <MoloButton
-          :disabled="loading"
-          class="confirm"
-          @click="saveModule"
-      >
-        <span v-if="!loading">
-          {{ isEditing ? 'Сохранить' : 'Создать' }}
-        </span>
-
+      <MoloButton :disabled="loading" class="confirm" @click="saveModule">
+          <span v-if="!loading">
+            {{ isEditing ? 'Сохранить' : 'Создать' }}
+          </span>
         <MoloLoaders v-else btnLoader/>
       </MoloButton>
     </div>
   </div>
+
+  <!-- МОДАЛКА СОЗДАНИЯ МЕСТА В МЕНЮ С ВЫБОРОМ РОДИТЕЛЯ -->
+  <MoloModal
+      v-model="menuLocationModalOpen"
+      title="Создание места в меню"
+      confirm-text="Создать"
+      cancel-text="Отмена"
+      width="550px"
+      close-on-overlay
+      @confirm="handleSaveLocation"
+      help-text="Вы можете создать вложенное меню, выбрав родительский элемент.
+        Если выберите родителя (папку), новое место создастся внутри неё как подменю
+  "
+  >
+    <template #body>
+      <div style="display: flex; flex-direction: column; gap: 16px;">
+        <section class="form-row">
+          <MoloInput
+              v-model="modalLocationForm.title"
+              tLabel="Название места"
+              lRequired
+              placeholder="Например: Информация"
+          />
+          <MoloInput
+              v-model="modalLocationForm.placeName"
+              tLabel="Название ключа (название файла)"
+              lRequired
+              placeholder="Например: info"
+          />
+        </section>
+
+
+        <MoloSelect
+            v-model="modalLocationForm.type"
+            :parent="locationTypes"
+            children="label"
+            tLabel="Тип места"
+            valueKey="value"
+        />
+
+        <MoloSelect
+            v-model="modalLocationForm.parentId"
+            :parent="parentLocationOptions"
+            children="title"
+            tLabel="Родительское место"
+            valueKey="id"
+            help-text="Выберите, внутри какого места создать новое"
+        />
+
+        <MoloInput
+            v-model.number="modalLocationForm.order"
+            tLabel="Порядок сортировки"
+            type="number"
+            placeholder="0"
+            help-text="Чем меньше число, тем выше в списке"
+        />
+      </div>
+    </template>
+  </MoloModal>
 </template>
 
 <style scoped>
@@ -1455,14 +1449,7 @@ onUnmounted(() => {
   flex-direction: column;
   gap: 10px;
   padding: 20px;
-}
-
-.editor-section {
-  display: flex;
-  flex-direction: column;
-  background-color: var(--half_opacity_bg);
-  border: 1px solid var(--half_opacity_border);
-  border-radius: 12px;
+  box-sizing: border-box;
 }
 
 .editor-header {
@@ -1517,27 +1504,11 @@ onUnmounted(() => {
   gap: 10px;
 }
 
-.settings-group {
-  background: var(--half_opacity_bg);
-  border-radius: 8px;
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  border: 1px solid var(--half_opacity_border);
-}
-
-.settings-group h3 {
-  margin: 0;
-  font-size: 14px;
-  color: #aaa;
-  font-weight: 500;
-}
-
 .editor-actions {
   display: flex;
   justify-content: flex-end;
   gap: 12px;
+  box-sizing: border-box;
 }
 
 .code-container {
@@ -1553,30 +1524,13 @@ onUnmounted(() => {
   width: 100%;
 }
 
-.documentation {
-  flex: 0 0 550px;
-  background-color: #1e1e1e;
-  border-left: 1px solid #3c3c3c;
-  overflow: auto;
+.form-row {
+  display: flex;
+  gap: 10px;
 }
 
-@media (max-width: 900px) {
-  .editor-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .header-left {
-    flex-direction: column;
-  }
-
-  .code-container.with-docs {
-    flex-direction: column;
-  }
-
-  .documentation {
-    max-width: 100%;
-    height: 300px;
-  }
+.form-row > * {
+  flex: 1;
 }
 
 .checkbox-label {
@@ -1589,39 +1543,16 @@ onUnmounted(() => {
   font-size: 14px;
 }
 
-.form-row {
-  display: flex;
-  gap: 10px;
-}
-
-.form-row > * {
-  flex: 1;
-}
-
-.form-row.low {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
 .preview-upload {
   display: flex;
   flex-direction: row;
-  justify-content: start;
   align-items: center;
   gap: 8px;
-  width: fit-content;
 }
 
 .preview-image {
   display: flex;
   align-items: center;
-  gap: 10px;
-}
-
-.files-section {
-  display: flex;
-  width: 100%;
   gap: 10px;
 }
 
@@ -1632,6 +1563,12 @@ onUnmounted(() => {
   align-items: center;
   font-family: monospace;
   font-size: 13px;
+  border-bottom: 1px solid var(--half_opacity_border);
+  padding: 8px 0;
+}
+
+.file-item:last-child {
+  border-bottom: none;
 }
 
 .file-logo {
@@ -1779,19 +1716,32 @@ onUnmounted(() => {
 }
 
 .modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
   justify-content: center;
+  z-index: 10000;
 }
 
 .modal-content {
   background: var(--half_opacity_bg);
-  border-radius: 10px;
-  width: 100%;
+  border-radius: 12px;
+  width: 90%;
+  max-width: 900px;
   max-height: 85vh;
   display: flex;
   flex-direction: column;
   border: 1px solid var(--half_opacity_border);
+}
+
+.file-editor-modal {
+  max-width: 1000px;
 }
 
 .modal-header {
@@ -1809,18 +1759,20 @@ onUnmounted(() => {
 }
 
 .modal-body {
-  padding: 10px;
+  padding: 20px;
   overflow-y: auto;
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 16px;
 }
 
 .modal-footer {
   display: flex;
   justify-content: flex-end;
   gap: 12px;
+  padding: 16px 20px;
+  border-top: 1px solid #3c3c3c;
   flex-shrink: 0;
 }
 
@@ -1843,11 +1795,19 @@ onUnmounted(() => {
   gap: 20px;
 }
 
-.dependencies-new {
+.info-note {
+  padding: 10px 12px;
+  background: rgba(100, 150, 255, 0.1);
+  border-radius: 8px;
+  font-size: 12px;
+  color: #6496ff;
+}
+
+.loader-wrapper {
   display: flex;
-  flex-direction: column;
-  padding: 20px;
-  gap: 10px;
+  justify-content: center;
+  align-items: center;
+  padding: 40px;
 }
 
 hr {
@@ -1869,12 +1829,26 @@ hr {
     height: 300px;
   }
 
-  .files-section {
+  .dependencies {
     flex-direction: column;
   }
 
-  .dependencies {
+  .editor-header {
     flex-direction: column;
+    align-items: stretch;
+  }
+
+  .header-left {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .header-actions {
+    flex-wrap: wrap;
+  }
+
+  .editor-grid {
+    grid-template-columns: 1fr;
   }
 }
 </style>

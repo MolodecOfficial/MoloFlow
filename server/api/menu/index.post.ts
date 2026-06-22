@@ -7,8 +7,9 @@ export default defineEventHandler(async (event) => {
     // Создание новой группы
     if (action === 'createGroup') {
         const newGroup = new Menu({
-            id: data.id || `group_${Date.now()}`,
+            id: data.placeName,
             title: data.title,
+            placeName: data.placeName,
             requiredRole: data.requiredRole || ['Управляющий'],
             order: data.order || 0,
             isActive: true,
@@ -28,9 +29,9 @@ export default defineEventHandler(async (event) => {
         }
 
         const newItem = {
-            id: data.id || `item_${Date.now()}`,
+            id: data.placeName,
             title: data.title,
-
+            placeName: data.placeName,
             type: data.type || 'item',
 
             requiredRole: data.requiredRole || ['Управляющий'],

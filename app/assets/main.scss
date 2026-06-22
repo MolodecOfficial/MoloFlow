@@ -9,6 +9,7 @@ body {
   hr {
     border: 1px solid var(--half_opacity_border);
     width: 100%;
+
   }
 }
 
@@ -26,6 +27,15 @@ body {
   --border-color_hover: #0a4493;
   --border-color_disabled: #0e436b;
 }
+:root {
+  --glass-bg: rgba(255, 255, 255, 0.08);
+  --glass-border: rgba(255, 255, 255, 0.2);
+  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+  --glass-blur: 12px;
+  --glass-highlight: rgba(255, 255, 255, 0.4);
+}
+
+
 
 .action-btn:disabled {
   opacity: 0.5;
@@ -107,4 +117,6 @@ input[type="checkbox"] {
   border-left: 1px solid var(--half_opacity_border, #3c3c3c);
   align-self: stretch;
 }
+
+
 

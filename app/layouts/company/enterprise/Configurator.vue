@@ -1,7 +1,7 @@
 <script lang="ts" setup>
-import {onMounted, onUnmounted, ref, computed, watch} from 'vue'
+import {computed, onMounted, onUnmounted, ref, watch} from 'vue'
 import MoloModal from '~/components/MoloModal.vue'
-import { useAppStore } from '~~/stores/appStore'
+import {useAppStore} from '~~/stores/appStore'
 
 const props = defineProps<{
   enterpriseId: string
@@ -114,10 +114,10 @@ const tabsLoading = computed(() => store.tabsLoading)
 // Транслитерация кириллицы в латиницу
 function transliterate(text: string): string {
   const map: Record<string, string> = {
-    'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'yo','ж':'zh',
-    'з':'z','и':'i','й':'y','к':'k','л':'l','м':'m','н':'n','о':'o',
-    'п':'p','р':'r','с':'s','т':'t','у':'u','ф':'f','х':'kh','ц':'ts',
-    'ч':'ch','ш':'sh','щ':'shch','ъ':'','ы':'y','ь':'','э':'e','ю':'yu','я':'ya'
+    'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'yo', 'ж': 'zh',
+    'з': 'z', 'и': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm', 'н': 'n', 'о': 'o',
+    'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u', 'ф': 'f', 'х': 'kh', 'ц': 'ts',
+    'ч': 'ch', 'ш': 'sh', 'щ': 'shch', 'ъ': '', 'ы': 'y', 'ь': '', 'э': 'e', 'ю': 'yu', 'я': 'ya'
   }
   return text.replace(/[а-яё]/gi, (ch) => {
     const lower = ch.toLowerCase()
@@ -437,7 +437,7 @@ function saveField() {
   }
 
   // Убираем служебное поле _manualKey перед сохранением
-  const { _manualKey, ...cleanField } = fieldForm.value
+  const {_manualKey, ...cleanField} = fieldForm.value
 
   const fieldData = {
     ...cleanField,
@@ -555,6 +555,9 @@ onUnmounted(() => {
         <MoloButton v-if="activeSection === 'tabs'" class="confirm" @click="createNewTab">
           Новая вкладка
         </MoloButton>
+        <MoloButton v-if="activeSection === 'tabs'" class="confirm" @click="openStandardsEditor">
+          Вкладка стандартов
+        </MoloButton>
       </div>
     </div>
 
@@ -569,143 +572,148 @@ onUnmounted(() => {
         </div>
         <div v-else class="tabs-grid">
           <MoloSection v-for="tab in tabs" :key="tab._id" class="tab-card">
-            <div class="card-info" @click="selectTab(tab)">
-              <div :style="{ background: tab.color || '#6496ff' }" class="tab-icon">
-                <span>{{ tab.name.charAt(0).toUpperCase() }}</span>
-              </div>
-              <div class="tab-info">
-                <h3>{{ tab.name }}</h3>
-                <p>{{ tab.description || 'Нет описания' }}</p>
-                <div class="tab-meta">
-                  <span class="meta-count">📋 {{ getTotalFieldsCount(tab) }} полей</span>
-                  <span class="meta-count">📂 {{ tab.groups?.length || 0 }} групп</span>
+            <template #header>
+              <div class="card-info" @click="selectTab(tab)">
+                <div :style="{ background: tab.color || '#6496ff' }" class="tab-icon">
+                  <span>{{ tab.name.charAt(0).toUpperCase() }}</span>
+                </div>
+                <div class="tab-info">
+                  <h3>{{ tab.name }}</h3>
+                  <p>{{ tab.description || 'Нет описания' }}</p>
+                  <div class="tab-meta">
+                    <span class="meta-count">📋 {{ getTotalFieldsCount(tab) }} полей</span>
+                    <span class="meta-count">📂 {{ tab.groups?.length || 0 }} групп</span>
+                  </div>
                 </div>
               </div>
-            </div>
-            <div class="tab-actions">
-              <section class="actions">
-                <MoloButton class="action small" title="Редактировать" @click.stop="selectTab(tab)">✎</MoloButton>
-                <MoloButton class="action small" title="Стандарты" @click.stop="openStandardsEditor(tab)">🎨</MoloButton>
-                <MoloButton class="action small" title="Предпросмотр" @click.stop="previewTab(tab)">👁</MoloButton>
-              </section>
-              <MoloButton class="action small close" title="Удалить" @click.stop="deleteTab(tab._id)">×</MoloButton>
-            </div>
+            </template>
+            <template #main>
+              <div class="tab-actions">
+                <section class="actions">
+                  <MoloButton class="action small" title="Редактировать" @click.stop="selectTab(tab)">✎</MoloButton>
+                  <MoloButton class="action small" title="Предпросмотр" @click.stop="previewTab(tab)">👁</MoloButton>
+                </section>
+                <MoloButton class="action small close" title="Удалить" @click.stop="deleteTab(tab._id)">×</MoloButton>
+              </div>
+            </template>
+
           </MoloSection>
         </div>
       </div>
 
       <div v-if="activeSection === 'tab-editor' && showTabForm" class="section-content editor-section-content">
         <div class="tab-editor">
-          <div class="editor-section">
-            <div class="editor-header">
+          <MoloSection>
+            <template #header>
               <span>Основные настройки</span>
-            </div>
-            <div class="form-grid">
-              <MoloInput v-model="tabForm.name" tLabel="Название вкладки" lRequired @input="generateSlug"/>
-              <MoloInput v-model="tabForm.slug" tLabel="Ключ (slug)" lRequired/>
-              <MoloInput v-model="tabForm.description" tLabel="Описание"/>
-              <MoloSelect v-model="tabForm.defaultViewType" :parent="viewTypes" children="label"
-                          tLabel="Тип отображения по умолчанию" valueKey="value"/>
-            </div>
-          </div>
+              <div class="editor-actions">
+                <MoloButton @click="backToTabs" class="close small">Отмена</MoloButton>
+                <MoloButton class="confirm small" @click="saveTab" :disabled="loading">
+                  <MoloLoaders btnLoader v-if="loading"/>
+                  <span v-else>{{ editingTab ? 'Обновить' : 'Создать' }} вкладку</span>
+                </MoloButton>
+              </div>
+            </template>
+            <template #main>
+              <div class="form-grid">
+                <MoloInput v-model="tabForm.name" tLabel="Название вкладки" lRequired @input="generateSlug"/>
+                <MoloInput v-model="tabForm.slug" tLabel="Ключ (slug)" lRequired/>
+                <MoloInput v-model="tabForm.description" tLabel="Описание"/>
+                <MoloSelect v-model="tabForm.defaultViewType" :parent="viewTypes" children="label"
+                            tLabel="Тип отображения по умолчанию" valueKey="value"/>
+              </div>
+            </template>
+          </MoloSection>
 
-          <div class="editor-section">
-            <div class="editor-header">
-              <div>
+          <MoloSection>
+            <template #header>
+              <div class="editor-header">
                 <span>Группы полей</span>
                 <p class="section-desc">Каждая группа станет отдельной колонкой в таблице</p>
               </div>
               <MoloButton class="confirm" @click="openGroupModal()">
-                + Добавить группу
+                Добавить группу
               </MoloButton>
-            </div>
+            </template>
+            <template #main>
+              <div v-if="tabForm.groups.length === 0" class="empty-fields">
+                <span>📭</span>
+                <p>Нет групп</p>
+              </div>
 
-            <div v-if="tabForm.groups.length === 0" class="empty-fields">
-              <span>📭</span>
-              <p>Нет групп</p>
-            </div>
-
-            <div class="group-section">
-              <div v-for="(group, gIdx) in tabForm.groups" :key="gIdx" class="group-card">
-                <div class="group-header">
-                  <div class="group-order">
-                    <button :disabled="gIdx === 0" @click="moveGroup(gIdx, 'up')">▲</button>
-                    <button :disabled="gIdx === tabForm.groups.length - 1" @click="moveGroup(gIdx, 'down')">▼</button>
-                  </div>
-                  <div class="group-info">
-                    <div class="group-name">
-                      <span class="group-icon">📁</span>
-                      <strong>{{ group.name }}</strong>
+              <div class="group-section">
+                <div v-for="(group, gIdx) in tabForm.groups" :key="gIdx" class="group-card">
+                  <div class="group-header">
+                    <div class="group-order">
+                      <button :disabled="gIdx === 0" @click="moveGroup(gIdx, 'up')">▲</button>
+                      <button :disabled="gIdx === tabForm.groups.length - 1" @click="moveGroup(gIdx, 'down')">▼</button>
                     </div>
-                    <span class="group-desc">{{ group.description || 'Нет описания' }}</span>
-                    <span class="field-count">🔢 {{ group.fields?.length || 0 }} полей</span>
-                  </div>
-                  <div class="group-actions">
-                    <MoloButton class="action" @click="openGroupModal(gIdx)">✎</MoloButton>
-                    <MoloButton class="action" @click="confirmDeleteGroup(gIdx)">×</MoloButton>
-                  </div>
-                </div>
-
-                <div class="group-fields">
-                  <div class="fields-header">
-                    <span>Поля группы</span>
-                    <MoloButton class="confirm small" @click="openFieldModal(gIdx, null)">+ Добавить поле</MoloButton>
-                  </div>
-
-                  <div v-if="!group.fields || group.fields.length === 0" class="empty-fields">
-                    <span>📭</span>
-                    <p>Нет полей</p>
-                  </div>
-
-                  <div v-for="(field, fIdx) in (group.fields || [])" :key="fIdx" class="field-item">
-                    <div class="field-order">
-                      <button :disabled="fIdx === 0" @click="moveField(gIdx, fIdx, 'up')">▲</button>
-                      <button :disabled="fIdx === (group.fields?.length || 0) - 1"
-                              @click="moveField(gIdx, fIdx, 'down')">▼
-                      </button>
-                    </div>
-                    <div class="field-icon">
-                      <span>{{ field.label ? field.label[0] : '' }}</span>
-                      <span>{{ field.label ? field.label.slice(-1) : '' }}</span>
-                    </div>
-                    <div class="field-info">
-                      <div class="field-name">
-                        <span class="field-key">{{ field.key }}</span>
-                        <span class="field-separator">—</span>
-                        <span class="field-label">{{ field.label }}</span>
+                    <div class="group-info">
+                      <div class="group-name">
+                        <span class="group-icon">📁</span>
+                        <strong>{{ group.name }}</strong>
                       </div>
-                      <div class="field-meta">
-                        <span class="field-type-badge">{{ field.description }}</span>
-                        <span v-if="field.required" class="field-badge required">Обязательное</span>
-                        <span v-if="field.isUnique" class="field-badge unique">Уникальное</span>
-                      </div>
+                      <span class="group-desc">{{ group.description || 'Нет описания' }}</span>
+                      <span class="field-count">🔢 {{ group.fields?.length || 0 }} полей</span>
                     </div>
-                    <div class="field-actions">
-                      <MoloButton class="small action" @click="openFieldModal(gIdx, fIdx)">✎</MoloButton>
-                      <MoloButton class="small action" @click="confirmDeleteField(gIdx, fIdx)">×</MoloButton>
+                    <div class="group-actions">
+                      <MoloButton class="action small" @click="openGroupModal(gIdx)">✎</MoloButton>
+                      <MoloButton class="action small" @click="confirmDeleteGroup(gIdx)">×</MoloButton>
+                    </div>
+                  </div>
+
+                  <div class="group-fields">
+                    <div class="fields-header">
+                      <span>Поля группы</span>
+                      <MoloButton class="confirm small" @click="openFieldModal(gIdx, null)">Добавить поле</MoloButton>
+                    </div>
+
+                    <div v-if="!group.fields || group.fields.length === 0" class="empty-fields">
+                      <span>📭</span>
+                      <p>Нет полей</p>
+                    </div>
+
+                    <div v-for="(field, fIdx) in (group.fields || [])" :key="fIdx" class="field-item">
+                      <div class="field-order">
+                        <button :disabled="fIdx === 0" @click="moveField(gIdx, fIdx, 'up')">▲</button>
+                        <button :disabled="fIdx === (group.fields?.length || 0) - 1"
+                                @click="moveField(gIdx, fIdx, 'down')">▼
+                        </button>
+                      </div>
+                      <div class="field-icon">
+                        <span>{{ field.label ? field.label[0] : '' }}</span>
+                        <span>{{ field.label ? field.label.slice(-1) : '' }}</span>
+                      </div>
+                      <div class="field-info">
+                        <div class="field-name">
+                          <span class="field-key">{{ field.key }}</span>
+                          <span class="field-separator">—</span>
+                          <span class="field-label">{{ field.label }}</span>
+                        </div>
+                        <div class="field-meta">
+                          <span class="field-type-badge">{{ field.description }}</span>
+                          <span v-if="field.required" class="field-badge required">Обязательное</span>
+                          <span v-if="field.isUnique" class="field-badge unique">Уникальное</span>
+                        </div>
+                      </div>
+                      <div class="field-actions">
+                        <MoloButton class="small action" @click="openFieldModal(gIdx, fIdx)">✎</MoloButton>
+                        <MoloButton class="small action" @click="confirmDeleteField(gIdx, fIdx)">×</MoloButton>
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
-            </div>
-          </div>
-
-          <div class="editor-actions">
-            <MoloButton @click="backToTabs" class="close">Отмена</MoloButton>
-            <MoloButton class="confirm" @click="saveTab" :disabled="loading">
-              <MoloLoaders btnLoader v-if="loading" />
-              <span v-else>{{ editingTab ? 'Обновить' : 'Создать' }} вкладку</span>
-            </MoloButton>
-          </div>
+            </template>
+          </MoloSection>
         </div>
       </div>
 
-      <div v-if="activeSection === 'preview' && selectedTab" class="section-content preview-section-content">
-        <div class="preview-page">
-          <div class="preview-toolbar">
-            <span>Предпросмотр: {{ selectedTab.name }}</span>
-          </div>
-
+      <MoloSection v-if="activeSection === 'preview' && selectedTab">
+        <template #header>
+          <span>Предпросмотр: {{ selectedTab.name }}</span>
+        </template>
+        <template #main>
           <MockDataPreview
               :fields="getAllFields()"
               :groups="selectedTab?.groups || []"
@@ -718,8 +726,8 @@ onUnmounted(() => {
             <p>💡 Предпросмотр со стандартом «{{ previewStandard?.name || 'по умолчанию' }}»</p>
             <p v-if="previewStandard?.settings?.useGroupsAsColumns">📌 Колонки соответствуют группам вкладки</p>
           </div>
-        </div>
-      </div>
+        </template>
+      </MoloSection>
     </div>
 
     <!-- Модалки остаются без изменений -->
@@ -730,10 +738,10 @@ onUnmounted(() => {
         cancel-text="Отмена"
         close-on-overlay
         @confirm="confirmDeleteTab"
+        help-text="Это действие необратимо — удалятся все записи."
     >
       <template #body>
         <p style="color: white;">Вы действительно хотите удалить вкладку <strong>{{ tabToDelete?.name }}</strong>?</p>
-        <p style="color: #ef4444; font-size: 13px;">Это действие необратимо — удалятся все записи.</p>
       </template>
     </MoloModal>
 
@@ -777,8 +785,8 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <MoloInput v-model="groupForm.name" tLabel="Название группы" lRequired />
-          <MoloInput v-model="groupForm.description" tLabel="Описание" />
+          <MoloInput v-model="groupForm.name" tLabel="Название группы" lRequired/>
+          <MoloInput v-model="groupForm.description" tLabel="Описание"/>
           <MoloInput v-model="groupForm.link" tLabel="Внешняя ссылка"/>
         </div>
       </template>
@@ -808,7 +816,8 @@ onUnmounted(() => {
       <template #body>
         <div class="modal-field-grid">
           <MoloInput v-model="fieldForm.label" tLabel="Название" lRequired placeholder="Название проекта"/>
-          <MoloInput v-model="fieldForm.key" tLabel="Ключ" lRequired placeholder="project_name" help-text="Автоматически генерируется из названия, можно редактировать вручную"/>
+          <MoloInput v-model="fieldForm.key" tLabel="Ключ" lRequired placeholder="project_name"
+                     help-text="Автоматически генерируется из названия, можно редактировать вручную"/>
           <MoloInput v-model="fieldForm.description" tLabel="Описание"/>
           <MoloInput v-model="fieldForm.link" tLabel="Ссылка"/>
         </div>
@@ -888,6 +897,11 @@ onUnmounted(() => {
   gap: 16px;
 }
 
+.header-actions {
+  display: flex;
+  gap: 10px;
+}
+
 .back-btn {
   background: none;
   border: 1px solid var(--half_opacity_border);
@@ -920,33 +934,37 @@ onUnmounted(() => {
   padding: 4px;
 }
 
-/* Секция с вкладками — особое внимание */
+/* Секция с вкладками — адаптивная сетка с красивым переносом */
 .tabs-section {
   overflow-y: auto;
 }
 
 .tabs-grid {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
   gap: 20px;
   padding: 4px;
-  flex: 1;
+}
+
+/* Адаптация для маленьких экранов */
+@media (max-width: 1200px) {
+  .tabs-grid {
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .tabs-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .tab-card {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 16px;
-  background: var(--half_opacity_bg);
-  border: 1px solid var(--half_opacity_border);
-  border-radius: 12px;
-  transition: all 0.2s ease;
-  min-width: 0;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .tab-card:hover {
   transform: translateY(-2px);
-  border-color: #4a7eb5;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
@@ -1004,7 +1022,6 @@ onUnmounted(() => {
 
 .meta-count {
   font-size: 11px;
-  padding: 2px 8px;
   background: #25252c;
   border-radius: 20px;
   color: #bbb;
@@ -1049,11 +1066,8 @@ onUnmounted(() => {
 .editor-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  padding: 20px;
-  border-bottom: 1px solid var(--half_opacity_border);
   flex-wrap: wrap;
-  gap: 12px;
+  flex-direction: column;
 }
 
 .editor-header span {
@@ -1068,7 +1082,6 @@ onUnmounted(() => {
 }
 
 .form-grid {
-  padding: 20px;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 16px;
@@ -1077,21 +1090,17 @@ onUnmounted(() => {
 .group-section {
   display: flex;
   flex-direction: column;
-  padding: 0 16px 16px 16px;
   gap: 16px;
+}
+
+.group-card {
+  border-bottom: 3px solid var(--half_opacity_border);
 }
 
 .group-form {
   display: flex;
   flex-direction: column;
   gap: 10px;
-}
-
-.group-card {
-  background: rgba(0, 0, 0, 0.2);
-  border: 1px solid var(--half_opacity_border);
-  border-radius: 12px;
-  padding: 16px;
 }
 
 .group-header {
@@ -1163,13 +1172,6 @@ onUnmounted(() => {
   display: flex;
   gap: 6px;
 }
-
-.group-fields {
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--half_opacity_border);
-}
-
 .fields-header {
   display: flex;
   justify-content: space-between;
@@ -1395,8 +1397,7 @@ onUnmounted(() => {
   display: flex;
   gap: 12px;
   justify-content: flex-end;
-  margin-top: 20px;
-  padding: 0 4px;
+
 }
 
 .modal-field-grid {
@@ -1526,10 +1527,6 @@ onUnmounted(() => {
 @media (max-width: 768px) {
   .configurator {
     padding: 12px;
-  }
-
-  .tabs-grid {
-    grid-template-columns: 1fr;
   }
 
   .modal-field-grid {

@@ -79,7 +79,7 @@ function updateWindowTitle(newTitle: string) {
         class="draggable-window"
     >
       <template #inner-header>
-        <slot name="inner-header" />
+        <slot name="inner-header" @mousedown="focusWindow(window.id)" />
       </template>
       <template #default="{ refreshKey }">
         <WindowsContent

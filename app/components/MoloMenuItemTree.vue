@@ -22,12 +22,14 @@ const emit = defineEmits<{
   'lock-hover': [value: boolean]
   'open-window': [
     groupId: string,
-    itemId: string,
-    subGroupId?: string,
+    placeName: string,
+    subGroupPlaceName?: string,
     sizeOptions?: WindowSizeOptions,
     isModal?: boolean,
     componentPath?: string,
-    moduleData?: any
+    moduleData?: any,
+    extraData?: any,
+    customTitle?: string
   ]
 }>()
 
@@ -124,24 +126,28 @@ const createDynamicMenuItems = () => {
 
   return dynamicModules.value
       .filter(module => module && module._id)
-      .map(module => ({
-        id: `module_${module._id}`,
-        title: module.name || 'Без названия',
-        format: module.format,
-        requiredRole: ['Управляющий', 'Сотрудник'],
-        isActive: true,
-        isModule: true,
-        moduleId: module._id,
-        moduleData: {
-          _id: module._id,
-          name: module.name,
+      .map(module => {
+        const placeName = module.fileName || `module_${module._id}`
+        return {
+          id: placeName,
+          placeName: placeName,
+          title: module.name || 'Без названия',
           format: module.format,
-          code: module.code || '',  // ← ДОБАВЬТЕ ЭТУ СТРОКУ
-          fileName: module.fileName
-        },
-        componentName: module.format === 'vue' ? 'DynamicModuleLoader' : undefined,
-        isScript: module.format !== 'vue'
-      }))
+          requiredRole: ['Управляющий', 'Сотрудник'],
+          isActive: true,
+          isModule: true,
+          moduleId: module._id,
+          moduleData: {
+            _id: module._id,
+            name: module.name,
+            format: module.format,
+            code: module.code || '',
+            fileName: module.fileName
+          },
+          componentName: module.format === 'vue' ? 'DynamicModuleLoader' : undefined,
+          isScript: module.format !== 'vue'
+        }
+      })
 }
 
 /* =========================
@@ -165,12 +171,16 @@ const loadMenuFromAPI = async () => {
             if (item.moduleId || item.type === 'module') {
               return {
                 ...item,
+                placeName: item.placeName || item.id,
                 format: item.format || 'vue',
                 componentName: 'DynamicModuleLoader',
                 componentPath: 'modules/DynamicModuleLoader'
               }
             }
-            return item
+            return {
+              ...item,
+              placeName: item.placeName || item.id
+            }
           })
         }))
 
@@ -281,7 +291,6 @@ const getWindowSizeOptions = (itemId: string) => {
    CLICK HANDLERS
 ========================= */
 
-// В MoloMenuItemTree.vue
 const handleLeafClick = async (event: MouseEvent, groupId: string, item: any, isModule = false) => {
   if (!item) return
 
@@ -298,38 +307,17 @@ const handleLeafClick = async (event: MouseEvent, groupId: string, item: any, is
   }
 
   const sizeOptions = getWindowSizeOptions(item.id)
+  const placeName = item.placeName || item.id
+  const customTitle = item.title || item.moduleData?.name || 'Модуль'
 
   let moduleDataToSend = item.moduleData || {}
   let finalModuleId = item.moduleId || moduleDataToSend._id || moduleDataToSend.moduleId
-  if (item.format === 'vue' && finalModuleId) {
-    try {
-      const enterpriseId = getEnterpriseIdFromLocal()
-      if (enterpriseId && finalModuleId) {
-        const fullModuleData = await moduleService.fetchFullModuleData(finalModuleId, enterpriseId, true)
-        const moduleDataToSend = moduleService.prepareModuleForWindow(fullModuleData, item.title)
 
-        emit('open-window', groupId, item.id, undefined, sizeOptions, false,
-            'modules/DynamicModuleLoader', moduleDataToSend, undefined, item.title)
-      }
-    } catch (err) {
-      addLog('error', `Не удалось загрузить модуль ${item.title}: ${err}`)
-    }
-  }
-
-  const customTitle = item.title || moduleDataToSend?.name || 'Модуль'
-
-  // Проверяем, есть ли у нас код для отправки
-  const hasCode = !!(moduleDataToSend?.code && moduleDataToSend.code.trim())
-  console.log('[MoloMenuItemTree] Отправка в окно:', {
-    hasCode,
-    moduleId: finalModuleId,
-    customTitle
-  })
-
+  // Открываем окно сразу, без ожидания загрузки полных данных
   if (item.format === 'vue' && finalModuleId) {
     emit('open-window',
         groupId,
-        item.id,
+        placeName,
         undefined,
         sizeOptions,
         false,
@@ -340,7 +328,7 @@ const handleLeafClick = async (event: MouseEvent, groupId: string, item: any, is
           _id: finalModuleId,
           name: customTitle,
           format: item.format || 'vue',
-          code: moduleDataToSend.code || ''  // Даже если пустой, передаём
+          code: moduleDataToSend.code || ''
         },
         undefined,
         customTitle
@@ -348,7 +336,7 @@ const handleLeafClick = async (event: MouseEvent, groupId: string, item: any, is
   } else {
     emit('open-window',
         groupId,
-        item.id,
+        placeName,
         undefined,
         sizeOptions,
         false,
@@ -358,11 +346,25 @@ const handleLeafClick = async (event: MouseEvent, groupId: string, item: any, is
         customTitle
     )
   }
-  console.log(
-      '[MODULE OPEN]',
-      moduleDataToSend.name,
-      moduleDataToSend.files
-  )
+
+  // Асинхронно подгружаем полные данные для обновления окна (если нужно)
+  if (item.format === 'vue' && finalModuleId && !moduleDataToSend.code) {
+    try {
+      const enterpriseId = getEnterpriseIdFromLocal()
+      if (enterpriseId && finalModuleId) {
+        const fullModuleData = await moduleService.fetchFullModuleData(finalModuleId, enterpriseId, true)
+        const preparedData = moduleService.prepareModuleForWindow(fullModuleData, customTitle)
+        // Обновляем данные уже открытого окна (через updateWindowData, если есть доступ)
+        // Для простоты можно отправить событие или использовать глобальную шину
+        window.dispatchEvent(new CustomEvent('module-data-updated', {
+          detail: { groupId, placeName, data: preparedData }
+        }))
+      }
+    } catch (err) {
+      addLog('error', `Не удалось загрузить модуль ${item.title}: ${err}`)
+    }
+  }
+
   if (isModule) {
     openModulesDropdown.value = null
     openModulesSubmenu.value = null
@@ -372,15 +374,25 @@ const handleLeafClick = async (event: MouseEvent, groupId: string, item: any, is
   }
 }
 
-// Основной обработчик - определяет, есть ли дети
 const handleMenuItemClick = (event: MouseEvent, groupId: string, item: any, isModule = false) => {
   if (!item) return
 
   if (item.items?.length) {
-    // Если есть дети - переключаем подменю при клике
-    handleParentClick(event, groupId, item, isModule)
+    // Для родительских элементов - переключаем подменю
+    if (isModule) {
+      if (openModulesSubmenu.value === item.id) {
+        openModulesSubmenu.value = null
+      } else {
+        openModulesSubmenu.value = item.id
+      }
+    } else {
+      if (openSubmenu.value === item.id) {
+        openSubmenu.value = null
+      } else {
+        openSubmenu.value = item.id
+      }
+    }
   } else {
-    // Если нет детей - выполняем действие
     handleLeafClick(event, groupId, item, isModule)
   }
 }
@@ -389,18 +401,22 @@ const handleChildItemClick = (groupId: string, parentItem: any, child: any, isMo
   if (!child) return
 
   const sizeOptions = getWindowSizeOptions(child.id)
+  const placeName = child.placeName || child.id
+  const parentPlaceName = parentItem.placeName || parentItem.id
+  const customTitle = child.title || child.name || 'Модуль'
 
   emit('open-window',
       groupId,
-      child.id || parentItem.id,
-      child.id ? parentItem.id : undefined,
+      placeName,
+      parentPlaceName,
       sizeOptions,
       false,
       child.componentPath || parentItem.componentPath,
-      child.moduleData || parentItem.moduleData
+      child.moduleData || parentItem.moduleData,
+      undefined,
+      customTitle
   )
 
-  // Закрываем все дропдауны
   if (isModule) {
     openModulesDropdown.value = null
     openModulesSubmenu.value = null
@@ -456,7 +472,6 @@ const autoExecuteModules = async () => {
   }
 }
 
-// Обработчики для lock
 const handleMouseEnterLock = () => {
   if (props.role === 'Пользователь') {
     isLockedHover.value = true
@@ -523,14 +538,12 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <!-- ГОРИЗОНТАЛЬНОЕ МЕНЮ -->
   <div
       class="horizontal-menu"
       @mouseenter="handleMouseEnterLock"
       @mouseleave="handleMouseLeaveLock"
       @mousemove="handleMouseMoveLock"
   >
-    <!-- ЛЕВОЕ МЕНЮ (Основное) -->
     <nav
         ref="menuRef"
         class="menu-nav"
@@ -553,7 +566,6 @@ onUnmounted(() => {
             <span class="nav-arrow">▼</span>
           </div>
 
-          <!-- Выпадающий список (родители) -->
           <transition name="dropdown">
             <div v-show="openDropdown === group.id" class="dropdown-menu">
               <div
@@ -574,7 +586,6 @@ onUnmounted(() => {
                         :class="{ rotated: openSubmenu === item.id }">›</span>
                 </div>
 
-                <!-- Подменю (дети) -->
                 <transition name="submenu">
                   <div v-if="item.items?.length && openSubmenu === item.id" class="submenu">
                     <div
@@ -594,10 +605,8 @@ onUnmounted(() => {
       </div>
     </nav>
 
-    <!-- Разделитель -->
     <div class="menu-divider"></div>
 
-    <!-- ПРАВОЕ МЕНЮ (Модули) -->
     <nav
         ref="modulesRef"
         class="menu-nav right"
@@ -615,7 +624,6 @@ onUnmounted(() => {
             <span class="nav-arrow">▼</span>
           </div>
 
-          <!-- Выпадающий список модулей -->
           <transition name="dropdown">
             <div v-show="openModulesDropdown === group.id" class="dropdown-menu modules-dropdown">
               <div
@@ -655,7 +663,6 @@ onUnmounted(() => {
                         :class="{ rotated: openModulesSubmenu === item.id }">›</span>
                 </div>
 
-                <!-- Подменю модулей -->
                 <transition name="submenu">
                   <div v-if="item.items?.length && openModulesSubmenu === item.id" class="submenu">
                     <div
@@ -676,7 +683,6 @@ onUnmounted(() => {
     </nav>
   </div>
 
-  <!-- LOCK для пользователя -->
   <div v-if="isLockedHover && role === 'Пользователь'" class="global-lock">
     <img :src="lock" class="lock-icon"/>
     <div
@@ -722,7 +728,6 @@ onUnmounted(() => {
   gap: 8px;
 }
 
-/* Группа меню */
 .nav-group {
   position: relative;
 }
@@ -757,16 +762,11 @@ onUnmounted(() => {
   opacity: 1;
 }
 
-/* Разделитель */
 .menu-divider {
   width: 1px;
   background: linear-gradient(to bottom, transparent, rgba(255, 255, 255, 0.2), transparent);
   margin: 8px 0;
 }
-
-/* ========================================
-   ВЫПАДАЮЩИЙ СПИСОК (РОДИТЕЛИ)
-======================================== */
 
 .dropdown-menu {
   position: absolute;
@@ -787,7 +787,6 @@ onUnmounted(() => {
   left: auto;
 }
 
-/* Элемент выпадающего списка */
 .dropdown-item {
   position: relative;
 }
@@ -836,10 +835,6 @@ onUnmounted(() => {
   transform: rotate(90deg);
 }
 
-/* ========================================
-   ПОДМЕНЮ (ДЕТИ)
-======================================== */
-
 .submenu {
   position: absolute;
   top: -8px;
@@ -854,7 +849,6 @@ onUnmounted(() => {
   z-index: 1001;
 }
 
-/* Для модулей справа - подменю влево */
 .modules-dropdown .submenu {
   left: auto;
   right: calc(100% + 4px);
@@ -875,10 +869,6 @@ onUnmounted(() => {
   padding-left: 20px;
 }
 
-/* ========================================
-   КНОПКА ПЕРЕЗАПУСКА
-======================================== */
-
 .restart-btn {
   background: transparent;
   border: none;
@@ -896,10 +886,6 @@ onUnmounted(() => {
   background: rgba(110, 162, 255, 0.1);
   transform: rotate(180deg);
 }
-
-/* ========================================
-   АНИМАЦИИ
-======================================== */
 
 .dropdown-enter-active,
 .dropdown-leave-active,
@@ -924,10 +910,6 @@ onUnmounted(() => {
 .modules-dropdown .submenu-leave-to {
   transform: translateX(8px);
 }
-
-/* ========================================
-   LOCK
-======================================== */
 
 .global-lock {
   position: fixed;
@@ -959,19 +941,11 @@ onUnmounted(() => {
   white-space: nowrap;
 }
 
-/* ========================================
-   ЗАГРУЗКА
-======================================== */
-
 .loading-placeholder {
   padding: 8px 16px;
   color: rgba(255, 255, 255, 0.5);
   font-size: 13px;
 }
-
-/* ========================================
-   АДАПТИВНОСТЬ
-======================================== */
 
 @media (max-width: 900px) {
   .horizontal-menu {

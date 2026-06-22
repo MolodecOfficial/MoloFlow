@@ -1,29 +1,27 @@
-// composables/useWindowDrag.ts
-import { ref, watch } from 'vue'
+import { ref, watch, type Ref } from 'vue'
 
 export interface UseWindowDragOptions {
-    initialPosition: { x: number; y: number }
-    windowSize: { width: number; height: number }
+    // Теперь принимаем Ref, чтобы следить за изменениями
+    initialPosition: Ref<{ x: number; y: number }>
+    windowSize: Ref<{ width: number; height: number }>
     onMove: (position: { x: number; y: number }) => void
 }
 
 export function useWindowDrag(options: UseWindowDragOptions) {
     const isDragging = ref(false)
     const dragOffset = ref({ x: 0, y: 0 })
-    const currentPosition = ref({ x: options.initialPosition.x, y: options.initialPosition.y })
+    const currentPosition = ref({ ...options.initialPosition.value })
 
-    // Следим за изменением позиции извне (например, после ресайза)
-    watch(() => options.initialPosition, (newPos) => {
+    // Следим за изменением позиции извне (например, после ресайза или максимизации)
+    watch(() => options.initialPosition.value, (newPos) => {
         currentPosition.value = { x: newPos.x, y: newPos.y }
     }, { deep: true })
 
     const handleDragStart = (e: MouseEvent) => {
         const target = e.target as HTMLElement
-        // Не начинаем перетаскивание, если клик по кнопкам управления или ресайзу
         if (target.closest('.window-controls') || target.closest('.resize-handle')) {
             return
         }
-
         e.preventDefault()
         e.stopPropagation()
 
@@ -40,9 +38,9 @@ export function useWindowDrag(options: UseWindowDragOptions) {
         const newX = e.clientX - dragOffset.value.x
         const newY = e.clientY - dragOffset.value.y
 
-        // Получаем актуальные размеры окна
-        const windowWidth = options.windowSize.width
-        const windowHeight = options.windowSize.height
+        // Берём актуальные размеры окна из ref – теперь они всегда свежие!
+        const windowWidth = options.windowSize.value.width
+        const windowHeight = options.windowSize.value.height
 
         const maxX = Math.max(0, window.innerWidth - windowWidth)
         const maxY = Math.max(0, window.innerHeight - windowHeight)

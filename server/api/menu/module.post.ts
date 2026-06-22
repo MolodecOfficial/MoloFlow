@@ -20,7 +20,6 @@ export default defineEventHandler(async (event) => {
             throw createError({ statusCode: 404, message: 'Модуль не найден в базе' });
         }
 
-        // parentItemId может прийти как объект { id: ... }
         if (parentItemId && typeof parentItemId === 'object') {
             parentItemId = parentItemId.id || parentItemId._id || null;
         }
@@ -29,7 +28,8 @@ export default defineEventHandler(async (event) => {
         }
 
         const menuItem = {
-            id: `module_${fullModule._id}`,
+            id: fullModule.fileName,
+            placeName: fullModule.fileName || fullModule._id,
             title: fullModule.name,
             type: 'item',
             requiredRole: ['Управляющий', 'Сотрудник'],
@@ -42,6 +42,7 @@ export default defineEventHandler(async (event) => {
             moduleData: {
                 _id: fullModule._id,
                 name: fullModule.name,
+                placeName: fullModule.fileName,
                 format: fullModule.format,
                 code: fullModule.code || '',
                 files: fullModule.files || [],

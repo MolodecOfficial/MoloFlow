@@ -116,6 +116,22 @@ const preloadEnterpriseData = async () => {
   }
 }
 
+const preloadEditorData = async () => {
+  const enterpriseId = appStore.getEnterpriseId()
+  if (!enterpriseId) return
+
+  addLog('info', 'Предзагрузка данных для редактора модулей...')
+
+  // Загружаем всё параллельно
+  await Promise.allSettled([
+    moduleEditorStore.loadModules(enterpriseId),
+    menuEditorStore.loadLocations(),
+    menuEditorStore.loadTree()
+  ])
+
+  addLog('success', 'Данные для редактора модулей предзагружены')
+}
+
 // Слушатель изменений в localStorage (для других вкладок)
 const handleStorageChange = async (e: StorageEvent) => {
   if (e.key === 'currentEnterprise' || e.key === 'user') {

@@ -196,12 +196,9 @@ const stylesFromStandard = computed(() => props.standard?.styles || {})
 <style scoped>
 .mock-preview {
   border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
   overflow: hidden;
 }
-.preview-body {
-  padding: 16px;
-}
+
 .cards-grid {
   display: grid;
   gap: 16px;

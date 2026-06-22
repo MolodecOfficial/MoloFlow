@@ -126,14 +126,16 @@ const handleOverlayClick = () => {
             </slot>
           </div>
         </div>
-        <div class="help-overlay" v-if="helpText">
+        <div
+            v-if="helpText"
+            class="help-overlay"
+            :style="{ width: typeof width === 'number' ? width + 'px' : width || '480px' }"
+        >
           <slot name="help">
             <p class="help-text"> {{ helpText }} </p>
           </slot>
         </div>
       </div>
-
-
     </Transition>
   </Teleport>
 </template>
@@ -149,6 +151,7 @@ const handleOverlayClick = () => {
   flex-direction: column;
   gap: 10px;
   z-index: 2000;
+  background: rgba(0, 0, 0, 0.08);
 }
 
 .modal-container {
@@ -198,15 +201,17 @@ const handleOverlayClick = () => {
 .help-overlay {
   border: 1px solid var(--half_opacity_border);
   padding: 20px;
-  width: 610px;
   border-radius: 10px;
   background: var(--half_opacity_bg);
+  box-sizing: border-box;
+
 }
 
 .help-text {
-  color: #299cec;
-  text-decoration: underline 1px;
-  text-underline-offset: 3px;
+  color: #dadada;
+  text-decoration: underline 1px dotted;
+  text-underline-offset: 4px;
+  white-space: pre-line;
 }
 
 /* Анимации */
