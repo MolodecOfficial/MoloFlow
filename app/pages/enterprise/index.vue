@@ -465,7 +465,6 @@ function deleteUser() {
   gap: 24px;
   padding: 24px 28px;
   border-radius: 28px;
-  backdrop-filter: blur(22px);
   -webkit-backdrop-filter: blur(22px);
 
 }

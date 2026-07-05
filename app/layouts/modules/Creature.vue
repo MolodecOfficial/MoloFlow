@@ -1,8 +1,7 @@
 <script lang="ts" setup>
 import {computed, nextTick, onMounted, onUnmounted, ref, watch} from 'vue'
-import {VueMonacoEditor} from '@guolao/vue-monaco-editor'
-import {getEditorLanguage, MONACO_EDITOR_OPTIONS} from '~~/app/utils/monacoConfig'
-import {initMonacoTypeScript, registerMonacoSnippets} from '~~/app/utils/monaco-init'
+import {getMonacoLanguage, initMonaco} from '~~/app/composables/monaco/index'
+
 import {useUserStore} from '~~/stores/userStore'
 import {useMenuEditorStore} from '~~/stores/menuEditorStore'
 import {useModuleEditorStore} from '~~/stores/moduleEditorStore'
@@ -12,10 +11,10 @@ import jsIcon from '~~/public/js.png'
 import tsIcon from '~~/public/ts.png'
 import vueIcon from '~~/public/vue.png'
 
-if (typeof window !== 'undefined') {
-  initMonacoTypeScript()
-  registerMonacoSnippets()
-}
+// Храним ссылки на редакторы
+let mainEditorInstance: any = null
+let fileEditorInstance: any = null
+let monacoInstance: any = null
 
 const emit = defineEmits(['close', 'saved'])
 
@@ -31,7 +30,6 @@ const moduleStore = useModuleEditorStore()
    ЛОКАЛЬНОЕ СОСТОЯНИЕ
 ========================================= */
 const enterpriseInfo = ref<any>(null)
-const monacoRef = ref()
 const previewWindowId = ref<string | null>(null)
 
 const showDocumentation = ref(false)
@@ -43,7 +41,6 @@ const initialDataLoaded = ref(false)
 
 const menuLocationModalOpen = ref(false)
 const menuLocationModalMode = ref<'create' | 'edit'>('create')
-const editingLocationData = ref<any>(null)
 
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -124,6 +121,10 @@ const modalLocationForm = ref({
   parentId: null as string | null
 })
 
+// Ref для контейнеров Monaco
+const mainMonacoContainer = ref<HTMLElement | null>(null)
+const fileMonacoContainer = ref<HTMLElement | null>(null)
+
 // Рекурсивный сбор папок с указанием groupId
 const collectFolderItems = (items: any[], groupId: string, level: number = 0): any[] => {
   const result: any[] = []
@@ -180,9 +181,14 @@ const currentUser = computed(() => ({
   role: userStore.userRole || 'system'
 }))
 
-const editorLanguage = computed(() =>
-    getEditorLanguage(formData.value.format)
-)
+// Универсальный язык для Monaco на основе формата
+const editorLanguage = computed(() => {
+  return getMonacoLanguage(formData.value.format)
+})
+
+const fileEditorLanguage = computed(() => {
+  return getMonacoLanguage(fileForm.value.format)
+})
 
 const availableParents = computed(() => {
   if (!selectedGroupId.value) return []
@@ -222,7 +228,48 @@ const getPlaceholder = () => {
   `
   }
 
+  if (formData.value.format === 'ts') {
+    return `// TypeScript module
+export function main(): string {
+  return 'Hello from TypeScript!'
+}
+`
+  }
+
+  if (formData.value.format === 'js') {
+    return `// JavaScript module
+export function main() {
+  return 'Hello from JavaScript!'
+}
+`
+  }
+
   return '// module code...'
+}
+
+// Placeholder для файлов
+const getFilePlaceholder = (format: string) => {
+  if (format === 'vue') {
+    return `<template>
+  <div>
+    <h1>Новый компонент</h1>
+  </div>
+</template>
+
+<script setup>
+// Ваш код здесь
+<\/script>`
+  }
+  if (format === 'ts') {
+    return `// TypeScript файл
+export function example(): void {
+  console.log('Hello from TypeScript!')
+}`
+  }
+  return `// JavaScript файл
+export function example() {
+  console.log('Hello from JavaScript!')
+}`
 }
 
 /* =========================================
@@ -257,6 +304,11 @@ const saveModule = async () => {
   loading.value = true
 
   try {
+    // Получаем код из редактора Monaco
+    if (mainEditorInstance) {
+      formData.value.code = mainEditorInstance.getValue()
+    }
+
     const {useModuleApi} = await import('~/composables/useModuleApi')
     const moduleApi = useModuleApi()
 
@@ -309,7 +361,10 @@ const normalizePath = (
 }
 
 const saveFile = async () => {
-  if (!selectedModuleId.value || !enterpriseInfo.value?._id) return
+  if (!selectedModuleId.value || !enterpriseInfo.value?._id) {
+    addNotification('error', 'Модуль не выбран')
+    return
+  }
 
   if (!fileForm.value.name) {
     addNotification('warning', 'Введите имя файла')
@@ -318,6 +373,11 @@ const saveFile = async () => {
 
   try {
     loadingUPD.value = true
+
+    // Получаем код из файлового редактора
+    if (fileEditorInstance) {
+      fileForm.value.code = fileEditorInstance.getValue()
+    }
 
     const {useModuleApi} = await import('~/composables/useModuleApi')
     const moduleApi = useModuleApi()
@@ -332,7 +392,7 @@ const saveFile = async () => {
       name: fileForm.value.name,
       path: filePath,
       format: fileForm.value.format,
-      code: fileForm.value.code,
+      code: fileForm.value.code || getFilePlaceholder(fileForm.value.format),
       isServerFile: fileForm.value.isServer
     }
 
@@ -351,9 +411,12 @@ const saveFile = async () => {
 
     await loadModuleFiles()
     moduleStore.closeFileEditor()
+    await refreshFileSystem()
+
   } catch (error: any) {
-    addNotification('error', 'Ошибка сохранения файла')
-    addLog('error', error.message)
+    console.error('Save file error:', error)
+    addNotification('error', error?.message || 'Ошибка сохранения файла')
+    addLog('error', error?.message || 'Unknown error')
   } finally {
     loadingUPD.value = false
   }
@@ -464,7 +527,7 @@ const refreshMenuData = async () => {
 }
 
 /* =========================================
-   MENU API METHODS (ГЛАВНОЕ ИСПРАВЛЕНИЕ)
+   MENU API METHODS
 ========================================= */
 function openCreateLocationModal() {
   menuLocationModalMode.value = 'create'
@@ -501,7 +564,6 @@ async function handleSaveLocation() {
     const groupId = selectedOption?.groupId
 
     if (parentId && groupId) {
-      // Создаём вложенную папку внутри выбранного родителя
       await menuApi.addMenuItem(
           groupId,
           parentId,
@@ -513,7 +575,6 @@ async function handleSaveLocation() {
       )
       addNotification('info', 'Вложенная папка создана')
     } else {
-      // Создаём группу верхнего уровня
       await menuApi.createGroup(
           modalLocationForm.value.title,
           modalLocationForm.value.placeName,
@@ -523,10 +584,8 @@ async function handleSaveLocation() {
       addNotification('info', 'Новая группа меню создана')
     }
 
-    // Обновляем все данные меню
     await refreshMenuData()
 
-    // Если создали группу верхнего уровня, автоматически выбираем её
     if (!parentId) {
       const newGroup = locations.value.find(
           (g: any) => g.groupTitle === modalLocationForm.value.title
@@ -536,7 +595,6 @@ async function handleSaveLocation() {
       }
     }
 
-    // Сбрасываем форму
     modalLocationForm.value = {
       title: '',
       placeName: '',
@@ -553,65 +611,6 @@ async function handleSaveLocation() {
     addNotification('error', error?.message || 'Ошибка создания места')
   } finally {
     creating.value = false
-  }
-}
-
-const deleteLocation = async (groupId: string) => {
-  if (!confirm(`Удалить группу "${groupId}"?`)) return
-
-  try {
-    deletingGroup.value = groupId
-
-    const {useMenuApi} = await import('~/composables/useMenuApi')
-    const menuApi = useMenuApi()
-
-    await menuApi.deleteGroup(groupId)
-
-    if (selectedGroupId.value === groupId) {
-      menuStore.resetSelection()
-    }
-
-    await refreshMenuData()
-
-    addNotification('info', 'Группа удалена')
-  } catch {
-    addNotification('error', 'Ошибка удаления группы')
-  } finally {
-    deletingGroup.value = null
-  }
-}
-
-const deleteMenuItem = async (groupId: string, itemId: string) => {
-  if (!confirm('Удалить этот элемент меню?')) return
-
-  try {
-    deletingItem.value = itemId
-
-    const {useMenuApi} = await import('~/composables/useMenuApi')
-    const menuApi = useMenuApi()
-
-    await menuApi.deleteItem(groupId, itemId)
-
-    await refreshMenuData()
-
-    addNotification('info', 'Элемент меню удалён')
-    window.dispatchEvent(new CustomEvent('modules-updated'))
-  } catch {
-    addNotification('error', 'Ошибка удаления элемента')
-  } finally {
-    deletingItem.value = null
-  }
-}
-
-const addModuleToMenuItem = async (groupId: string, parentItemId: string) => {
-  selectedGroupId.value = groupId
-  selectedParentId.value = parentItemId
-
-  await nextTick()
-
-  const el = document.querySelector('.menu-actions-row')
-  if (el) {
-    el.scrollIntoView({behavior: 'smooth', block: 'center'})
   }
 }
 
@@ -651,7 +650,6 @@ const addModuleToMenu = async () => {
     addNotification('info', 'Модуль добавлен в меню')
     menuStore.resetSelection()
 
-    // Обновляем дерево меню после добавления модуля
     await refreshMenuData()
 
     window.dispatchEvent(new CustomEvent('modules-updated'))
@@ -666,7 +664,13 @@ const addModuleToMenu = async () => {
    PREVIEW
 ========================================= */
 const openPreviewInWindow = () => {
-  if (!formData.value.code?.trim()) {
+  let currentCode = formData.value.code
+  if (mainEditorInstance) {
+    currentCode = mainEditorInstance.getValue()
+    formData.value.code = currentCode
+  }
+
+  if (!currentCode?.trim()) {
     addNotification('warning', 'Нет кода для предпросмотра')
     return
   }
@@ -689,7 +693,7 @@ const openPreviewInWindow = () => {
       null,
       {
         moduleName: formData.value.name || 'Без названия',
-        code: formData.value.code,
+        code: currentCode,
         files: moduleFiles.value,
         dependencies: formData.value.dependencies,
         moduleId: selectedModuleId.value
@@ -729,6 +733,58 @@ const openDocumentation = () => {
   )
 }
 
+const refreshFileSystem = async () => {
+  if (!selectedModuleId.value || !enterpriseInfo.value?._id) return
+
+  try {
+    const response = await fetch(
+        `/api/enterprises/${enterpriseInfo.value._id}/dynamicModules/${selectedModuleId.value}/files`
+    )
+    const data = await response.json()
+
+    if (data.success) {
+      const files = []
+      if (data.mainFile) {
+        files.push({
+          path: data.mainFile.path,
+          content: data.mainFile.code || '',
+          format: data.mainFile.format,
+          name: data.mainFile.name
+        })
+      }
+      if (data.files) {
+        files.push(...data.files)
+      }
+
+      // Обновляем VFS
+      if (monacoCtx?.vfs) {
+        const moduleData = {
+          code: formData.value.code,
+          fileName: formData.value.fileName,
+          format: formData.value.format,
+          files: files
+        }
+        await monacoCtx.vfs.loadModuleFiles(moduleData)
+        console.log('[Creature] VFS updated via refreshFileSystem')
+      }
+
+      // Также можно обновить старую FS, но она обычно обновляется через store
+      // Для синхронизации можно обновить и её
+      if (monacoCtx?.fs) {
+        // Загружаем в старую FS (если нужно)
+        await monacoCtx.fs.loadFilesFromDB(selectedModuleId.value, enterpriseInfo.value._id)
+      }
+
+      // Отправляем событие для других компонентов (если нужно)
+      window.dispatchEvent(new CustomEvent('monaco-files-updated', {
+        detail: { files }
+      }))
+    }
+  } catch (error) {
+    console.error('Failed to refresh files:', error)
+  }
+}
+
 /* =========================================
    HELPERS
 ========================================= */
@@ -742,6 +798,33 @@ const getEnterpriseId = (): string | null => {
     }
   }
   return null
+}
+
+// Инициализация файлового редактора
+const initFileEditor = async () => {
+  if (!fileMonacoContainer.value) return
+
+  await nextTick()
+
+  const {ctx} = initMonaco(fileMonacoContainer.value!, {
+    language: getMonacoLanguage(fileForm.value.format)
+  })
+  fileEditorInstance = ctx.editor
+  monacoInstance = ctx.monaco
+
+  // Устанавливаем код
+  const code = fileForm.value.code || getFilePlaceholder(fileForm.value.format)
+  fileEditorInstance.setValue(code)
+
+  // Обновляем язык при изменении формата
+  watch(fileEditorLanguage, (newLang) => {
+    if (fileEditorInstance && monacoInstance) {
+      const model = fileEditorInstance.getModel()
+      if (model) {
+        monacoInstance.editor.setModelLanguage(model, newLang)
+      }
+    }
+  })
 }
 
 /* =========================================
@@ -761,6 +844,9 @@ watch(
       if (!id) {
         moduleStore.resetForm()
         formData.value.code = getPlaceholder()
+        if (mainEditorInstance) {
+          mainEditorInstance.setValue(formData.value.code)
+        }
         return
       }
 
@@ -775,6 +861,10 @@ watch(
         formData.value.code = getPlaceholder()
       }
 
+      if (mainEditorInstance) {
+        mainEditorInstance.setValue(formData.value.code)
+      }
+
       await loadModuleFiles()
       await loadDependencies()
     },
@@ -786,6 +876,9 @@ watch(
     () => {
       if (!isEditing.value) {
         formData.value.code = getPlaceholder()
+        if (mainEditorInstance) {
+          mainEditorInstance.setValue(formData.value.code)
+        }
       }
     }
 )
@@ -809,7 +902,7 @@ watch(
 watch(showDocumentation, async () => {
   await nextTick()
   setTimeout(() => {
-    monacoRef.value?.editor?.layout?.()
+    mainEditorInstance?.layout?.()
   }, 50)
 })
 
@@ -820,63 +913,141 @@ watch(moduleFiles, (newFiles) => {
   })
 })
 
+// Универсальный watch для смены языка подсветки главного редактора
+watch(editorLanguage, (newLang) => {
+  if (mainEditorInstance && monacoInstance) {
+    const model = mainEditorInstance.getModel()
+    if (model) {
+      monacoInstance.editor.setModelLanguage(model, newLang)
+      console.log(`[Monaco] Язык изменён на: ${newLang} для формата: ${formData.value.format}`)
+    }
+  }
+}, {immediate: true})
+
+// Следим за открытием файловой модалки для инициализации редактора
+watch(showFileEditor, async (val) => {
+  if (val) {
+    await nextTick()
+    // Даем время на рендер DOM
+    setTimeout(() => {
+      initFileEditor()
+    }, 100)
+  } else {
+    // Очищаем редактор при закрытии
+    if (fileEditorInstance) {
+      fileEditorInstance.dispose()
+      fileEditorInstance = null
+    }
+  }
+})
+
 /* =========================================
    LIFECYCLE
 ========================================= */
+
+let monacoCtx: any = null
+
+
 onMounted(async () => {
+  if (monacoCtx?.vfs && selectedModuleId.value && enterpriseId) {
+    await monacoCtx.vfs.loadFromDB(selectedModuleId.value, enterpriseId)
+  }
+
+// Исправить watch для moduleFiles:
+  watch(moduleFiles, async (newFiles) => {
+    if (!previewWindowId.value) return
+    updateWindowData('modules', previewWindowId.value, {
+      files: newFiles
+    })
+
+    // Обновляем VFS при изменении файлов
+    if (monacoCtx?.vfs) {
+      await monacoCtx.vfs.loadModuleFiles({
+        code: formData.value.code,
+        fileName: formData.value.fileName,
+        format: formData.value.format,
+        files: newFiles
+      })
+    }
+  })
+
   const enterpriseId = getEnterpriseId()
-  if (!enterpriseId) {
-    addNotification('warning', 'Нет информации о предприятии')
-    return
-  }
+  if (!enterpriseId) return
 
-  const saved = localStorage.getItem('currentEnterprise')
-  if (saved) {
-    try {
-      enterpriseInfo.value = JSON.parse(saved)
-    } catch {
-      addNotification('warning', 'Ошибка при получении предприятия')
-    }
-  }
+  enterpriseInfo.value = JSON.parse(localStorage.getItem('currentEnterprise') || 'null')
 
-  if (!modulesLoaded.value && !modulesLoading.value) {
-    await moduleStore.loadModules(enterpriseId)
-  }
+  await moduleStore.loadModules(enterpriseId)
+  await menuStore.loadLocations()
+  await menuStore.loadTree()
 
-  if (!locationsLoaded.value && !locationsLoading.value) {
-    await menuStore.loadLocations()
-  }
-
-  if (!treeLoaded.value && !treeLoading.value) {
-    await menuStore.loadTree()
-  }
-
-  if (locations.value.length > 0 && !selectedGroupId.value) {
-    selectedGroupId.value = locations.value[0].groupId
-  }
-
-  if (selectedModuleId.value) {
-    const mod = modules.value.find((m: any) => m._id === selectedModuleId.value)
-    if (mod) {
-      moduleStore.loadModule(mod)
-      if (!formData.value.code) {
-        formData.value.code = getPlaceholder()
-      }
-      await loadModuleFiles()
-      await loadDependencies()
-    }
-  } else {
-    moduleStore.resetForm()
-    formData.value.code = getPlaceholder()
-  }
+  moduleStore.resetForm()
+  formData.value.code = getPlaceholder()
 
   initialDataLoaded.value = true
-})
 
+  // Инициализация главного Monaco
+  if (mainMonacoContainer.value) {
+    // ЗАГРУЖАЕМ ФАЙЛЫ В FS
+    let files = []
+    if (selectedModuleId.value) {
+      try {
+        const response = await fetch(
+            `/api/enterprises/${enterpriseId}/dynamicModules/${selectedModuleId.value}/files`
+        )
+        const data = await response.json()
+        if (data.success) {
+          // Добавляем основной файл
+          if (data.mainFile) {
+            files.push({
+              path: data.mainFile.path,
+              content: data.mainFile.code || '',
+              format: data.mainFile.format,
+              name: data.mainFile.name
+            })
+          }
+          // Добавляем дополнительные файлы
+          if (data.files) {
+            files.push(...data.files)
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load files:', error)
+      }
+    }
+
+    // ПЕРЕДАЕМ ФАЙЛЫ В MONACO
+    const { ctx } = initMonaco(mainMonacoContainer.value!, {
+      language: getMonacoLanguage(formData.value.format),
+      moduleId: selectedModuleId.value || undefined,
+      enterpriseId: enterpriseId,
+      files: files
+    })
+
+    mainEditorInstance = ctx.editor
+    monacoInstance = ctx.monaco
+    monacoCtx = ctx
+    if (selectedModuleId.value && enterpriseId) {
+      await ctx.vfs.loadFromDB(selectedModuleId.value, enterpriseId)
+    }
+    // Установка начального кода
+    if (formData.value.code) {
+      mainEditorInstance.setValue(formData.value.code)
+    }
+  }
+})
 onUnmounted(() => {
   if (debounceTimer) {
     clearTimeout(debounceTimer)
   }
+  if (mainEditorInstance) {
+    mainEditorInstance.dispose()
+    mainEditorInstance = null
+  }
+  if (fileEditorInstance) {
+    fileEditorInstance.dispose()
+    fileEditorInstance = null
+  }
+  monacoInstance = null
 })
 </script>
 
@@ -887,22 +1058,23 @@ onUnmounted(() => {
         <h1>{{ isEditing ? 'Редактирование модуля' : 'Создание модуля' }}</h1>
 
         <div class="header-actions">
-          <MoloButton
-              :class="selectedModuleId ? 'default' : 'confirm'"
-              @click="selectedModuleId = null"
+          <MoloButton class="small"
+                      :class="selectedModuleId ? 'default' : 'confirm'"
+                      @click="selectedModuleId = null"
           >
             Новый
           </MoloButton>
 
           <MoloButton
               v-if="formData.format === 'vue'"
-              class="confirm"
+              class="small confirm"
               @click="openPreviewInWindow"
           >
             Предпросмотр
           </MoloButton>
 
           <MoloButton
+              class="small"
               :class="openDocumentation ? 'confirm' : 'default'"
               @click="openDocumentation"
           >
@@ -1066,6 +1238,28 @@ onUnmounted(() => {
             </MoloButton>
           </template>
         </MoloSection>
+        <MoloSection>
+          <template #header>
+            <section style="display: flex; gap: 10px; align-items: center">
+              <span>Сохранение</span>
+              <div class="editor-actions">
+                <MoloButton class="small close" @click="emit('close')">
+                  Отмена
+                </MoloButton>
+
+                <MoloButton :disabled="loading" class="small confirm" @click="saveModule">
+                  <span v-if="!loading">
+                    {{ isEditing ? 'Обновить' : 'Создать' }}
+                  </span>
+                  <MoloLoaders v-else btnLoader/>
+                </MoloButton>
+              </div>
+            </section>
+          </template>
+          <template #main>
+            <span>Не забывайте сохранять изменения <3</span>
+          </template>
+        </MoloSection>
       </div>
     </div>
 
@@ -1088,14 +1282,7 @@ onUnmounted(() => {
       <template #main>
         <div class="code-container">
           <ClientOnly>
-            <vue-monaco-editor
-                ref="monacoRef"
-                v-model:value="formData.code"
-                :language="editorLanguage"
-                :options="MONACO_EDITOR_OPTIONS"
-                class="monaco-editor-container"
-                theme="vs-dark"
-            />
+            <div ref="mainMonacoContainer" class="code-container"></div>
           </ClientOnly>
         </div>
       </template>
@@ -1163,47 +1350,6 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <div v-for="file in serverFiles" :key="file.path" class="file-item">
-            <div class="file-info">
-                <span class="file-logo">
-                  <img
-                      v-if="file.format === 'ts'"
-                      :src="tsIcon"
-                      alt=""
-                      class="file-icon"
-                  />
-                  <img v-else :src="jsIcon" alt="" class="file-icon"/>
-                  {{ file.name }}
-                </span>
-
-              <span class="file-badge server">
-                  server | {{ file.format }}
-                </span>
-
-              <span class="file-path">
-                  {{ file.path }}
-                </span>
-            </div>
-
-            <div class="file-actions">
-              <MoloButton
-                  class="action-btn-small edit"
-                  title="Редактировать"
-                  @click="moduleStore.openFileEditor(file)"
-              >
-                ↩
-              </MoloButton>
-
-              <MoloButton
-                  class="action-btn-small delete"
-                  title="Удалить"
-                  @click="deleteFile(file.path)"
-              >
-                ×
-              </MoloButton>
-            </div>
-          </div>
-
           <div
               v-if="!loadingFiles && clientFiles.length === 0 && serverFiles.length === 0"
               class="file-empty"
@@ -1214,37 +1360,32 @@ onUnmounted(() => {
       </template>
     </MoloSection>
 
-    <!-- МОДАЛКА ФАЙЛА -->
-    <div
-        v-if="showFileEditor"
-        class="modal-overlay"
-        @click.self="moduleStore.closeFileEditor()"
+    <!-- МОДАЛКА РЕДАКТОРА ФАЙЛОВ -->
+    <MoloModal
+        v-model="showFileEditor"
+        :title="editingFilePath ? 'Редактирование файла' : 'Новый файл'"
+        :confirm-text="editingFilePath ? 'Обновить' : 'Создать'"
+        cancel-text="Отмена"
+        width="700px"
+        :loading="loadingUPD"
+        @confirm="saveFile"
+        @cancel="moduleStore.closeFileEditor()"
     >
-      <div class="modal-content file-editor-modal">
-        <div class="modal-header">
-          <h3>
-            {{ editingFilePath ? 'Редактирование файла' : 'Новый файл' }}
-          </h3>
-
-          <MoloButton class="close" @click="moduleStore.closeFileEditor()">
-            ✕
-          </MoloButton>
-        </div>
-
-        <div class="modal-body">
+      <template #body>
+        <div style="display: flex; flex-direction: column; gap: 16px;">
           <div class="form-row">
             <MoloInput
                 v-model="fileForm.name"
                 lRequired
-                placeholder="Button.vue"
-                tLabel="Имя файла"
+                placeholder="Button"
+                tLabel="Имя файла (без расширения)"
             />
 
             <MoloInput
                 v-model="fileForm.path"
-                lRequired
-                placeholder="components/Button.vue"
-                tLabel="Путь"
+                placeholder="components/Button"
+                tLabel="Путь (опционально)"
+                help-text="Оставьте пустым для автоматического пути"
             />
 
             <MoloSelect
@@ -1256,40 +1397,14 @@ onUnmounted(() => {
             />
           </div>
 
-          <div class="form-row">
-            <label class="checkbox-label">
-              <input v-model="fileForm.isServer" type="checkbox"/>
-              <span>Серверный файл</span>
-            </label>
-          </div>
-
           <div class="file-editor-container">
             <ClientOnly>
-              <vue-monaco-editor
-                  v-model:value="fileForm.code"
-                  :language="getEditorLanguage(fileForm.format)"
-                  :options="MONACO_EDITOR_OPTIONS"
-                  class="file-monaco-editor"
-                  theme="vs-dark"
-              />
+              <div ref="fileMonacoContainer" class="file-monaco-editor"></div>
             </ClientOnly>
           </div>
         </div>
-
-        <div class="modal-footer">
-          <MoloButton class="close" @click="moduleStore.closeFileEditor()">
-            Отмена
-          </MoloButton>
-
-          <MoloButton :disabled="loadingUPD" class="confirm" @click="saveFile">
-              <span v-if="!loadingUPD">
-                {{ editingFilePath ? 'Обновить' : 'Создать' }}
-              </span>
-            <MoloLoaders v-else btnLoader/>
-          </MoloButton>
-        </div>
-      </div>
-    </div>
+      </template>
+    </MoloModal>
 
     <hr/>
 
@@ -1367,19 +1482,6 @@ onUnmounted(() => {
           />
         </template>
       </MoloSection>
-    </div>
-
-    <div class="editor-actions">
-      <MoloButton class="close" @click="emit('close')">
-        Отмена
-      </MoloButton>
-
-      <MoloButton :disabled="loading" class="confirm" @click="saveModule">
-          <span v-if="!loading">
-            {{ isEditing ? 'Сохранить' : 'Создать' }}
-          </span>
-        <MoloLoaders v-else btnLoader/>
-      </MoloButton>
     </div>
   </div>
 
@@ -1461,7 +1563,6 @@ onUnmounted(() => {
 }
 
 .header-left {
-  flex: 1;
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -1479,11 +1580,11 @@ onUnmounted(() => {
 }
 
 .header-right {
-  min-width: 250px;
-}
-
-.module-select {
-  width: 100%;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  justify-content: center;
 }
 
 .editor-grid {
@@ -1518,8 +1619,16 @@ onUnmounted(() => {
   overflow: hidden;
 }
 
-.monaco-editor-container {
-  flex: 1;
+.file-editor-container {
+  display: flex;
+  height: 400px;
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+}
+
+.file-monaco-editor {
   height: 100%;
   width: 100%;
 }
@@ -1564,7 +1673,6 @@ onUnmounted(() => {
   font-family: monospace;
   font-size: 13px;
   border-bottom: 1px solid var(--half_opacity_border);
-  padding: 8px 0;
 }
 
 .file-item:last-child {
@@ -1715,92 +1823,10 @@ onUnmounted(() => {
   font-size: 14px;
 }
 
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.7);
-  backdrop-filter: blur(4px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 10000;
-}
-
-.modal-content {
-  background: var(--half_opacity_bg);
-  border-radius: 12px;
-  width: 90%;
-  max-width: 900px;
-  max-height: 85vh;
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--half_opacity_border);
-}
-
-.file-editor-modal {
-  max-width: 1000px;
-}
-
-.modal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px 20px;
-  border-bottom: 1px solid #3c3c3c;
-  flex-shrink: 0;
-}
-
-.modal-header h3 {
-  margin: 0;
-  font-size: 18px;
-}
-
-.modal-body {
-  padding: 20px;
-  overflow-y: auto;
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.modal-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-  padding: 16px 20px;
-  border-top: 1px solid #3c3c3c;
-  flex-shrink: 0;
-}
-
-.file-editor-container {
-  height: 400px;
-  margin-top: 16px;
-  border: 1px solid #3c3c3c;
-  border-radius: 4px;
-  overflow: hidden;
-}
-
-.file-monaco-editor {
-  height: 100%;
-  width: 100%;
-}
-
 .dependencies {
   display: flex;
   flex-direction: row;
   gap: 20px;
-}
-
-.info-note {
-  padding: 10px 12px;
-  background: rgba(100, 150, 255, 0.1);
-  border-radius: 8px;
-  font-size: 12px;
-  color: #6496ff;
 }
 
 .loader-wrapper {

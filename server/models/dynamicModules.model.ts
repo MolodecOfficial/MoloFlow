@@ -156,7 +156,29 @@ const dynamicModuleSchema = new mongoose.Schema({
     },
 
     createdAt: { type: Date, default: Date.now },
-    updatedAt: { type: Date, default: Date.now }
+    updatedAt: { type: Date, default: Date.now },
+
+    buildStatus: {
+        type: String,
+        enum: ['pending', 'building', 'built', 'failed'],
+        default: 'pending'
+    },
+    clientBundlePath: {
+        type: String,
+        default: null
+    },
+    cssBundlePath: {
+        type: String,
+        default: null
+    },
+    lastBuildAt: {
+        type: Date,
+        default: null
+    },
+    buildError: {
+        type: String,
+        default: null
+    }
 });
 
 // Индексы

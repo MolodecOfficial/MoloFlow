@@ -127,7 +127,7 @@ onMounted(() => {
 
 <template>
   <div class="browser-container">
-    <MoloSection style="width: 35%">
+    <MoloSection style="width: 300px">
       <template #header>
         Фильтры
       </template>
@@ -262,6 +262,8 @@ onMounted(() => {
   min-width: 0;
   display: flex;
   flex-direction: column;
+  width: 100%;
+  align-items: center;
   gap: 20px;
 }
 
@@ -329,22 +331,6 @@ onMounted(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
   flex: 1;
-}
-
-.card-points {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
-}
-
-.badge {
-  background: #2c2c2c;
-  padding: 4px 6px;
-  border-radius: 20px;
-  font-size: 0.7rem;
-  font-weight: bold;
-  flex-shrink: 0;
 }
 
 .official-badge {
@@ -415,21 +401,9 @@ onMounted(() => {
   font-size: 0.8rem;
 }
 
-.tooltip-enter-active,
-.tooltip-leave-active {
-  transition: all 0.2s ease-in-out;
-}
-
-.tooltip-enter-from,
-.tooltip-leave-to {
-  opacity: 0;
-  transform: translateY(8px);
-}
-
 .file-icon {
   width: 20px;
 }
-
 
 .pagination {
   display: flex;
@@ -511,7 +485,7 @@ details.advanced-settings[open] > summary::before {
 }
 
 details.advanced-settings > div,
-details.advanced-settings > .details-content {
+details.advanced-settings {
   padding: 0 18px 18px 18px;
   animation: fadeSlideDown 0.25s ease-out;
 }
@@ -546,14 +520,6 @@ details.advanced-settings > .details-content {
     padding: 16px;
   }
 
-  .filters-panel {
-    width: 100%;
-    position: static;
-    flex-direction: row;
-    flex-wrap: wrap;
-    gap: 12px;
-  }
-
   .filters-panel > * {
     flex: 1;
     min-width: 200px;
@@ -561,10 +527,6 @@ details.advanced-settings > .details-content {
 
   .modules-grid {
     grid-template-columns: 1fr;
-  }
-
-  .module-card {
-    flex-direction: column;
   }
 
   .card-logo {
@@ -581,10 +543,6 @@ details.advanced-settings > .details-content {
   .card-header h3 {
     white-space: normal;
     word-break: break-word;
-  }
-
-  .editor-control {
-    bottom: 80px;
   }
 }
 </style>

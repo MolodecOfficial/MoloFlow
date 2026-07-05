@@ -92,6 +92,8 @@ watch(compileError, (err) => {
 }
 
 .module-name {
+
+  position: fixed;
   border: 1px solid var(--half_opacity_border);
   font-size: 11px;
   background: rgba(0, 0, 0, 0.5);

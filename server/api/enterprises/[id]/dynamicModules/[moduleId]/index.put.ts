@@ -36,6 +36,7 @@ export default defineEventHandler(async (event) => {
         },
         {
             ...body,
+            code: body.code,
             updatedAt: new Date(),
             $inc: { version: 1 }
         },

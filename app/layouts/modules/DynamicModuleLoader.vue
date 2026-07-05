@@ -19,6 +19,11 @@ setGlobalComposables({
   useLogger,
   useNotifications,
   useWindowManager,
+  // Добавить недостающие composables
+  useModulesStore: () => {
+    const moduleStore = useModuleEditorStore()
+    return moduleStore
+  }
 })
 
 const {
@@ -104,19 +109,28 @@ async function loadModule() {
     error.value = 'Нет данных модуля'
     return
   }
-
   const moduleName = fullData.name || 'Модуль'
   const code = fullData.code || ''
-  const files = fullData.files || []
   const deps = fullData.dependencies || {}
+  const files = fullData.files || []
+
+  console.log('[DynamicModuleLoader] Files to compile:', files.map(f => ({
+    name: f.name,
+    path: f.path,
+    format: f.format,
+    hasCode: !!f.code
+  })))
+
+  loadedModuleData.value = { ...fullData, name: moduleName }
+  await compileModule(code, files, deps, props.moduleId || fullData._id)
+
+
 
   if (!code.trim()) {
     error.value = 'Нет кода модуля'
     return
   }
 
-  loadedModuleData.value = { ...fullData, name: moduleName }
-  await compileModule(code, files, deps, props.moduleId || fullData._id)
 }
 
 // Следим за изменением пропсов

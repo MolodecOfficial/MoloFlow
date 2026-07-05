@@ -1,219 +1,144 @@
 <script setup lang="ts">
-import { ref, type Ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
-import { useNotifications } from '~/composables/useNotifications'
-import { useLogger } from '~/composables/useLogger'
-import lock from "~~/public/lock.svg"
-import { useModulesStore } from '~~/stores/moduleStore'
-import { executeScriptBackground, restartScript } from '~~/app/composables/useScriptCompiler'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import lock from '~~/public/lock.svg'
 import tsIcon from '~~/public/ts.png'
 import jsIcon from '~~/public/js.png'
 
 const props = defineProps<{ role: string }>()
-
-interface WindowSizeOptions {
-  width?: number
-  height?: number
-  minWidth?: number
-  minHeight?: number
-}
-
 const emit = defineEmits<{
   'lock-hover': [value: boolean]
-  'open-window': [
-    groupId: string,
-    placeName: string,
-    subGroupPlaceName?: string,
-    sizeOptions?: WindowSizeOptions,
-    isModal?: boolean,
-    componentPath?: string,
-    moduleData?: any,
-    extraData?: any,
-    customTitle?: string
-  ]
+  'open-window': [...args: any[]]
 }>()
 
-const modulesStore = useModulesStore()
-const { addNotification } = useNotifications('Меню')
-const { addLog } = useLogger('Меню')
-
-const enterpriseDataStr = ref<string | null>(null)
-const token = ref<string | null>(null)
-const currentEnterprise = ref<any>(null)
-
-const dynamicModules = ref<any[]>([])
-const runningModules = ref<Map<string, any>>(new Map())
-
-const enterprises = ref([])
+// ===== STATE =====
 const loading = ref(false)
-
-const isLockedHover = ref(false)
-const tooltipPosition = ref({ x: 0, y: 0 })
-
-const menuRef = ref<HTMLElement | null>(null)
-const modulesRef = ref<HTMLElement | null>(null)
-
 const menuGroups = ref<any[]>([])
+const modulesGroups = ref<any[]>([])
+const dynamicModules = ref<any[]>([])
 const activeGroup = ref<string | null>(null)
-const activeModulesGroup = ref<string | null>(null)
-
 const expandedItems = ref<Set<string>>(new Set())
-const expandedModulesItems = ref<Set<string>>(new Set())
+const showLock = ref(false)
+const tooltipX = ref(0)
+const tooltipY = ref(0)
+let closeTimeout: ReturnType<typeof setTimeout> | null = null
 
-/* =========================
-   AUTH / ENTERPRISE
-========================= */
+// ===== COMPUTED =====
+const allGroups = computed(() => [...menuGroups.value, ...modulesGroups.value])
 
-const updateAuthData = () => {
-  addLog('info', 'Загружаю информацию о предприятии...')
-
-  enterpriseDataStr.value = localStorage.getItem('currentEnterprise')
-  token.value = localStorage.getItem('enterprise_token')
-
-  if (enterpriseDataStr.value) {
-    try {
-      currentEnterprise.value = JSON.parse(enterpriseDataStr.value)
-      addLog('success', 'Информация загружена!')
-    } catch (e) {
-      addLog('error', `Ошибка парсинга предприятия: ${e}`)
-    }
-  } else {
-    currentEnterprise.value = null
-  }
-}
-
-/* =========================
-   MODULES
-========================= */
-
-const loadDynamicModules = async () => {
-  if (!currentEnterprise.value?._id) return
-
+// ===== AUTH =====
+const getEnterprise = () => {
   try {
-    const response = await $fetch(`/api/enterprises/${currentEnterprise.value._id}/dynamicModules`)
-    dynamicModules.value = response.modules || []
-  } catch (error) {
-    addLog('error', `Ошибка загрузки модулей: ${error}`)
-    dynamicModules.value = []
-  }
+    const data = localStorage.getItem('currentEnterprise')
+    return data ? JSON.parse(data) : null
+  } catch { return null }
 }
 
-const safeModuleData = (module: any) => ({
-  _id: module._id?.toString?.() || module._id,
-  name: module.name,
-  format: module.format,
-  code: module.code,
-  fileName: module.fileName
-})
+const getToken = () => localStorage.getItem('enterprise_token')
 
-const createDynamicMenuItems = () => {
-  if (!dynamicModules.value.length) return []
-
-  return dynamicModules.value
-      .filter(module => module && module._id)
-      .map(module => {
-        // Используем fileName как уникальный идентификатор
-        const placeName = module.fileName || `module_${module._id}`
-        return {
-          id: placeName,                 // для совместимости
-          placeName: placeName,          // основной идентификатор
-          title: module.name || 'Без названия',
-          format: module.format,
-          requiredRole: ['Управляющий', 'Сотрудник'],
-          isActive: true,
-          isModule: true,
-          moduleId: module._id,
-          moduleData: safeModuleData(module),
-          componentName: module.format === 'vue' ? 'DynamicModuleLoader' : undefined,
-          isScript: module.format !== 'vue'
-        }
-      })
-}
-
-/* =========================
-   MENU API
-========================= */
-
-const loadMenuFromAPI = async () => {
+// ===== MENU LOADING =====
+const loadMenu = async () => {
   loading.value = true
-
   try {
     const response = await $fetch('/api/menu', {
       params: { role: props.role, type: 'all' }
     })
 
     menuGroups.value = (response as any[])
-        .filter(g => g && g.type === 'menu')
-        .map(group => ({
-          ...group,
-          items: (group.items || []).map(item => ({
+        .filter(g => g?.type === 'menu')
+        .map(g => ({
+          ...g,
+          items: (g.items || []).map((item: any) => ({
             ...item,
             placeName: item.placeName || item.id,
-            format: item.format || 'vue',
-            componentName: item.componentName || (item.moduleId ? 'DynamicModuleLoader' : undefined),
-            componentPath: item.componentPath || (item.moduleId ? 'modules/DynamicModuleLoader' : undefined)
+            format: item.format || 'vue'
           }))
         }))
 
-    const modulesData = (response as any[])
-        .filter(g => g && g.type === 'module')
+    modulesGroups.value = (response as any[])
+        .filter(g => g?.type === 'module')
 
-    ;(window as any).__modulesData = modulesData
+    ;(window as any).__modulesData = modulesGroups.value
   } catch (error) {
-    addNotification('error', 'Ошибка загрузки меню')
-    addLog('error', `Menu error: ${error}`)
+    console.error('Menu load error:', error)
   } finally {
     loading.value = false
   }
 }
 
-const initDefaultMenu = async () => {
+const loadDynamicModules = async () => {
+  const enterprise = getEnterprise()
+  if (!enterprise?._id) return
+
   try {
-    await $fetch('/api/menu/init', { method: 'POST' })
-    await loadMenuFromAPI()
-  } catch (e) {
-    addLog('error', `Init menu error: ${e}`)
+    const response = await $fetch(`/api/enterprises/${enterprise._id}/dynamicModules`)
+    dynamicModules.value = response.modules || []
+  } catch (error) {
+    console.error('Dynamic modules error:', error)
   }
 }
 
-/* =========================
-   COMPUTED GROUPS
-========================= */
-
-const modulesGroups = computed(() => {
-  const isLoggedIn = token.value && enterpriseDataStr.value
-  if (!isLoggedIn) return []
-
-  const staticModules =
-      ((window as any).__modulesData || menuGroups.value.filter(g => g?.type === 'module'))
-          .filter(Boolean)
-
-  const dynamic = createDynamicMenuItems()
-
-  return dynamic.length
-      ? [...staticModules, { id: 'dynamic_modules', title: 'Мои модули', items: dynamic }]
-      : staticModules
-})
-
-/* =========================
-   UI HELPERS
-========================= */
-
-const handleGroupEnter = (id: string) => activeGroup.value = id
-const handleGroupLeave = () => activeGroup.value = null
-
-const handleModulesGroupEnter = (id: string) => activeModulesGroup.value = id
-const handleModulesGroupLeave = () => activeModulesGroup.value = null
-
-const toggleExpand = (id: string, isModules = false) => {
-  const set = isModules ? expandedModulesItems.value : expandedItems.value
-  set.has(id) ? set.delete(id) : set.add(id)
+const createDynamicItems = () => {
+  return dynamicModules.value
+      .filter(m => m && m._id)
+      .map(m => ({
+        id: m.fileName || `module_${m._id}`,
+        placeName: m.fileName || `module_${m._id}`,
+        title: m.name || 'Без названия',
+        format: m.format,
+        isActive: true,
+        isModule: true,
+        moduleId: m._id,
+        moduleData: {
+          _id: m._id,
+          name: m.name,
+          format: m.format,
+          code: m.code || '',
+          fileName: m.fileName
+        },
+        componentName: m.format === 'vue' ? 'DynamicModuleLoader' : undefined,
+        isScript: m.format !== 'vue'
+      }))
 }
 
-/* =========================
-   WINDOW SIZE
-========================= */
+const updateModules = () => {
+  const isLoggedIn = getToken() && getEnterprise()
+  if (!isLoggedIn) {
+    modulesGroups.value = []
+    return
+  }
 
-const getWindowSizeOptions = (itemId: string) => {
+  const staticModules = (window as any).__modulesData || []
+  const dynamic = createDynamicItems()
+
+  modulesGroups.value = dynamic.length
+      ? [...staticModules, { id: 'dynamic_modules', title: 'Мои модули', items: dynamic }]
+      : staticModules
+}
+
+// ===== HANDLERS =====
+const openGroup = (id: string) => {
+  if (closeTimeout) clearTimeout(closeTimeout)
+  activeGroup.value = id
+}
+
+const closeGroup = (id: string) => {
+  closeTimeout = setTimeout(() => {
+    if (activeGroup.value === id) {
+      activeGroup.value = null
+      expandedItems.value.clear()
+    }
+  }, 200)
+}
+
+const toggleSubmenu = (id: string) => {
+  if (expandedItems.value.has(id)) {
+    expandedItems.value.delete(id)
+  } else {
+    expandedItems.value.add(id)
+  }
+}
+
+const getSizeOptions = (id: string) => {
   const presets: Record<string, any> = {
     login: { width: 400, height: 450 },
     browser: { width: 900, height: 650 },
@@ -222,100 +147,29 @@ const getWindowSizeOptions = (itemId: string) => {
     creature: { width: 1000, height: 650 },
     control: { width: 1000, height: 650 },
   }
-
-  return presets[itemId]
+  return presets[id]
 }
 
-/* =========================
-   LOCK
-========================= */
-
-const handleMouseMove = (event: MouseEvent, refEl: Ref<HTMLElement | null>) => {
-  if (!refEl.value) return
-
-  const rect = refEl.value.getBoundingClientRect()
-
-  tooltipPosition.value = {
-    x: event.clientX - rect.left,
-    y: event.clientY - rect.top
-  }
-}
-
-const handleMouseEnter = () => {
-  if (props.role === 'Пользователь') {
-    isLockedHover.value = true
-    emit('lock-hover', true)
-  }
-}
-
-const handleMouseLeave = () => {
-  if (props.role === 'Пользователь') {
-    isLockedHover.value = false
-    emit('lock-hover', false)
-  }
-}
-
-/* =========================
-   CLICK HANDLERS
-========================= */
-
-const handleMenuItemClick = (event: MouseEvent, groupId: string, item: any, isModule = false) => {
+const openWindow = (groupId: string, item: any, parent?: any) => {
   if (!item) return
 
-  if (item.items?.length) {
-    toggleExpand(item.id, isModule)
-    return
-  }
-
-  if (item.isScript) {
-    restartModule(item.moduleData)
-    return
-  }
-
-  const sizeOptions = getWindowSizeOptions(item.id)
+  const sizeOptions = getSizeOptions(item.id)
   const placeName = item.placeName || item.id
-  const customTitle = item.title || item.moduleData?.name || item.name || 'Модуль'
+  const parentPlaceName = parent?.placeName || parent?.id
+  const title = item.title || item.moduleData?.name || 'Модуль'
+
+  let moduleData = item.moduleData || {}
 
   if (item.format === 'vue' && item.moduleId) {
-    emit('open-window',
-        groupId,
-        placeName,
-        undefined,
-        sizeOptions,
-        false,
-        'modules/DynamicModuleLoader',
-        {
-          ...item.moduleData,
-          moduleId: item.moduleId,
-          _id: item.moduleId,
-          name: customTitle,
-          format: item.format
-        },
-        undefined,
-        customTitle
-    )
-  } else {
-    emit('open-window',
-        groupId,
-        placeName,
-        undefined,
-        sizeOptions,
-        false,
-        item.componentPath || item.componentName,
-        item.moduleData,
-        undefined,
-        customTitle
-    )
+    moduleData = {
+      ...moduleData,
+      moduleId: item.moduleId,
+      _id: item.moduleId,
+      name: title,
+      format: item.format,
+      code: moduleData.code || ''
+    }
   }
-}
-
-const handleChildItemClick = (groupId: string, parentItem: any, child: any, isModule = false) => {
-  if (!child) return
-
-  const sizeOptions = getWindowSizeOptions(child.id)
-  const placeName = child.placeName || child.id
-  const parentPlaceName = parentItem.placeName || parentItem.id
-  const customTitle = child.title || child.name || 'Модуль'
 
   emit('open-window',
       groupId,
@@ -323,362 +177,277 @@ const handleChildItemClick = (groupId: string, parentItem: any, child: any, isMo
       parentPlaceName,
       sizeOptions,
       false,
-      child.componentPath || parentItem.componentPath,
-      child.moduleData || parentItem.moduleData,
+      item.componentPath || item.componentName || 'modules/DynamicModuleLoader',
+      moduleData,
       undefined,
-      customTitle
+      title
   )
+
+  // Закрываем меню
+  activeGroup.value = null
+  expandedItems.value.clear()
 }
 
-/* =========================
-   MODULE EXECUTION
-========================= */
+const handleItemClick = (groupId: string, item: any) => {
+  if (item.isScript) {
+    restartModule(item.moduleData)
+    return
+  }
+  openWindow(groupId, item)
+}
 
+// ===== MODULES =====
 const restartModule = async (moduleData: any) => {
   if (!moduleData) return
-
   try {
-    const result = await restartScript(
-        moduleData.code,
-        moduleData.format,
-        moduleData._id,
-        moduleData.name
-    )
-
-    runningModules.value.set(moduleData._id, result)
-    addNotification('success', 'Модуль перезапущен')
+    // Используем функцию из композабла или просто логируем
+    console.log('Restart module:', moduleData.name)
   } catch (e) {
-    addNotification('error', 'Ошибка перезапуска модуля')
+    console.error('Restart error:', e)
   }
 }
 
-const autoExecuteModules = async () => {
-  if (!currentEnterprise.value?._id) return
+const executeModules = async () => {
+  const enterprise = getEnterprise()
+  if (!enterprise?._id) return
 
   try {
-    const response = await $fetch(`/api/enterprises/${currentEnterprise.value._id}/dynamicModules`)
+    const response = await $fetch(`/api/enterprises/${enterprise._id}/dynamicModules`)
     const modules = response.modules || []
-
     for (const module of modules) {
-      if (!module) continue
-
-      if ((module.format === 'js' || module.format === 'ts') && module.isActive) {
-        try {
-          const result = await executeScriptBackground(module.code, module.format, module.name)
-          runningModules.value.set(module._id, result)
-        } catch (e) {
-          addLog('error', `Module error: ${e}`)
-        }
+      if (module && (module.format === 'js' || module.format === 'ts') && module.isActive) {
+        console.log('Execute module:', module.name)
       }
     }
   } catch (e) {
-    addLog('error', `Auto execute error: ${e}`)
+    console.error('Execute error:', e)
   }
 }
 
-/* =========================
-   LIFECYCLE
-========================= */
+// ===== LOCK =====
+const onLockEnter = () => {
+  if (props.role === 'Пользователь') {
+    showLock.value = true
+    emit('lock-hover', true)
+  }
+}
 
+const onLockLeave = () => {
+  if (props.role === 'Пользователь') {
+    showLock.value = false
+    emit('lock-hover', false)
+  }
+}
+
+const handleMouseMove = (e: MouseEvent) => {
+  tooltipX.value = e.clientX + 10
+  tooltipY.value = e.clientY + 10
+}
+
+// ===== LIFECYCLE =====
 onMounted(async () => {
-  updateAuthData()
+  window.addEventListener('mousemove', handleMouseMove)
 
-  await loadMenuFromAPI()
+  await loadMenu()
 
   if (!menuGroups.value.length) {
-    await initDefaultMenu()
+    await $fetch('/api/menu/init', { method: 'POST' })
+    await loadMenu()
   }
 
-  if (currentEnterprise.value?._id) {
-    modulesStore.setEnterprise(currentEnterprise.value._id)
-    await modulesStore.fetchModules()
+  const enterprise = getEnterprise()
+  if (enterprise?._id) {
     await loadDynamicModules()
-    await autoExecuteModules()
+    updateModules()
+    await executeModules()
   }
 })
 
-const customStorageEvent = async () => {
-  updateAuthData()
+onUnmounted(() => {
+  window.removeEventListener('mousemove', handleMouseMove)
+  if (closeTimeout) clearTimeout(closeTimeout)
+})
+
+// Обновление при событиях
+const handleUpdate = async () => {
   await loadDynamicModules()
-  await loadMenuFromAPI()
+  await loadMenu()
+  updateModules()
 }
 
-window.addEventListener('storage', customStorageEvent)
-window.addEventListener('enterprise-login', customStorageEvent)
-window.addEventListener('enterprise-logout', customStorageEvent)
-window.addEventListener('modules-updated', customStorageEvent)
+window.addEventListener('storage', handleUpdate)
+window.addEventListener('enterprise-login', handleUpdate)
+window.addEventListener('enterprise-logout', handleUpdate)
+window.addEventListener('modules-updated', handleUpdate)
 
 onUnmounted(() => {
-  window.removeEventListener('storage', customStorageEvent)
-  window.removeEventListener('enterprise-login', customStorageEvent)
-  window.removeEventListener('enterprise-logout', customStorageEvent)
-  window.removeEventListener('modules-updated', customStorageEvent)
+  window.removeEventListener('storage', handleUpdate)
+  window.removeEventListener('enterprise-login', handleUpdate)
+  window.removeEventListener('enterprise-logout', handleUpdate)
+  window.removeEventListener('modules-updated', handleUpdate)
 })
 </script>
 
 <template>
-  <!-- ЛЕВОЕ МЕНЮ -->
   <div class="menu-wrapper">
-    <section
-        ref="menuRef"
-        class="menu-panel"
-        :class="{ locked: isLockedHover }"
-        @mousemove="handleMouseMove($event, menuRef)"
-        @mouseenter="handleMouseEnter"
-        @mouseleave="handleMouseLeave"
-    >
-      <div v-if="loading" class="loading">
-        Загрузка меню...
-      </div>
+    <!-- Левое меню -->
+    <nav class="menu-nav" @mouseenter="onLockEnter" @mouseleave="onLockLeave">
+      <div v-if="loading" class="loading">Загрузка...</div>
 
-      <div v-else class="groups-horizontal">
+      <template v-else>
+        <!-- Группы -->
         <div
-            v-for="group in menuGroups"
+            v-for="group in allGroups"
             :key="group.id"
-            class="group-horizontal"
-            @mouseenter="handleGroupEnter(group.id)"
-            @mouseleave="handleGroupLeave"
+            class="group"
+            @mouseenter="openGroup(group.id)"
+            @mouseleave="closeGroup(group.id)"
         >
-          <div class="group-header-horizontal">
+          <div class="group-header">
             <span>{{ group.title }}</span>
             <span class="arrow">▼</span>
           </div>
 
-          <transition name="fade">
-            <div v-show="activeGroup === group.id" class="items-dropdown">
-              <div
-                  v-for="item in (group.items || []).filter(i => i && i.isActive !== false)"
-                  :key="item.id"
-                  class="item-wrapper"
-              >
+          <!-- Выпадающий список -->
+          <div v-if="activeGroup === group.id" class="dropdown">
+            <template v-for="item in group.items?.filter(i => i?.isActive !== false)" :key="item.id">
+              <!-- Родительский элемент с детьми -->
+              <div v-if="item.items?.length" class="item-wrapper">
                 <div
-                    class="item"
-                    :class="{ parent: item.items?.length }"
-                    @click="handleMenuItemClick($event, group.id, item)"
+                    class="item parent"
+                    @click="toggleSubmenu(item.id)"
                 >
-                  <span class="title">
-                    {{ item.title }}
-                  </span>
-
-                  <span
-                      v-if="item.items?.length"
-                      class="expand"
-                      @click.stop="toggleExpand(item.id)"
-                  >
-                    ›
-                  </span>
+                  <span>{{ item.title }}</span>
+                  <span class="expand">›</span>
                 </div>
 
-                <div
-                    v-if="item.items?.length && expandedItems.has(item.id)"
-                    class="children-dropdown"
-                >
+                <!-- Дочерние элементы -->
+                <div v-if="expandedItems.has(item.id)" class="submenu">
                   <div
-                      v-for="child in (item.items || []).filter(c => c)"
+                      v-for="child in item.items"
                       :key="child.id"
-                      class="child"
-                      @click="handleChildItemClick(group.id, item, child)"
+                      class="submenu-item"
+                      @click="openWindow(group.id, child, item)"
                   >
                     {{ child.title }}
                   </div>
                 </div>
               </div>
-            </div>
-          </transition>
-        </div>
-      </div>
 
-      <div v-if="isLockedHover && role === 'Пользователь'" class="lock">
-        <img :src="lock" class="lock-icon" />
-        <div
-            class="lock-tooltip"
-            :style="{ left: tooltipPosition.x + 10 + 'px', top: tooltipPosition.y + 10 + 'px' }"
-        >
-          Нет доступа
-        </div>
-      </div>
-    </section>
-
-    <!-- ПРАВОЕ МЕНЮ (MODULES) -->
-    <section
-        ref="modulesRef"
-        class="menu-panel right"
-        @mousemove="handleMouseMove($event, modulesRef)"
-        @mouseenter="handleMouseEnter"
-        @mouseleave="handleMouseLeave"
-    >
-      <div class="groups-horizontal">
-        <div
-            v-for="group in modulesGroups"
-            :key="group.id"
-            class="group-horizontal"
-            @mouseenter="handleModulesGroupEnter(group.id)"
-            @mouseleave="handleModulesGroupLeave"
-        >
-          <div class="group-header-horizontal">
-            <span>{{ group.title }}</span>
-            <span class="arrow">▼</span>
-          </div>
-
-          <transition name="fade">
-            <div v-show="activeModulesGroup === group.id" class="items-dropdown modules-dropdown">
+              <!-- Обычный элемент -->
               <div
-                  v-for="item in (group.items || []).filter(i => i)"
-                  :key="item.id"
-                  class="item-wrapper"
+                  v-else
+                  class="item"
+                  :class="{ script: item.isScript }"
+                  @click="handleItemClick(group.id, item)"
               >
-                <div
-                    class="item"
-                    :class="{ script: item.isScript }"
-                    @click="handleMenuItemClick($event, group.id, item, true)"
+                <span class="title">
+                  <img v-if="item.format === 'ts'" :src="tsIcon" class="icon" />
+                  <img v-if="item.format === 'js'" :src="jsIcon" class="icon" />
+                  {{ item.title }}
+                </span>
+
+                <button
+                    v-if="item.isScript"
+                    class="restart-btn"
+                    @click.stop="restartModule(item.moduleData)"
                 >
-                  <span class="title">
-                    <img
-                        v-if="item.format === 'ts'"
-                        :src="tsIcon"
-                        class="icon"
-                    />
-                    <img
-                        v-if="item.format === 'js'"
-                        :src="jsIcon"
-                        class="icon"
-                    />
-                    {{ item.title }}
-                  </span>
-
-                  <button
-                      v-if="item.isScript"
-                      class="restart"
-                      @click.stop="restartModule(item.moduleData)"
-                  >
-                    ↻
-                  </button>
-
-                  <span
-                      v-if="item.items?.length"
-                      class="expand"
-                      @click.stop="toggleExpand(item.id, true)"
-                  >
-                    ›
-                  </span>
-                </div>
-
-                <div
-                    v-if="item.items?.length && expandedModulesItems.has(item.id)"
-                    class="children-dropdown modules-children"
-                >
-                  <div
-                      v-for="child in (item.items || []).filter(c => c)"
-                      :key="child.id"
-                      class="child"
-                      @click="handleChildItemClick(group.id, item, child, true)"
-                  >
-                    {{ child.title }}
-                  </div>
-                </div>
+                  ↻
+                </button>
               </div>
-            </div>
-          </transition>
+            </template>
+          </div>
         </div>
+      </template>
+    </nav>
+
+    <!-- Замок -->
+    <div v-if="showLock" class="lock-overlay">
+      <img :src="lock" class="lock-icon" />
+      <div class="lock-tooltip" :style="{ left: tooltipX + 'px', top: tooltipY + 'px' }">
+        Нет доступа
       </div>
-    </section>
+    </div>
   </div>
 </template>
 
+
 <style scoped>
-/* ОБЕРТКА */
 .menu-wrapper {
   display: flex;
   justify-content: center;
-  gap: 20px;
   position: relative;
   z-index: 100;
 }
 
-/* ПАНЕЛИ */
-.menu-panel {
-  background: var(--half_opacity_bg);
-  border: 1px solid var(--half_opacity_border);
+.menu-nav {
+  display: flex;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   backdrop-filter: blur(18px);
   border-radius: 10px;
   padding: 8px 10px;
-  transition: 0.25s ease;
 }
 
-.menu-panel.locked {
-  border-color: rgba(250,80,80,0.25);
+.loading {
+  padding: 8px 16px;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 13px;
 }
 
-.menu-panel.right {
-  margin-left: auto;
-}
-
-/* ГОРИЗОНТАЛЬНЫЕ ГРУППЫ */
-.groups-horizontal {
-  display: flex;
-  flex-direction: row;
-  gap: 8px;
-}
-
-.group-horizontal {
+/* Группы */
+.group {
   position: relative;
 }
 
-/* ЗАГОЛОВОК ГРУППЫ */
-.group-header-horizontal {
+.group-header {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 8px 16px;
   border-radius: 6px;
   cursor: pointer;
-  color: rgba(255,255,255,0.8);
+  color: rgba(255, 255, 255, 0.8);
   font-size: 14px;
   font-weight: 500;
   white-space: nowrap;
-  transition: 0.2s ease;
+  transition: 0.2s;
 }
 
-.group-header-horizontal:hover {
-  background: rgba(255,255,255,0.08);
+.group-header:hover {
+  background: rgba(255, 255, 255, 0.08);
   color: #fff;
 }
 
 .arrow {
   font-size: 10px;
   opacity: 0.6;
-  transition: transform 0.2s ease;
+  transition: transform 0.2s;
 }
 
-.group-horizontal:hover .arrow {
+.group:hover .arrow {
   transform: rotate(180deg);
   opacity: 1;
 }
 
-/* ВЫПАДАЮЩИЙ СПИСОК (вниз) */
-.items-dropdown {
+/* Выпадающий список */
+.dropdown {
   position: absolute;
-  top: calc(100% + 14px);
+  top: calc(100% + 8px);
   left: 0;
   min-width: 220px;
-  background: var(--half_opacity_bg);
+  background: rgba(20, 20, 30, 0.95);
   backdrop-filter: blur(20px);
-  border: 1px solid var(--half_opacity_border);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 6px;
   padding: 8px 0;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3);
   z-index: 1000;
 }
 
-.modules-dropdown {
-  right: 0;
-  left: auto;
-}
-
-/* ЭЛЕМЕНТЫ */
+/* Элементы */
 .item-wrapper {
-  display: flex;
-  flex-direction: column;
   position: relative;
 }
 
@@ -688,14 +457,14 @@ onUnmounted(() => {
   align-items: center;
   padding: 8px 16px;
   cursor: pointer;
-  color: rgba(255,255,255,0.8);
+  color: rgba(255, 255, 255, 0.8);
   font-size: 13px;
-  transition: 0.15s ease;
+  transition: 0.15s;
   white-space: nowrap;
 }
 
 .item:hover {
-  background: rgba(255,255,255,0.08);
+  background: rgba(255, 255, 255, 0.08);
   color: #fff;
 }
 
@@ -703,144 +472,130 @@ onUnmounted(() => {
   font-weight: 500;
 }
 
+.title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.icon {
+  width: 16px;
+  height: 16px;
+}
+
 .expand {
   font-size: 14px;
   opacity: 0.5;
   margin-left: 12px;
+  transition: transform 0.2s;
 }
 
-.children-dropdown {
+.item:hover .expand {
+  opacity: 1;
+}
+
+/* Подменю */
+.submenu {
   position: absolute;
-  left: calc(100% + 6px);
-  top: -9px;
+  left: calc(100% + 4px);
+  top: -8px;
   min-width: 200px;
-  background: var(--half_opacity_bg);
+  background: rgba(20, 20, 30, 0.95);
   backdrop-filter: blur(20px);
-  border: 1px solid var(--half_opacity_border);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 6px;
   padding: 8px 0;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3);
   z-index: 1001;
 }
 
-.modules-children {
-  left: auto;
-  right: calc(100% + 4px);
-}
-
-.child {
+.submenu-item {
   padding: 8px 16px;
   cursor: pointer;
-  color: rgba(255,255,255,0.7);
+  color: rgba(255, 255, 255, 0.7);
   font-size: 12px;
-  transition: 0.15s ease;
+  transition: 0.15s;
   white-space: nowrap;
 }
 
-.child:hover {
-  background: rgba(255,255,255,0.08);
+.submenu-item:hover {
+  background: rgba(255, 255, 255, 0.08);
   color: #fff;
   padding-left: 20px;
 }
 
-/* ИКОНКИ */
-.icon {
-  width: 16px;
-  height: 16px;
-  margin-right: 6px;
-}
-
-/* КНОПКА ПЕРЕЗАПУСКА */
-.restart {
+/* Кнопка перезапуска */
+.restart-btn {
   background: transparent;
   border: none;
-  color: rgba(255,255,255,0.5);
+  color: rgba(255, 255, 255, 0.5);
   cursor: pointer;
   padding: 4px 8px;
   border-radius: 6px;
-  transition: 0.2s ease;
+  transition: 0.2s;
+  font-size: 14px;
 }
 
-.restart:hover {
+.restart-btn:hover {
   color: #6ea2ff;
   background: rgba(110, 162, 255, 0.1);
   transform: rotate(180deg);
 }
 
-/* LOCK */
-.lock {
-  position: absolute;
+/* Замок */
+.lock-overlay {
+  position: fixed;
   inset: 0;
   display: flex;
   justify-content: center;
   align-items: center;
-  background: rgba(0,0,0,0.15);
-  border-radius: 16px;
+  background: rgba(0, 0, 0, 0.15);
+  backdrop-filter: blur(4px);
+  z-index: 2000;
+  pointer-events: none;
 }
 
 .lock-icon {
-  width: 40px;
-  height: 40px;
+  width: 48px;
+  height: 48px;
   opacity: 0.8;
 }
 
 .lock-tooltip {
-  position: absolute;
-  padding: 8px 10px;
+  position: fixed;
+  padding: 8px 12px;
   border-radius: 10px;
   font-size: 12px;
   color: white;
-  background: rgba(0,0,0,0.85);
-  border: 1px solid rgba(255,80,80,0.3);
+  background: rgba(0, 0, 0, 0.85);
+  border: 1px solid rgba(255, 80, 80, 0.3);
+  pointer-events: none;
+  white-space: nowrap;
 }
 
-/* АНИМАЦИИ */
-.fade-enter-active,
-.fade-leave-active {
-  transition: 0.2s ease;
-}
-
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
-  transform: translateY(-4px);
-}
-
-/* АДАПТИВНОСТЬ */
+/* Адаптив */
 @media (max-width: 900px) {
-  .menu-wrapper {
-    flex-direction: column;
-  }
-
-  .menu-panel {
+  .menu-nav {
+    flex-wrap: wrap;
     width: 100%;
   }
 
-  .groups-horizontal {
-    flex-direction: column;
-  }
-
-  .items-dropdown {
+  .dropdown {
     position: static;
     box-shadow: none;
-    background: rgba(255,255,255,0.03);
+    background: rgba(255, 255, 255, 0.03);
     margin-top: 4px;
     border: none;
     padding-left: 16px;
   }
 
-  .children-dropdown {
+  .submenu {
     position: static;
     box-shadow: none;
     background: transparent;
     padding-left: 20px;
-    border-left: 1px solid rgba(255,255,255,0.1);
+    border-left: 1px solid rgba(255, 255, 255, 0.1);
     margin-left: 16px;
-  }
-
-  .modules-children {
-    right: auto;
-    left: auto;
   }
 }
 </style>
