@@ -47,7 +47,7 @@ export default defineEventHandler(async (event) => {
 
     // Получение модулей с ограниченными полями (без кода для списка)
     const modules = await DynamicModule.find(filter)
-        .select('name description format previewImage tags stats isOfficial createdAt files')
+        .select('name description version format previewImage tags stats isOfficial createdAt files ')
         .sort(sort)
         .skip((page - 1) * limit)
         .limit(limit)
@@ -61,7 +61,8 @@ export default defineEventHandler(async (event) => {
             path: file.path,
             format: file.format,
             isServerFile: file.isServerFile,
-            size: file.size
+            size: file.size,
+            version: file.version
             // НЕ возвращаем code для экономии трафика
         }))
     }))

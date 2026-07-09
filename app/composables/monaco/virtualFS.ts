@@ -34,22 +34,31 @@ export class VirtualFileSystem {
     private createModel(path: string, content: string, language?: string) {
         if (!this.monacoInstance) return
 
-        if (this.modelCache.has(path)) {
-            const oldModel = this.modelCache.get(path)
-            if (oldModel) {
-                oldModel.dispose()
+        const normalizedPath = this.normalizePath(path)
+        const uri = this.monacoInstance.Uri.parse(`file:///${normalizedPath}`)
+
+        // ПРОВЕРЯЕМ, СУЩЕСТВУЕТ ЛИ УЖЕ МОДЕЛЬ
+        const existingModel = this.monacoInstance.editor.getModel(uri)
+        if (existingModel) {
+            // Если модель существует, просто обновляем её содержимое
+            existingModel.setValue(content)
+            // Обновляем язык если нужно
+            if (language) {
+                this.monacoInstance.editor.setModelLanguage(existingModel, language)
             }
-            this.modelCache.delete(path)
+            // Сохраняем в кеш
+            this.modelCache.set(normalizedPath, existingModel)
+            return
         }
 
-        const uri = this.monacoInstance.Uri.parse(`file:///${path}`)
+        // Если модель не существует, создаём новую
         const model = this.monacoInstance.editor.createModel(
             content,
             language || this.getLanguageFromPath(path),
             uri
         )
 
-        this.modelCache.set(path, model)
+        this.modelCache.set(normalizedPath, model)
     }
 
     private getLanguageFromPath(path: string): string {
@@ -111,11 +120,23 @@ export class VirtualFileSystem {
     }
 
     clear() {
-        this.files.clear()
-        for (const model of this.modelCache.values()) {
-            model.dispose()
+        // Очищаем модели
+        for (const [path, model] of this.modelCache) {
+            try {
+                const uri = this.monacoInstance?.Uri.parse(`file:///${path}`)
+                if (uri) {
+                    const existingModel = this.monacoInstance?.editor.getModel(uri)
+                    if (existingModel) {
+                        existingModel.dispose()
+                    }
+                }
+                model.dispose()
+            } catch (e) {
+                // Игнорируем ошибки при очистке
+            }
         }
         this.modelCache.clear()
+        this.files.clear()
     }
 
     async loadFromDB(moduleId: string, enterpriseId: string) {
@@ -149,10 +170,8 @@ export class VirtualFileSystem {
                     }
                 }
 
-                console.log(`[VirtualFS] Loaded ${count} files from DB for module ${moduleId}`)
             }
         } catch (error) {
-            console.error('[VirtualFS] Failed to load from DB:', error)
         }
     }
 
@@ -182,7 +201,6 @@ export class VirtualFileSystem {
             }
         }
 
-        console.log(`[VirtualFS] Loaded ${count} module files`)
     }
 }
 

@@ -56,7 +56,7 @@ export function useWindowManager() {
 
     // Основная функция открытия окна
     const openWindow = (
-        groupId: string,
+        groupId?: string | null,
         itemId: string,
         subGroupId?: string,
         sizeOptions?: WindowSizeOptions,
@@ -192,10 +192,11 @@ export function useWindowManager() {
         'tab': 'Вкладка',
     }
 
-    const getTitlesFromDictionary = (groupId: string, itemId: string, subGroupId?: string) => {
-        const groupTitle = titleDictionary[groupId] || titleDictionary[groupId.toLowerCase()]
-        const itemTitle = titleDictionary[itemId] || titleDictionary[itemId.toLowerCase()]
+    const getTitlesFromDictionary = (groupId?: string, itemId?: string, subGroupId?: string) => {
+        const groupTitle = groupId ? (titleDictionary[groupId] || titleDictionary[groupId.toLowerCase()]) : undefined
+        const itemTitle = itemId ? (titleDictionary[itemId] || titleDictionary[itemId.toLowerCase()]) : undefined
         const subGroupTitle = subGroupId ? (titleDictionary[subGroupId] || titleDictionary[subGroupId.toLowerCase()]) : undefined
+
         if (groupTitle || itemTitle || subGroupTitle) {
             return { groupTitle, itemTitle, subGroupTitle }
         }
@@ -302,9 +303,17 @@ export function useWindowManager() {
 
     const updateWindowData = (groupId: string, itemId: string, newData: any) => {
         const win = windows.value.find(w => w.groupId === groupId && w.itemId === itemId)
-        if (win) win.data = { ...(win.data || {}), ...newData }
+        if (win) {
+            // Создаем полностью новый объект данных
+            win.data = {
+                ...(win.data || {}),
+                ...newData,
+                _updated: Date.now()
+            }
+            // Форсируем реактивность через замену ссылки
+            win.data = { ...win.data }
+        }
     }
-
     return {
         windows,
         openWindow,

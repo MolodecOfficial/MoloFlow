@@ -2,6 +2,10 @@
 import MoloWindow from './MoloWindow.vue'
 import type {WindowItem} from '~/types/window'
 
+defineOptions({
+  inheritAttrs: false
+})
+
 const props = defineProps<{
   windows?: WindowItem[]
 }>()
@@ -113,9 +117,8 @@ function updateWindowTitle(newTitle: string) {
 
 <style scoped>
 .window-manager {
-  position: relative;
+  position: absolute;
   overflow: visible;
-  width: 100%;
 }
 
 .draggable-window {

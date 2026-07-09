@@ -156,11 +156,11 @@ const handleClick = (event: MouseEvent) => {
 .molo-btn:disabled:active,
 .molo-btn.loading:active {
   transform: scale(1);
-  cursor: wait;
+  cursor: not-allowed;
 }
 
 .molo-btn:disabled {
-  cursor: wait;
+  cursor: not-allowed;
 }
 
 /* Ripple эффект при клике - улучшенный */

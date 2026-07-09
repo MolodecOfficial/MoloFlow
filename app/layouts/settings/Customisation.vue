@@ -4,16 +4,13 @@ import {
   type WindowTheme,
   type WindowButtonStyle,
   windowButtonStyles,
-  windowTitleStyles,
   type WindowTitleStyle,
   THEME_STORAGE_KEY,
   BUTTON_STYLE_STORAGE_KEY,
-  TITLE_STYLE_STORAGE_KEY
 } from '~~/types/window-themes'
 
 const selectedTheme = ref<WindowTheme>(windowThemes[0])
 const selectedButtonStyle = ref<WindowButtonStyle>(windowButtonStyles[0])
-const selectedTitleStyle = ref<WindowTitleStyle>(windowTitleStyles[0])
 
 onMounted(() => {
   // Загрузка темы
@@ -36,15 +33,6 @@ onMounted(() => {
     }
   }
 
-  // Загрузка стиля заголовка
-  const savedTitleId = localStorage.getItem(TITLE_STYLE_STORAGE_KEY)
-  if (savedTitleId) {
-    const titleStyle = windowTitleStyles.find(t => t.id === savedTitleId)
-    if (titleStyle) {
-      selectedTitleStyle.value = titleStyle
-      applyTitleStyle(titleStyle)
-    }
-  }
 })
 
 const applyTheme = (theme: WindowTheme) => {
@@ -63,10 +51,6 @@ const applyButtonStyle = (buttonStyle: WindowButtonStyle) => {
   window.dispatchEvent(new CustomEvent('button-style-changed', { detail: buttonStyle }))
 }
 
-const applyTitleStyle = (titleStyle: WindowTitleStyle) => {
-  localStorage.setItem(TITLE_STYLE_STORAGE_KEY, titleStyle.id)
-  window.dispatchEvent(new CustomEvent('title-style-changed', { detail: titleStyle }))
-}
 
 const selectTheme = (theme: WindowTheme) => {
   selectedTheme.value = theme
@@ -76,10 +60,7 @@ const selectButtonStyle = (buttonStyle: WindowButtonStyle) => {
   selectedButtonStyle.value = buttonStyle
   applyButtonStyle(buttonStyle)
 }
-const selectTitleStyle = (titleStyle: WindowTitleStyle) => {
-  selectedTitleStyle.value = titleStyle
-  applyTitleStyle(titleStyle)
-}
+
 
 const previewStyle = computed(() => {
   const theme = selectedTheme.value
@@ -186,31 +167,12 @@ const previewStyle = computed(() => {
           </div>
         </div>
 
-        <div class="title-section">
-          <h3>Отображение заголовка</h3>
-          <div class="title-options">
-            <div
-                v-for="titleStyle in windowTitleStyles"
-                :key="titleStyle.id"
-                class="title-card"
-                :class="{ active: selectedTitleStyle.id === titleStyle.id }"
-                @click="selectTitleStyle(titleStyle)"
-            >
-              <h4>{{ titleStyle.name }}</h4>
-              <p>{{ titleStyle.description }}</p>
-            </div>
-          </div>
-        </div>
       </div>
-
       <!-- Предпросмотр -->
       <div class="preview-section">
         <h3>Предпросмотр</h3>
         <div class="demo-window" :style="previewStyle">
           <div class="demo-header">
-            <span class="demo-title">
-              {{ selectedTitleStyle.isFullTitle ? 'Полный заголовок → Пример' : 'Пример окна' }}
-            </span>
             <div class="demo-controls" :style="{
               gap: 'var(--preview-controls-gap)',
               padding: 'var(--preview-controls-padding)',

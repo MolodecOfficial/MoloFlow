@@ -111,7 +111,7 @@ const updateModules = () => {
   const dynamic = createDynamicItems()
 
   modulesGroups.value = dynamic.length
-      ? [...staticModules, { id: 'dynamic_modules', title: 'Мои модули', items: dynamic }]
+      ? [...staticModules, { title: 'Мои модули', items: dynamic }]
       : staticModules
 }
 
@@ -376,7 +376,6 @@ onUnmounted(() => {
 .menu-wrapper {
   display: flex;
   justify-content: center;
-  position: relative;
   z-index: 100;
 }
 
@@ -384,7 +383,6 @@ onUnmounted(() => {
   display: flex;
   gap: 8px;
   background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
   backdrop-filter: blur(18px);
   border-radius: 10px;
   padding: 8px 10px;

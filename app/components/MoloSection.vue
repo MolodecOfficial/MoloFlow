@@ -89,7 +89,7 @@
 
   flex-shrink: 0;
 
-  padding: 16px 20px;
+  padding: 15px;
 
   border-bottom: 1px solid rgba(255,255,255,.08);
 
@@ -99,6 +99,7 @@
           rgba(255, 255, 255, 0.02),
           transparent
       );
+  color: #c7c7c7;
 }
 
 

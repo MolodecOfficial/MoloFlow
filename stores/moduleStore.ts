@@ -7,8 +7,9 @@ import { useDebounceFn } from '@vueuse/core'
 export interface BrowserModule {
     _id: string
     name: string
-    fileName: string
+    fileName?: string
     description?: string
+    version?: number
     format: 'vue' | 'js' | 'ts'
     previewImage?: string
     tags: string[]

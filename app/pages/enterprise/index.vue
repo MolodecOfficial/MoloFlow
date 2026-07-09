@@ -7,6 +7,8 @@ import { useWindowManager } from '~/composables/useWindowManager'
 import { useLogger } from '~/composables/useLogger'
 import logo from '~~/public/logo.ico'
 import { useAppStore } from "~~/stores/appStore"
+import {useMenuEditorStore} from "~~/stores/menuEditorStore";
+import {useModuleEditorStore} from "~~/stores/moduleEditorStore";
 
 const name = ref('')
 const role = ref('')
@@ -27,6 +29,8 @@ const {
 
 const userStore = useUserStore()
 const appStore = useAppStore()
+const menuEditor = useMenuEditorStore()
+const moduleEditor = useModuleEditorStore()
 const router = useRouter()
 const { notifications, removeNotification } = useNotifications('Главная страница')
 const { addLog } = useLogger('Предприятие')
@@ -575,7 +579,6 @@ function deleteUser() {
   position: relative;
   flex: 1;
   min-height: calc(100vh - 160px);
-  padding: 0 20px 20px;
   box-sizing: border-box;
   overflow: hidden;
 }

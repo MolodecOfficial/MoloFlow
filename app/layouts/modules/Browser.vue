@@ -38,6 +38,12 @@ const {
 const activeTooltip = ref(null)
 const currentEnterprise = ref(null)
 
+const handleImageError = (event) => {
+  const img = event.target
+  img.src = '/default-module.png'
+  img.classList.add('fallback-image')
+}
+
 const formats = [
   { label: 'Javascript', value: 'js' },
   { label: 'TypeScript', value: 'ts' },
@@ -104,11 +110,6 @@ const editorMode = () => {
   })
 }
 
-const disableEditorMode = () => {
-  disableEditor()
-  addLog('info', 'Режим редактора деактивирован')
-  addNotification('info', 'Режим редактора выключен')
-}
 
 onMounted(() => {
   const entData = localStorage.getItem('currentEnterprise')
@@ -120,47 +121,50 @@ onMounted(() => {
     }
   }
   checkEditorAccess()
-  // Первая загрузка модулей (кеш будет использован автоматически)
   moduleStore.fetchBrowserModules()
 })
 </script>
 
 <template>
   <div class="browser-container">
-    <MoloSection style="width: 300px">
-      <template #header>
-        Фильтры
-      </template>
-      <template #main>
-        <MoloInput
-            v-model="searchQuery"
-            type="text"
-            tLabel="Найдите модуль в поиске"
-            placeholder="Поиск по названию, описанию, тегам..."
-            @input="setBrowserSearchQuery"
-        />
-        <MoloSelect
-            v-model="formatFilter"
-            @change="setBrowserFormatFilter"
-            :parent="formats"
-            tLabel="Выберите формат"
-            disabled="Формат файла"
-            children="label"
-            valueKey="value"
-            all="Все форматы"
-        />
-        <MoloSelect
-            v-model="sortBy"
-            @change="setBrowserSortBy"
-            :parent="sorts"
-            tLabel="Выберите фильтр"
-            disabled="Выбранный фильтр"
-            children="label"
-            valueKey="value"
-        />
-      </template>
-    </MoloSection>
+    <!-- Фильтры - фиксированная ширина -->
+    <div class="filters-panel">
+      <MoloSection>
+        <template #header>
+          Фильтры
+        </template>
+        <template #main>
+          <MoloInput
+              v-model="searchQuery"
+              type="text"
+              tLabel="Найдите модуль в поиске"
+              placeholder="Поиск по названию, описанию, тегам..."
+              @input="setBrowserSearchQuery"
+          />
+          <MoloSelect
+              v-model="formatFilter"
+              @change="setBrowserFormatFilter"
+              :parent="formats"
+              tLabel="Выберите формат"
+              disabled="Формат файла"
+              children="label"
+              valueKey="value"
+              all="Все форматы"
+          />
+          <MoloSelect
+              v-model="sortBy"
+              @change="setBrowserSortBy"
+              :parent="sorts"
+              tLabel="Выберите фильтр"
+              disabled="Выбранный фильтр"
+              children="label"
+              valueKey="value"
+          />
+        </template>
+      </MoloSection>
+    </div>
 
+    <!-- Основной контент -->
     <div class="modules-content">
       <MoloLoaders wndLoader v-if="loading" />
 
@@ -169,61 +173,63 @@ onMounted(() => {
       </div>
 
       <div v-else class="modules-grid">
-        <MoloSection v-for="mod in modules" :key="mod._id">
+        <MoloSection v-for="mod in modules" :key="mod._id" class="module-card">
           <template #header>
-            <section class="card-name">
-              <span>{{ mod.name }}</span>
-              <img
-                  v-if="mod.isOfficial"
-                  :src="isOfficial"
-                  class="official-badge"
-                  alt="Прошёл проверку"
-              />
-            </section>
-            <section class="actions">
-              <MoloButton
-                  v-if="mod.files?.length"
-                  class="confirm small"
-                  @click="showTooltip(mod._id)"
-              >
-                Файлы
-              </MoloButton>
-              <Transition name="tooltip">
-                <div v-if="activeTooltip === mod._id" class="files-tooltip">
-                  <div class="tooltip-content">
-                    <div v-for="file in mod.files" :key="file.path" class="tooltip-file">
-                      <img :src="vueIcon" class="file-icon" alt="" v-if="file.format == 'vue'">
-                      <img :src="tsIcon" class="file-icon" alt="" v-else-if="file.format == 'ts'">
-                      <img :src="jsIcon" class="file-icon" alt="" v-else>
-                      <code>{{ file.name }}</code>
+            <div class="card-header-content">
+              <div class="card-name">
+                <span class="module-title">{{ mod.name }}</span>
+                <img
+                    v-if="mod.isOfficial"
+                    :src="isOfficial"
+                    class="official-badge"
+                    alt="Прошёл проверку"
+                />
+              </div>
+              <div class="actions">
+                <MoloButton
+                    v-if="mod.files?.length"
+                    class="confirm small"
+                    @click="showTooltip(mod._id)"
+                >
+                  Файлы
+                </MoloButton>
+                <Transition name="tooltip">
+                  <div v-if="activeTooltip === mod._id" class="files-tooltip">
+                    <div class="tooltip-content">
+                      <div v-for="file in mod.files" :key="file.path" class="tooltip-file">
+                        <img :src="vueIcon" class="file-icon" alt="" v-if="file.format == 'vue'">
+                        <img :src="tsIcon" class="file-icon" alt="" v-else-if="file.format == 'ts'">
+                        <img :src="jsIcon" class="file-icon" alt="" v-else>
+                        <code>{{ file.name }}</code>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </Transition>
-              <MoloButton
-                  class="confirm small"
-                  @click="handleImport(mod)"
-                  :disabled="isImportingModule(mod._id)"
-              >
-                <MoloLoaders btnLoader v-if="isImportingModule(mod._id)" />
-                <span v-else>Импорт</span>
-              </MoloButton>
-            </section>
+                </Transition>
+                <MoloButton
+                    class="confirm small"
+                    @click="handleImport(mod)"
+                    :disabled="isImportingModule(mod._id)"
+                >
+                  <MoloLoaders btnLoader v-if="isImportingModule(mod._id)" />
+                  <span v-else>Импорт</span>
+
+                </MoloButton>
+              </div>
+            </div>
           </template>
           <template #main>
-            <section class="card-info">
-              <div class="card-header">
-                <div class="card-logo">
-                  <img
-                      :src="mod.previewImage || '/default-module.png'"
-                      :alt="mod.name"
-                      class="logo"
-                  />
-                </div>
+            <div class="card-body">
+              <div class="card-logo">
+                <img
+                    :src="mod.previewImage || '/default-module.png'"
+                    :alt="mod.name"
+                    class="logo"
+                    loading="lazy"
+                    @error="handleImageError"
+                />
               </div>
-              <section class="card-info-main">
+              <div class="card-info-main">
                 <p class="description">{{ mod.description || 'Нет описания' }}</p>
-
                 <div class="stats">
                   <span>⬇️ {{ mod.stats?.downloads || 0 }}</span>
                   <span>⭐ {{ mod.stats?.ratings?.average || 0 }} ({{ mod.stats?.ratings?.count || 0 }})</span>
@@ -231,8 +237,9 @@ onMounted(() => {
                 <div class="tags">
                   <span v-for="tag in mod.tags" :key="tag" class="tag">{{ tag }}</span>
                 </div>
-              </section>
-            </section>
+              </div>
+            </div>
+            <code class="mod_version">Номер сборки: {{ mod.version }}</code>
           </template>
         </MoloSection>
       </div>
@@ -253,8 +260,17 @@ onMounted(() => {
   padding: 20px;
   color: #e0e0e0;
   font-family: sans-serif;
-  min-height: 100%;
-  width: fit-content;
+  min-height: 100vh;
+  height: 100%;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Фильтры - фиксированная ширина */
+.filters-panel {
+  flex: 0 0 300px;
+  min-width: 250px;
+  max-width: 350px;
 }
 
 .modules-content {
@@ -263,14 +279,42 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   width: 100%;
-  align-items: center;
   gap: 20px;
 }
 
+/* ПРАВИЛЬНЫЙ ГРИД - без 2fr */
 .modules-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
   gap: 20px;
+  width: 100%;
+}
+
+/* Карточка модуля */
+.module-card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 200px;
+  background: var(--half_opacity_bg);
+  border: 1px solid var(--half_opacity_border);
+  border-radius: 12px;
+  overflow: hidden;
+  transition: all 0.2s ease;
+}
+
+.module-card:hover {
+  border-color: var(--borber-color_main);
+  transform: translateY(-2px);
+}
+
+.card-header-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .card-name {
@@ -278,12 +322,30 @@ onMounted(() => {
   flex-direction: row;
   align-items: center;
   gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+
+.module-title {
+  font-size: 16px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.card-body {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  width: 100%;
+  position: relative;
 }
 
 .card-logo {
   flex-shrink: 0;
-  width: 80px;
-  height: 80px;
+  width: 90px;
+  height: 90px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -291,52 +353,31 @@ onMounted(() => {
   overflow: hidden;
   background: var(--half_opacity_bg);
   border: 1px solid var(--half_opacity_border);
+  position: relative;
 }
-
 
 .logo {
-  width: 100%;
+  width: 150%;
   height: 100%;
-  object-fit: cover;
-  display: block;
+  object-fit: contain;
   background: transparent;
+  transition: transform 0.3s ease;
 }
 
-.card-info {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  gap: 8px;
+.logo:hover {
+  transform: scale(1.05);
+}
+
+.fallback-image {
+  object-fit: cover;
 }
 
 .card-info-main {
   display: flex;
   flex-direction: column;
   gap: 6px;
-}
-
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.card-header h3 {
-  margin: 0;
-  font-size: 1.1rem;
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   flex: 1;
-}
-
-.official-badge {
-  width: 20px;
-  height: 20px;
-  flex-shrink: 0;
+  min-width: 0;
 }
 
 .description {
@@ -348,6 +389,7 @@ onMounted(() => {
   -webkit-box-orient: vertical;
   overflow: hidden;
   line-height: 1.4;
+  word-break: break-word;
 }
 
 .stats {
@@ -355,6 +397,7 @@ onMounted(() => {
   gap: 12px;
   font-size: 0.8rem;
   color: #888;
+  flex-wrap: wrap;
 }
 
 .tags {
@@ -371,10 +414,17 @@ onMounted(() => {
   color: #ccc;
 }
 
+.official-badge {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
 .actions {
   display: flex;
   gap: 10px;
   position: relative;
+  flex-shrink: 0;
 }
 
 .files-tooltip {
@@ -434,73 +484,6 @@ onMounted(() => {
   cursor: not-allowed;
 }
 
-/* Кастомный аккордеон для details */
-details.advanced-settings {
-  background: var(--half_opacity_bg);
-  border-radius: 12px;
-  padding: 0;
-  margin-bottom: 12px;
-  border: 1px solid var(--half_opacity_border);
-  overflow: hidden;
-  transition: all 0.2s ease;
-}
-
-details.advanced-settings:hover {
-  border: 1px solid var(--borber-color_main);
-}
-
-details.advanced-settings[open] {
-  background: #2a2a2a;
-  border-color: #3a6ea5;
-}
-
-details.advanced-settings > summary {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 14px 18px;
-  font-weight: 600;
-  font-size: 15px;
-  cursor: pointer;
-  list-style: none;
-  user-select: none;
-  transition: background 0.2s;
-}
-
-details.advanced-settings > summary::-webkit-details-marker {
-  display: none;
-}
-
-details.advanced-settings > summary::before {
-  content: "▶";
-  display: inline-block;
-  font-size: 12px;
-  color: #3a6ea5;
-  transition: transform 0.25s ease;
-  margin-right: 8px;
-}
-
-details.advanced-settings[open] > summary::before {
-  transform: rotate(90deg);
-}
-
-details.advanced-settings > div,
-details.advanced-settings {
-  padding: 0 18px 18px 18px;
-  animation: fadeSlideDown 0.25s ease-out;
-}
-
-@keyframes fadeSlideDown {
-  from {
-    opacity: 0;
-    transform: translateY(-8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
 .empty {
   text-align: center;
   padding: 60px 20px;
@@ -508,9 +491,29 @@ details.advanced-settings {
   font-size: 1.1rem;
 }
 
+/* Анимация тултипа */
+.tooltip-enter-active,
+.tooltip-leave-active {
+  transition: all 0.2s ease;
+}
+
+.tooltip-enter-from,
+.tooltip-leave-to {
+  opacity: 0;
+  transform: translateY(-10px);
+}
+
+.mod_version {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  font-size: 10px;
+}
+
+/* Адаптивность */
 @media (max-width: 1024px) {
   .modules-grid {
-    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   }
 }
 
@@ -520,9 +523,11 @@ details.advanced-settings {
     padding: 16px;
   }
 
-  .filters-panel > * {
-    flex: 1;
-    min-width: 200px;
+  .filters-panel {
+    flex: none;
+    width: 100%;
+    max-width: 100%;
+    min-width: unset;
   }
 
   .modules-grid {
@@ -530,19 +535,53 @@ details.advanced-settings {
   }
 
   .card-logo {
+    width: 70px;
+    height: 70px;
+  }
+
+  .card-body {
+    flex-direction: row;
+    align-items: flex-start;
+  }
+
+  .card-header-content {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .card-name {
+    width: 100%;
+  }
+
+  .module-title {
+    white-space: normal;
+    word-break: break-word;
+  }
+
+  .actions {
+    justify-content: flex-end;
+    width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .card-body {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .card-logo {
     width: 100%;
     height: 120px;
   }
 
-  .logo {
+  .card-info-main {
     width: 100%;
-    height: 100%;
-    object-fit: contain;
   }
 
-  .card-header h3 {
-    white-space: normal;
-    word-break: break-word;
+  .actions {
+    flex-wrap: wrap;
+    justify-content: center;
   }
 }
 </style>

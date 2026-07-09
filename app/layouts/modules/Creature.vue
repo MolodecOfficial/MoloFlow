@@ -11,6 +11,10 @@ import jsIcon from '~~/public/js.png'
 import tsIcon from '~~/public/ts.png'
 import vueIcon from '~~/public/vue.png'
 
+defineOptions({
+  inheritAttrs: false
+})
+
 // Храним ссылки на редакторы
 let mainEditorInstance: any = null
 let fileEditorInstance: any = null
@@ -51,8 +55,6 @@ let debounceTimer: ReturnType<typeof setTimeout> | null = null
 // module store
 const {
   modules,
-  modulesLoaded,
-  modulesLoading,
   selectedModuleId,
   loading,
   formData,
@@ -74,21 +76,11 @@ const {
 // menu store
 const {
   locations,
-  locationsLoaded,
-  locationsLoading,
   selectedGroupId,
   selectedParentId,
   adding,
-  newLocation,
-  showNewForm,
   creating,
   tree,
-  expanded,
-  allExpanded,
-  deletingGroup,
-  deletingItem,
-  treeLoaded,
-  treeLoading
 } = storeToRefs(menuStore)
 
 /* =========================================
@@ -209,22 +201,27 @@ const availableParents = computed(() => {
 ========================================= */
 const getPlaceholder = () => {
   if (formData.value.format === 'vue') {
-    return `<script setup>
-  import { ref } from 'vue'
+    return `
+<script setup>
+import { ref } from 'vue'
 
-  const message = ref('Привет из динамического модуля!')
+const message = ref('Привет из динамического модуля!')
 
-  const handleClick = () => {
+const handleClick = () => {
     message.value = 'Работает!'
-  }
-  <\/script>
+}
+<\/script>
 
-  <template>
+<template>
     <div>
-      <h1>{{ message }}</h1>
-      <button @click="handleClick">Click me</button>
+        <h1>{{ message }}</h1>
+        <button @click="handleClick">Нажми на меня</button>
     </div>
-  </template>
+</template>
+
+<style scoped>
+
+</style>
   `
   }
 
@@ -663,6 +660,21 @@ const addModuleToMenu = async () => {
 /* =========================================
    PREVIEW
 ========================================= */
+const forcePreviewUpdate = () => {
+  if (previewWindowId.value) {
+    // Отправляем событие для обновления превью
+    window.dispatchEvent(new CustomEvent('force-preview-update'))
+
+    // Или обновляем данные с новым timestamp
+    updateWindowData('modules', previewWindowId.value, {
+      moduleName: formData.value.name,
+      code: formData.value.code,
+      isEditing: isEditing.value,
+      _updated: Date.now()
+    })
+  }
+}
+
 const openPreviewInWindow = () => {
   let currentCode = formData.value.code
   if (mainEditorInstance) {
@@ -830,6 +842,8 @@ const initFileEditor = async () => {
 /* =========================================
    WATCHERS
 ========================================= */
+
+
 watch(tagsInput, value => {
   formData.value.tags = value.split(',').map(v => v.trim()).filter(Boolean)
 })
@@ -891,10 +905,13 @@ watch(
     () => formData.value.code,
     code => {
       if (!previewWindowId.value) return
+      // Создаем новый объект для триггера реактивности
       updateWindowData('modules', previewWindowId.value, {
         moduleName: formData.value.name,
-        code,
-        isEditing: isEditing.value
+        code: code,
+        isEditing: isEditing.value,
+        // Добавляем timestamp для форсирования обновления
+        _updated: Date.now()
       })
     }
 )
@@ -952,24 +969,6 @@ onMounted(async () => {
   if (monacoCtx?.vfs && selectedModuleId.value && enterpriseId) {
     await monacoCtx.vfs.loadFromDB(selectedModuleId.value, enterpriseId)
   }
-
-// Исправить watch для moduleFiles:
-  watch(moduleFiles, async (newFiles) => {
-    if (!previewWindowId.value) return
-    updateWindowData('modules', previewWindowId.value, {
-      files: newFiles
-    })
-
-    // Обновляем VFS при изменении файлов
-    if (monacoCtx?.vfs) {
-      await monacoCtx.vfs.loadModuleFiles({
-        code: formData.value.code,
-        fileName: formData.value.fileName,
-        format: formData.value.format,
-        files: newFiles
-      })
-    }
-  })
 
   const enterpriseId = getEnterpriseId()
   if (!enterpriseId) return
@@ -1035,6 +1034,7 @@ onMounted(async () => {
     }
   }
 })
+
 onUnmounted(() => {
   if (debounceTimer) {
     clearTimeout(debounceTimer)
@@ -1240,7 +1240,7 @@ onUnmounted(() => {
         </MoloSection>
         <MoloSection>
           <template #header>
-            <section style="display: flex; gap: 10px; align-items: center">
+            <section style="display: flex; justify-content: space-between; align-items: center; width: 100%">
               <span>Сохранение</span>
               <div class="editor-actions">
                 <MoloButton class="small close" @click="emit('close')">
@@ -1302,7 +1302,7 @@ onUnmounted(() => {
         <div v-if="loadingFiles" class="loader-wrapper">
           <MoloLoaders wndLoader/>
         </div>
-        <div>
+        <div class="file-list">
           <div v-for="file in clientFiles" :key="file.path" class="file-item">
             <div class="file-info">
                 <span class="file-logo">
@@ -1319,6 +1319,7 @@ onUnmounted(() => {
                       class="file-icon"
                   />
                   <img v-else :src="jsIcon" alt="" class="file-icon"/>
+                  <i class="devicon devicon-vue"></i>
                   {{ file.name }}
                 </span>
 
@@ -1577,14 +1578,14 @@ onUnmounted(() => {
 .header-actions {
   display: flex;
   gap: 8px;
+
 }
 
 .header-right {
   display: flex;
-  flex-direction: row;
   align-items: center;
-  gap: 10px;
   justify-content: center;
+  width: 250px;
 }
 
 .editor-grid {
@@ -1607,9 +1608,7 @@ onUnmounted(() => {
 
 .editor-actions {
   display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-  box-sizing: border-box;
+  gap: 5px;
 }
 
 .code-container {
@@ -1665,13 +1664,20 @@ onUnmounted(() => {
   gap: 10px;
 }
 
+.file-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
 .file-item {
   display: flex;
-  gap: 10px;
+  gap: 15px;
   justify-content: space-between;
   align-items: center;
   font-family: monospace;
   font-size: 13px;
+  padding: 5px 0;
   border-bottom: 1px solid var(--half_opacity_border);
 }
 

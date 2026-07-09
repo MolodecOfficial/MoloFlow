@@ -2,6 +2,8 @@
 import { defineAsyncComponent, computed, ref, watch } from 'vue'
 import DynamicModuleLoader from '~~/app/layouts/modules/DynamicModuleLoader.vue'
 
+
+
 const props = defineProps<{
   windowId?: string
   groupId?: string

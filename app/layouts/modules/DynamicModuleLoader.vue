@@ -4,6 +4,7 @@ import { setGlobalComposables, useModuleCompiler } from '~/composables/useModule
 import { useLogger } from '~/composables/useLogger'
 import { useNotifications } from '~/composables/useNotifications'
 import { useWindowManager } from '~/composables/useWindowManager'
+import { useAppStore } from "~~/stores/appStore";
 
 const props = defineProps<{
   moduleData?: any
@@ -19,6 +20,7 @@ setGlobalComposables({
   useLogger,
   useNotifications,
   useWindowManager,
+  useAppStore,
   // Добавить недостающие composables
   useModulesStore: () => {
     const moduleStore = useModuleEditorStore()
@@ -197,7 +199,6 @@ onUnmounted(() => {
 
 <style scoped>
 .dynamic-module-loader {
-  padding: 10px;
   height: 100%;
   overflow: auto;
 }

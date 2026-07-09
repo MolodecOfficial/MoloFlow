@@ -283,12 +283,12 @@ onMounted(() => {
 }
 
 .empty {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   text-align: center;
-  padding: 40px;
   color: #6e6e7e;
 }
 
-.empty p {
-  margin: 0 0 16px;
-}
 </style>

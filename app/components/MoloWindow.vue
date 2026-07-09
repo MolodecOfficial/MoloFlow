@@ -5,7 +5,9 @@ import {useWindowResize} from '~/composables/useWindowResize'
 import {ref, computed, onMounted, onUnmounted} from 'vue'
 import RestoreIcon from '~~/public/min.svg'
 import {useUserStore} from "~~/stores/userStore"
-import {windowThemes, windowButtonStyles, windowTitleStyles, TITLE_STYLE_STORAGE_KEY, THEME_STORAGE_KEY, BUTTON_STYLE_STORAGE_KEY} from '~~/types/window-themes'
+import {windowThemes, windowButtonStyles, THEME_STORAGE_KEY, BUTTON_STYLE_STORAGE_KEY} from '~~/types/window-themes'
+
+
 
 const userStore = useUserStore()
 const role = ref('')
@@ -55,7 +57,6 @@ const isClosing = ref(false)
 
 const currentTheme = ref(windowThemes[0])
 const currentButtonStyle = ref(windowButtonStyles[0])
-const currentTitleStyle = ref(windowTitleStyles[0])
 
 const isMaximized = computed(() => props.window.size.isMaximized === true)
 
@@ -64,12 +65,6 @@ const refreshKey = ref(0)
 function refreshContent() {
   refreshKey.value++
 }
-
-const displayTitle = computed(() => {
-  return currentTitleStyle.value.isFullTitle
-      ? props.window.fullTitle
-      : props.window.itemTitle
-})
 
 const minimizeWithAnimation = () => {
   isMinimizing.value = true
@@ -202,17 +197,8 @@ const loadButtonStyle = () => {
   }
 }
 
-const loadTitleStyle = () => {
-  const saved = localStorage.getItem(TITLE_STYLE_STORAGE_KEY)
-  if (saved) {
-    const style = windowTitleStyles.find(s => s.id === saved)
-    if (style) currentTitleStyle.value = style
-  }
-}
-
 const handleThemeChange = (e: CustomEvent) => { currentTheme.value = e.detail }
 const handleButtonStyleChange = (e: CustomEvent) => { currentButtonStyle.value = e.detail }
-const handleTitleStyleChange = (e: CustomEvent) => { currentTitleStyle.value = e.detail }
 
 const windowStyles = computed(() => ({
   '--window-header-bg': currentTheme.value.styles.headerBg,
@@ -239,19 +225,16 @@ const windowStyles = computed(() => ({
 onMounted(() => {
   window.addEventListener('theme-changed', handleThemeChange as EventListener)
   window.addEventListener('button-style-changed', handleButtonStyleChange as EventListener)
-  window.addEventListener('title-style-changed', handleTitleStyleChange as EventListener)
   document.addEventListener('mousemove', handleMouseMove)
   document.addEventListener('mouseup', handleMouseUp)
   loadUserRole()
   loadTheme()
   loadButtonStyle()
-  loadTitleStyle()
 })
 
 onUnmounted(() => {
   window.removeEventListener('theme-changed', handleThemeChange as EventListener)
   window.removeEventListener('button-style-changed', handleButtonStyleChange as EventListener)
-  window.removeEventListener('title-style-changed', handleTitleStyleChange as EventListener)
   document.removeEventListener('mousemove', handleMouseMove)
   document.removeEventListener('mouseup', handleMouseUp)
 })
@@ -289,7 +272,7 @@ watch(() => props.window?.zIndex, (newZIndex) => {
             }"
     >
       <div class="window-header" @mousedown="handleDragStart">
-        <div class="window-title">{{ displayTitle }}</div>
+        <div class="window-title">{{ props.window?.fullTitle || props.window?.itemTitle || windowId || 'Окно' }}</div>
         <div class="header-logger" v-if="role === 'Управляющий'">
           <span>{{ groupId }}</span><span>{{ subGroupId }}</span><span>{{ windowId }}</span>
         </div>
@@ -469,7 +452,7 @@ watch(() => props.window?.zIndex, (newZIndex) => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 15px;
+  padding: 12px;
   gap: 15px;
   background: var(--window-header-bg, var(--half_opacity_bg));
   border-bottom: 1px solid var(--window-header-border, var(--half_opacity_border));

@@ -4,6 +4,7 @@ import { markRaw, ref, shallowRef } from 'vue'
 import * as compiler from '@vue/compiler-sfc'
 import { loadModule } from 'vue3-sfc-loader'
 import * as Babel from '@babel/standalone'
+import presetTypeScript from '@babel/preset-typescript'
 
 // ======================================================
 // Типы
@@ -41,6 +42,111 @@ async function loadAllComponents(): Promise<Record<string, any>> {
     return result
 }
 
+function parseCompilationError(error: any, code?: string): {
+    message: string;
+    stack: string;
+    line: number | null;
+    column: number | null;
+    fileName: string;
+    codeContext: string;
+} {
+    const message = error?.message || 'Compilation failed'
+    const stack = error?.stack || ''
+
+    let line: number | null = null
+    let column: number | null = null
+    let fileName = 'dynamic.vue'
+
+    // 1. Парсим ошибку vue/compiler-sfc
+    const sfcMatch = message.match(/\((\d+):(\d+)\)/)
+    if (sfcMatch) {
+        line = parseInt(sfcMatch[1])
+        column = parseInt(sfcMatch[2])
+    }
+
+    // 2. Парсим ошибку Babel
+    if (!line) {
+        const babelMatch = message.match(/\((\d+):(\d+)\)/)
+        if (babelMatch) {
+            line = parseInt(babelMatch[1])
+            column = parseInt(babelMatch[2])
+        }
+    }
+
+    // 3. Парсим ошибку из стека
+    if (!line) {
+        const stackLineMatch = stack.match(/:(\d+):(\d+)/)
+        if (stackLineMatch) {
+            line = parseInt(stackLineMatch[1])
+            column = parseInt(stackLineMatch[2])
+        }
+    }
+
+    // 4. Парсим TypeScript ошибки
+    if (!line) {
+        const tsMatch = message.match(/line\s+(\d+)/i)
+        if (tsMatch) {
+            line = parseInt(tsMatch[1])
+        }
+    }
+
+    // 5. Извлекаем имя файла
+    const fileMatch = message.match(/at\s+([^\s]+\.vue)/)
+    if (fileMatch) {
+        fileName = fileMatch[1]
+    }
+
+    if (!fileMatch && stack) {
+        const stackFileMatch = stack.match(/at\s+([^\s]+\.vue)/)
+        if (stackFileMatch) {
+            fileName = stackFileMatch[1]
+        }
+    }
+
+    // 6. Извлекаем контекст кода
+    let codeContext = ''
+    if (line && code) {
+        const lines = code.split('\n')
+        const start = Math.max(0, line - 5)
+        const end = Math.min(lines.length, line + 3)
+        const maxLineNum = String(end).length
+
+        codeContext = lines.slice(start, end).map((l, i) => {
+            const num = start + i + 1
+            const isErrorLine = num === line
+            const marker = isErrorLine ? '▶' : ' '
+            const lineNum = String(num).padStart(maxLineNum, ' ')
+            return `${marker} ${lineNum} │ ${l}`
+        }).join('\n')
+
+        // Добавляем указатель на ошибку ТОЛЬКО если есть column
+        if (column) {
+            const lineContent = lines[line - 1] || ''
+            // Ограничиваем column длиной строки
+            const safeColumn = Math.min(column - 1, lineContent.length)
+            const prefixLen = maxLineNum + 4
+            const pointerLine = ' '.repeat(prefixLen + safeColumn) + '^'
+            codeContext += '\n' + pointerLine
+        }
+    }
+
+    // 7. Формируем понятное сообщение
+    let cleanMessage = message
+    if (cleanMessage.includes('at ')) {
+        cleanMessage = cleanMessage.split('at ')[0].trim()
+    }
+    cleanMessage = cleanMessage.replace(/\(\d+:\d+\)/, '').trim()
+
+    return {
+        message: cleanMessage || message,
+        stack,
+        line,
+        column,
+        fileName,
+        codeContext
+    }
+}
+
 // ======================================================
 // Глобальные composables
 // ======================================================
@@ -59,6 +165,7 @@ const VIRTUAL_MODULES: Record<string, string[]> = {
     'composables/useNotifications': ['useNotifications'],
     'composables/useWindowManager': ['useWindowManager'],
     'stores/moduleStore': ['useModulesStore'],
+    'stores/appStore': ['useAppStore']
 }
 
 function getVirtualModule(url: string): string | null {
@@ -78,19 +185,31 @@ function normalizePath(path: string): string {
 }
 
 // ======================================================
-// TS → JS
+// 🔥 ТРАНСПИЛЯЦИЯ TypeScript в JavaScript для SFC
 // ======================================================
-function transpileTypeScript(code: string): string {
+function transpileTypeScriptSFC(code: string): string {
     try {
+        // Транспилируем TypeScript в JavaScript
         const result = Babel.transform(code, {
-            presets: [['typescript', { allExtensions: true, isTSX: false }]],
-            filename: 'file.ts',
+            presets: [
+                [presetTypeScript, {
+                    allExtensions: true,
+                    isTSX: false,
+                    allowNamespaces: true,
+                    allowDeclareFields: true
+                }]
+            ],
+            filename: 'script.ts',
             configFile: false,
             babelrc: false,
+            parserOpts: {
+                plugins: ['typescript', 'jsx']
+            }
         })
         return result?.code || code
     } catch (e: any) {
-        console.warn('[ModuleCompiler] TS transpile warning:', e.message)
+        console.warn('[ModuleCompiler] TypeScript transpilation error:', e.message)
+        // Возвращаем исходный код, если транспиляция не удалась
         return code
     }
 }
@@ -104,8 +223,20 @@ async function compileVueComponentFromSource(
     moduleId: string
 ): Promise<any> {
     try {
+        // Транспилируем TypeScript если это .vue файл с TS
+        let processedCode = code
+        if (fileName.endsWith('.vue') && code.includes('lang="ts"')) {
+            // Извлекаем script с type="ts" и транспилируем
+            const scriptRegex = /<script[^>]*lang="ts"[^>]*>([\s\S]*?)<\/script>/
+            const match = code.match(scriptRegex)
+            if (match) {
+                const transpiled = transpileTypeScriptSFC(match[1])
+                processedCode = code.replace(scriptRegex, `<script setup>\n${transpiled}\n</script>`)
+            }
+        }
+
         const files: Record<string, string> = {
-            [fileName]: code
+            [fileName]: processedCode
         }
 
         const options: any = {
@@ -116,13 +247,13 @@ async function compileVueComponentFromSource(
                 if (files[normalized]) return files[normalized]
                 throw new Error(`File not found: ${normalized}`)
             },
-            addStyle() {}, // Стили уже обрабатываются основным модулем
+            addStyle() {},
         }
 
         const mod: any = await loadModule(fileName, options)
         return markRaw(mod.default || mod)
     } catch (e) {
-        console.error(`[ModuleCompiler] Failed to compile Vue component ${fileName}:`, e)
+        console.warn('[ModuleCompiler] Failed to compile Vue component:', e)
         return null
     }
 }
@@ -133,7 +264,7 @@ async function compileVueComponentFromSource(
 function processJSModule(code: string, isTypeScript: boolean): string {
     // Транспилируем TS если нужно
     if (isTypeScript) {
-        code = transpileTypeScript(code)
+        code = transpileTypeScriptSFC(code)
     }
 
     // Убираем import-ы
@@ -224,7 +355,6 @@ async function processImports(
 
     for (const match of vueMatches) {
         const [fullMatch, importName, importPath] = match
-        console.log(`[ModuleCompiler] 🔵 Compiling Vue component: ${importName} from ${importPath}`)
 
         const fileData = findFileData(importPath, localFiles)
         if (fileData) {
@@ -235,14 +365,11 @@ async function processImports(
             )
             if (compiled) {
                 dynamicComponents[importName] = compiled
-                // Заменяем import на комментарий
                 processedCode = processedCode.replace(fullMatch, `/* Component ${importName} registered */`)
-                console.log(`[ModuleCompiler] ✅ Vue component compiled: ${importName}`)
             } else {
                 processedCode = processedCode.replace(fullMatch, `/* FAILED: ${importName} */`)
             }
         } else {
-            console.warn(`[ModuleCompiler] ❌ Vue component not found: ${importPath}`)
             processedCode = processedCode.replace(fullMatch, `/* NOT FOUND: ${importPath} */`)
         }
     }
@@ -253,14 +380,12 @@ async function processImports(
 
     for (const match of namedMatches) {
         const [fullMatch, names, importPath] = match
-        console.log(`[ModuleCompiler] 🟡 Inlining named imports: {${names}} from ${importPath}`)
 
         const fileData = findFileData(importPath, localFiles)
         if (fileData) {
             const isTypeScript = importPath.endsWith('.ts')
             const processedCode2 = processJSModule(fileData.code, isTypeScript)
 
-            // Извлекаем имена
             const cleanNames = names.split(',').map((n: string) => n.trim()).filter(Boolean)
             const destructured = cleanNames.join(', ')
 
@@ -273,9 +398,7 @@ const {${destructured}} = (function() {
 })();
 `
             processedCode = processedCode.replace(fullMatch, replacement)
-            console.log(`[ModuleCompiler] ✅ Inlined: ${importPath}`)
         } else {
-            console.warn(`[ModuleCompiler] ❌ Module not found: ${importPath}`)
             processedCode = processedCode.replace(fullMatch, `/* NOT FOUND: ${importPath} */`)
         }
     }
@@ -286,7 +409,6 @@ const {${destructured}} = (function() {
 
     for (const match of defaultMatches) {
         const [fullMatch, importName, importPath] = match
-        console.log(`[ModuleCompiler] 🟢 Inlining default import: ${importName} from ${importPath}`)
 
         const fileData = findFileData(importPath, localFiles)
         if (fileData) {
@@ -303,9 +425,7 @@ const ${importName} = (function() {
 })();
 `
             processedCode = processedCode.replace(fullMatch, replacement)
-            console.log(`[ModuleCompiler] ✅ Inlined: ${importPath}`)
         } else {
-            console.warn(`[ModuleCompiler] ❌ Module not found: ${importPath}`)
             processedCode = processedCode.replace(fullMatch, `/* NOT FOUND: ${importPath} */`)
         }
     }
@@ -314,7 +434,7 @@ const ${importName} = (function() {
 }
 
 // ======================================================
-// Подготовка SFC
+// 🔥 ОСНОВНАЯ ФУНКЦИЯ: Подготовка SFC с поддержкой TypeScript
 // ======================================================
 async function prepareSFC(
     code: string,
@@ -322,9 +442,20 @@ async function prepareSFC(
     moduleId: string
 ): Promise<{ sfc: string, dynamicComponents: Record<string, any> }> {
 
-    if (code.includes('<script')) {
+    // Проверяем наличие TypeScript в script
+    let processedCode = code
+
+    // Если есть script с lang="ts", транспилируем его
+    const tsScriptRegex = /<script[^>]*lang="ts"[^>]*>([\s\S]*?)<\/script>/
+    const tsMatch = processedCode.match(tsScriptRegex)
+    if (tsMatch) {
+        const transpiled = transpileTypeScriptSFC(tsMatch[1])
+        processedCode = processedCode.replace(tsScriptRegex, `<script setup>\n${transpiled}\n</script>`)
+    }
+
+    if (processedCode.includes('<script')) {
         const scriptRegex = /<script[^>]*setup[^>]*>([\s\S]*?)<\/script>/
-        const scriptMatch = code.match(scriptRegex)
+        const scriptMatch = processedCode.match(scriptRegex)
 
         if (scriptMatch) {
             const scriptContent = scriptMatch[1]
@@ -334,13 +465,13 @@ async function prepareSFC(
                 ? Object.keys(globalComposables).map(name => `var ${name} = window.__moduleComposables?.${name}`).join('\n')
                 : ''
 
-            const result = code.replace(scriptRegex, `<script setup>\n${declarations}\n\n${inlinedCode}\n</script>`)
+            const result = processedCode.replace(scriptRegex, `<script setup>\n${declarations}\n\n${inlinedCode}\n</script>`)
 
             return { sfc: result, dynamicComponents }
         }
     }
 
-    return { sfc: code, dynamicComponents: {} }
+    return { sfc: processedCode, dynamicComponents: {} }
 }
 
 // ======================================================
@@ -374,6 +505,7 @@ export const useModuleCompiler = () => {
     const compiledComponent = shallowRef<any>(null)
     const compiling = ref(false)
     const compileError = ref<string | null>(null)
+    const compileErrorDetails = ref<any>(null) // <-- ДОБАВЛЯЕМ
     const activeKey = ref(0)
     const lastModuleId = ref<string | null>(null)
     let styleManager: ReturnType<typeof createStyleManager> | null = null
@@ -384,118 +516,140 @@ export const useModuleCompiler = () => {
         dependencies: Record<string, string> = {},
         moduleId?: string
     ) {
+        compileError.value = null
+        compileErrorDetails.value = null
+        compiledComponent.value = null
+
         if (!code?.trim()) {
             compileError.value = 'No code provided'
-            compiledComponent.value = null
+            compileErrorDetails.value = {
+                message: 'No code provided',
+                stack: '',
+                line: null,
+                column: null,
+                fileName: 'dynamic.vue',
+                codeContext: ''
+            }
             return
         }
 
         if (!globalComposables) {
             compileError.value = 'Composables not initialized'
-            compiledComponent.value = null
+            compileErrorDetails.value = {
+                message: 'Composables not initialized',
+                stack: '',
+                line: null,
+                column: null,
+                fileName: 'dynamic.vue',
+                codeContext: ''
+            }
             return
         }
 
         compiling.value = true
-        compileError.value = null
         const id = moduleId || 'anon'
 
-        if (lastModuleId.value && lastModuleId.value !== id) {
-            reset()
-        }
-        lastModuleId.value = id
+        const TIMEOUT_MS = 15000
+        let timeoutId: ReturnType<typeof setTimeout> | null = null
 
         try {
-            const registry = await loadAllComponents()
-            ;(window as any).__moduleComposables = globalComposables
-            styleManager = createStyleManager(id)
+            const timeoutPromise = new Promise((_, reject) => {
+                timeoutId = setTimeout(() => {
+                    const timeoutError = new Error(`Compilation timeout after ${TIMEOUT_MS}ms`)
+                    timeoutError.name = 'TimeoutError'
+                    reject(timeoutError)
+                }, TIMEOUT_MS)
+            })
 
-            // Подготавливаем локальные файлы
-            const localFiles = new Map<string, any>()
+            const compilePromise = (async () => {
+                if (lastModuleId.value && lastModuleId.value !== id) {
+                    reset()
+                }
+                lastModuleId.value = id
 
-            for (const file of filesList || []) {
-                if (file.isServerFile) continue
+                const registry = await loadAllComponents()
+                ;(window as any).__moduleComposables = globalComposables
+                styleManager = createStyleManager(id)
 
-                let filePath = file.path || `${file.name}.${file.format || 'vue'}`
-                filePath = normalizePath(filePath)
-                if (!filePath) continue
-
-                if (!filePath.match(/\.(vue|js|ts)$/)) {
-                    filePath += '.' + (file.format || 'vue')
+                const localFiles = new Map<string, any>()
+                for (const file of filesList || []) {
+                    if (file.isServerFile) continue
+                    let filePath = file.path || `${file.name}.${file.format || 'vue'}`
+                    filePath = normalizePath(filePath)
+                    if (!filePath) continue
+                    if (!filePath.match(/\.(vue|js|ts)$/)) {
+                        filePath += '.' + (file.format || 'vue')
+                    }
+                    const fileCode = file.code || ''
+                    localFiles.set(filePath, { code: fileCode, path: filePath, format: file.format })
+                    const fileName = filePath.split('/').pop() || filePath
+                    localFiles.set(fileName, { code: fileCode, path: filePath, format: file.format })
+                    const withoutExt = filePath.replace(/\.(vue|js|ts)$/, '')
+                    localFiles.set(withoutExt, { code: fileCode, path: filePath, format: file.format })
                 }
 
-                const fileCode = file.code || ''
+                const { sfc, dynamicComponents } = await prepareSFC(code, localFiles, id)
 
-                localFiles.set(filePath, { code: fileCode, path: filePath, format: file.format })
+                const files: Record<string, string> = { 'dynamic.vue': sfc }
 
-                const fileName = filePath.split('/').pop() || filePath
-                localFiles.set(fileName, { code: fileCode, path: filePath, format: file.format })
+                const options: any = {
+                    moduleCache: { vue: Vue },
+                    compiler,
+                    async getFile(url: any) {
+                        const normalized = normalizePath(typeof url === 'string' ? url : url?.url || '')
+                        const virtual = getVirtualModule(normalized)
+                        if (virtual) return virtual
+                        if (files[normalized]) return files[normalized]
+                        const pkg = normalized.split('/')[0]
+                        if (dependencies[pkg]) return `export default {}`
+                        throw new Error(`Module not found: ${normalized}`)
+                    },
+                    addStyle(textContent: string) {
+                        styleManager?.addStyle(textContent)
+                    },
+                }
 
-                const withoutExt = filePath.replace(/\.(vue|js|ts)$/, '')
-                localFiles.set(withoutExt, { code: fileCode, path: filePath, format: file.format })
-            }
+                const mod: any = await loadModule('dynamic.vue', options)
+                const component = markRaw(mod.default || mod)
 
-            // Подготавливаем SFC
-            const { sfc, dynamicComponents } = await prepareSFC(code, localFiles, id)
+                component.components = {
+                    ...(component.components || {}),
+                    ...registry,
+                    ...dynamicComponents,
+                }
+                component.props = {
+                    ...(component.props || {}),
+                    moduleId: { type: String, default: id },
+                }
 
-            // Файловая система для vue3-sfc-loader
-            const files: Record<string, string> = { 'dynamic.vue': sfc }
+                compiledComponent.value = component
+                activeKey.value++
+                compileError.value = null
+                compileErrorDetails.value = null
+            })()
 
-            const options: any = {
-                moduleCache: { vue: Vue },
-                compiler,
-                async getFile(url: any) {
-                    const normalized = normalizePath(typeof url === 'string' ? url : url?.url || '')
-
-                    const virtual = getVirtualModule(normalized)
-                    if (virtual) return virtual
-
-                    if (files[normalized]) return files[normalized]
-
-                    const pkg = normalized.split('/')[0]
-                    if (dependencies[pkg]) return `export default {}`
-
-                    throw new Error(`Module not found: ${normalized}`)
-                },
-                addStyle(textContent: string) {
-                    styleManager?.addStyle(textContent)
-                },
-            }
-
-            // Компилируем
-            const mod: any = await loadModule('dynamic.vue', options)
-            const component = markRaw(mod.default || mod)
-
-            // Регистрируем ВСЕ компоненты
-            component.components = {
-                ...(component.components || {}),
-                ...registry,
-                ...dynamicComponents,
-            }
-
-            component.props = {
-                ...(component.props || {}),
-                moduleId: { type: String, default: id },
-            }
-
-            compiledComponent.value = component
-            activeKey.value++
-
-            console.log(`[ModuleCompiler] ✅ Compiled: ${id}, components:`, Object.keys(dynamicComponents))
+            await Promise.race([compilePromise, timeoutPromise])
 
         } catch (e: any) {
             console.error('[ModuleCompiler] Error:', e)
-            compileError.value = e?.message || 'Compilation failed'
+
+            // Используем функцию парсинга ошибок
+            const parsed = parseCompilationError(e, code)
+
+            compileError.value = parsed.message
+            compileErrorDetails.value = parsed
             compiledComponent.value = null
             styleManager?.removeStyle()
         } finally {
             compiling.value = false
+            if (timeoutId) clearTimeout(timeoutId)
         }
     }
 
     function reset() {
         compiledComponent.value = null
         compileError.value = null
+        compileErrorDetails.value = null
         activeKey.value++
         lastModuleId.value = null
         styleManager?.removeStyle()
@@ -505,6 +659,7 @@ export const useModuleCompiler = () => {
         compiledComponent,
         compiling,
         compileError,
+        compileErrorDetails, // <-- ЭКСПОРТИРУЕМ
         compileModule,
         reset,
         activeKey,

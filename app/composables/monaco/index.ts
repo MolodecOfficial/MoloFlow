@@ -1,6 +1,5 @@
 // composables/monaco/index.ts
 import { createMonaco, getMonacoLanguage, LANGUAGE_MAP } from './bootstrap'
-import { registerExtensions } from './extensions'
 import { EditorManager } from './editor'
 import { virtualFS } from './virtualFS' // ← импортируем из virtualFS
 
@@ -23,8 +22,6 @@ export function initMonaco(el: HTMLElement, options?: {
     if (options?.moduleId && options?.enterpriseId) {
         ctx.vfs.loadFromDB(options.moduleId, options.enterpriseId)
     }
-
-    registerExtensions(ctx)
 
     const manager = new EditorManager(ctx)
 

@@ -10,42 +10,6 @@ const statusMessage = ref('');
 
 const router = useRouter();
 
-// Функция для форматирования телефона
-function formatPhone(value: string) {
-  if (!value) return '+7';
-
-  // Удаляем все нецифровые символы
-  let numbers = value.replace(/\D/g, '');
-
-  // Если номер начинается с 7 или 8, заменяем на +7
-  if (numbers.startsWith('8')) {
-    numbers = '7' + numbers.substring(1);
-  }
-  if (!numbers.startsWith('7')) {
-    numbers = '7' + numbers;
-  }
-
-  // Ограничиваем длину до 11 цифр (включая 7)
-  numbers = numbers.substring(0, 11);
-
-  // Форматируем по маске +7 (XXX) XXX-XX-XX
-  let formatted = '+7';
-  if (numbers.length > 1) {
-    formatted += ' (' + numbers.substring(1, 4);
-  }
-  if (numbers.length >= 5) {
-    formatted += ') ' + numbers.substring(4, 7);
-  }
-  if (numbers.length >= 8) {
-    formatted += '-' + numbers.substring(7, 9);
-  }
-  if (numbers.length >= 10) {
-    formatted += '-' + numbers.substring(9, 11);
-  }
-
-  return formatted;
-}
-
 async function registerUser() {
   // Очищаем телефон от форматирования перед отправкой
   const cleanPhone = phone.value.replace(/\D/g, '');

@@ -74,10 +74,7 @@ export function createMonaco(el: HTMLElement, options?: {
             content: f.code || '',
             language: getMonacoLanguage(f.format || 'vue')
         }))
-        console.log('[Monaco] Adding initial files to vfs:', fileNodes.map(f => f.path))
         vfs.addFiles(fileNodes)
-    } else {
-        console.log('[Monaco] No initial files to add to vfs')
     }
 
         const api = new ApiService(options?.apiBase)
