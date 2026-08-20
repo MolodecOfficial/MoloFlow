@@ -142,27 +142,9 @@ const dynamicModuleSchema = new mongoose.Schema({
         enum: ['pending', 'building', 'built', 'failed'],
         default: 'pending'
     },
-    clientBundlePath: {
-        type: String,
-        default: null
-    },
-    cssBundlePath: {
-        type: String,
-        default: null
-    },
-    lastBuildAt: {
-        type: Date,
-        default: null
-    },
-
     createdAt: { type: Date, default: Date.now },
     updatedAt: { type: Date, default: Date.now },
 
-    buildStatus: {
-        type: String,
-        enum: ['pending', 'building', 'built', 'failed'],
-        default: 'pending'
-    },
     clientBundlePath: {
         type: String,
         default: null
@@ -182,13 +164,27 @@ const dynamicModuleSchema = new mongoose.Schema({
 });
 
 // Индексы
-dynamicModuleSchema.index({ 'dependencies': 'text' });
 dynamicModuleSchema.index({ enterpriseId: 1, name: 1 }, { unique: true });
 dynamicModuleSchema.index({ enterpriseId: 1, fileName: 1 }, { unique: true });
+
+// MongoDB разрешает только ОДИН текстовый индекс на коллекцию.
+// Раньше здесь было ДВА index({..., 'text'}) — на dependencies (бессмысленный,
+// это Map, не текст) и на name/description/tags (реально нужный для поиска).
+// Второй не мог построиться из-за конфликта с первым — поиск через $text
+// молча не работал, а modules.get.ts вместо этого гонял $regex по всей
+// коллекции без индекса. Теперь текстовый индекс один и рабочий.
 dynamicModuleSchema.index({ name: 'text', description: 'text', tags: 'text' });
-dynamicModuleSchema.index({ 'stats.downloads': -1 });
-dynamicModuleSchema.index({ createdAt: -1 });
-dynamicModuleSchema.index({ isPublic: 1, isActive: 1 });
+
+// Составные индексы под реальные паттерны браузерного запроса:
+// filter {isPublic, isActive[, format]} + sort по одному из трёх полей.
+// Раньше filter и sort жили в разных индексах — Mongo либо фильтровал
+// по одному и досортировывал в памяти, либо наоборот. Теперь под каждый
+// вариант сортировки в browser/modules есть свой готовый составной индекс.
+dynamicModuleSchema.index({ isPublic: 1, isActive: 1, 'stats.downloads': -1 });
+dynamicModuleSchema.index({ isPublic: 1, isActive: 1, 'stats.ratings.average': -1 });
+dynamicModuleSchema.index({ isPublic: 1, isActive: 1, createdAt: -1 });
+dynamicModuleSchema.index({ isPublic: 1, isActive: 1, format: 1, 'stats.downloads': -1 });
+
 dynamicModuleSchema.index({ tags: 1 });
 dynamicModuleSchema.index({ isOfficial: -1, 'stats.downloads': -1 });
 

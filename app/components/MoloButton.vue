@@ -37,7 +37,9 @@ const handleClick = (event: MouseEvent) => {
       @click="handleClick"
   >
     <!-- Спиннер при загрузке -->
-    <span v-if="loading" class="molo-btn__spinner"></span>
+    <span v-if="loading" class="molo-btn__spinner">
+      <MoloLoaders btn-loader/>
+    </span>
 
     <!-- Слот для содержимого -->
     <slot>{{ loading ? 'Загрузка...' : 'Кнопка' }}</slot>
@@ -153,10 +155,19 @@ const handleClick = (event: MouseEvent) => {
 }
 
 /* Убираем масштабирование при disabled или loading */
-.molo-btn:disabled:active,
 .molo-btn.loading:active {
   transform: scale(1);
   cursor: not-allowed;
+}
+
+
+.molo-btn:disabled:active {
+  border: none;
+}
+
+.molo-btn:disabled:hover {
+  border: 1px solid black;
+  background: #1e1e1e;
 }
 
 .molo-btn:disabled {
@@ -293,11 +304,7 @@ const handleClick = (event: MouseEvent) => {
   display: inline-block;
   width: 16px;
   height: 16px;
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  border-top-color: white;
   border-radius: 50%;
-  animation: spin 0.6s linear infinite;
-  margin-right: 8px;
 }
 
 @keyframes spin {

@@ -85,11 +85,30 @@ async function deleteToken() {
 
 
 <template>
-  <div class="enterprise-login">
-    <h2 class="title">Вход в предприятие</h2>
-    <hr>
-    <form @submit.prevent="handleLogin" class="login-form">
-      <div class="form-group">
+  <div class="log">
+    <MoloSection>
+      <template #header>
+        <span>Введите данные</span>
+        <section class="btns">
+          <MoloButton
+              class="small"
+              @click="deleteToken"
+              :disabled="deleting"
+          >
+            <span v-if="!deleting">Удалить токены</span>
+            <MoloLoaders wndLoader v-else/>
+          </MoloButton>
+          <MoloButton
+              class="small confirm"
+              :disabled="loading"
+              :loading="loading"
+              @click="handleLogin"
+          >
+            <span v-if="!loading">Войти</span>
+          </MoloButton>
+        </section>
+      </template>
+      <template #main>
         <MoloInput
             lRequired
             type="text"
@@ -107,76 +126,18 @@ async function deleteToken() {
             v-model="keypass"
             iRequired
         />
-      </div>
-      <hr>
-      <MoloButton
-          type="submit"
-          class="login-btn"
-          :disabled="loading"
-      >
-        <span v-if="!loading">Войти</span>
-        <MoloLoaders btnLoader v-else/>
-      </MoloButton>
-    </form>
-    <MoloButton
-        class="login-btn"
-        @click="deleteToken"
-        :disabled="deleting"
-    >
-      <span v-if="!deleting">Удалить токены</span>
-      <MoloLoaders wndLoader v-else/>
-    </MoloButton>
+      </template>
+    </MoloSection>
   </div>
 </template>
 
 <style scoped>
-.enterprise-login {
-  display: flex;
-  flex-direction: column;
-  color: white;
-  box-sizing: border-box;
+.log {
   padding: 20px;
 }
 
-
-.login-form {
+.btns {
   display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.form-group {
-  display: flex;
-  flex-direction: column;
   gap: 10px;
 }
-
-label {
-  font-size: 0.9rem;
-  font-weight: 500;
-  color: rgba(255, 255, 255, 0.9);
-}
-
-.login-btn {
-  margin-top: 0.5rem;
-  padding: 12px;
-  border-radius: 6px;
-  font-size: 1rem;
-  font-weight: 600;
-  cursor: pointer;
-  border: none;
-  background: var(--borber-color_main);
-  color: #020b18;
-  transition: all 0.2s;
-}
-
-.login-btn:hover:not(:disabled) {
-  background: var(--border-color_hover);
-}
-
-.login-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
 </style>

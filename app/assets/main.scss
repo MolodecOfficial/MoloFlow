@@ -9,7 +9,8 @@ body {
   hr {
     border: 1px solid var(--half_opacity_border);
     width: 100%;
-
+    padding: 0;
+    margin: 0;
   }
 }
 
@@ -23,7 +24,7 @@ body {
   --half_opacity_border_hover: rgba(255, 255, 255, 0.07);
   --half_opacity_border: rgba(255, 255, 255, 0.12);
   --half_opacity_bg: rgba(245, 245, 245, 0.03);
-  --borber-color_main: #1e8ad0;
+  --borber-color_main: rgba(0, 150, 255, 0.8);
   --border-color_hover: #0a4493;
   --border-color_disabled: #0e436b;
 }

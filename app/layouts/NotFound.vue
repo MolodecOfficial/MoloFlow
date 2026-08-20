@@ -80,7 +80,7 @@ const debugInfo = computed(() => ({
   <div class="not-found-container">
     <div class="not-found-content">
       <h2 class="error-title">Ошибка загрузки компонента</h2>
-      <hr>
+
       <section class="main-info">
         <!-- Информационное сообщение -->
         <div class="error-message">
@@ -154,6 +154,7 @@ const debugInfo = computed(() => ({
   height: 100%;
   overflow: inherit;
   box-sizing: border-box;
+  padding: 20px;
 }
 
 .not-found-content {

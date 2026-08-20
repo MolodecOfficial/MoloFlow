@@ -7,9 +7,6 @@ export default defineEventHandler(async (event) => {
     // Получаем enterpriseId из params или body
     let enterpriseId = event.context.params?.id || body.enterpriseId;
 
-    console.log('[Create Module] enterpriseId:', enterpriseId);
-    console.log('[Create Module] body fields:', Object.keys(body));
-
     if (!enterpriseId) {
         throw createError({
             statusCode: 400,
@@ -69,9 +66,6 @@ export default defineEventHandler(async (event) => {
             role: user?.role || 'system'
         }
     });
-
-    console.log('[Create Module] Module created with ID:', dynamicModule._id);
-    console.log('[Create Module] Code length:', dynamicModule.code?.length || 0);
 
     return {
         success: true,

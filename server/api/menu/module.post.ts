@@ -14,8 +14,10 @@ export default defineEventHandler(async (event) => {
             throw createError({ statusCode: 400, message: 'module должен содержать _id и name' });
         }
 
-        // Загружаем полные данные модуля из базы
-        const fullModule = await DynamicModule.findById(module._id);
+        // Раньше тут тянули весь документ и клали code/files/dependencies
+        // прямо в пункт меню — это раздувало каждую загрузку /api/menu.
+        // Теперь берём только лёгкие поля через .select().
+        const fullModule = await DynamicModule.findById(module._id).select('_id name fileName format');
         if (!fullModule) {
             throw createError({ statusCode: 404, message: 'Модуль не найден в базе' });
         }
@@ -39,14 +41,13 @@ export default defineEventHandler(async (event) => {
             isModule: true,
             moduleId: fullModule._id,
             format: fullModule.format,
+            // Лёгкая ссылка. Код/файлы DynamicModuleLoader должен подтягивать
+            // сам по moduleId в момент открытия окна, а не таскаться в дереве меню.
             moduleData: {
                 _id: fullModule._id,
                 name: fullModule.name,
                 placeName: fullModule.fileName,
                 format: fullModule.format,
-                code: fullModule.code || '',
-                files: fullModule.files || [],
-                dependencies: Object.fromEntries(fullModule.dependencies || new Map()),
             },
             items: [],
         };

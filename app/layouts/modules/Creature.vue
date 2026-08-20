@@ -1,109 +1,120 @@
 <script lang="ts" setup>
 import {computed, nextTick, onMounted, onUnmounted, ref, watch} from 'vue'
-import {getMonacoLanguage, initMonaco} from '~~/app/composables/monaco/index'
-
+import {getMonacoLanguage, initMonaco, buildEditorFiles} from '~~/app/composables/monaco/index'
 import {useUserStore} from '~~/stores/userStore'
 import {useMenuEditorStore} from '~~/stores/menuEditorStore'
 import {useModuleEditorStore} from '~~/stores/moduleEditorStore'
+import {useAppStore} from '~~/stores/appStore'
 import {storeToRefs} from 'pinia'
-
 import jsIcon from '~~/public/js.png'
 import tsIcon from '~~/public/ts.png'
 import vueIcon from '~~/public/vue.png'
-
 defineOptions({
   inheritAttrs: false
 })
-
+// =============================================
+// ПРОПСЫ
+// =============================================
+const props = defineProps<{
+  initialModuleId?: string // передаётся из openWindow
+}>()
+// =============================================
+// EMITS
+// =============================================
+const emit = defineEmits(['close', 'saved'])
+// =============================================
 // Храним ссылки на редакторы
+// =============================================
 let mainEditorInstance: any = null
 let fileEditorInstance: any = null
 let monacoInstance: any = null
-
-const emit = defineEmits(['close', 'saved'])
-
-const {openWindow, updateWindowData} = useWindowManager()
+let monacoCtx: any = null
+// =============================================
+// COMPOSABLES
+// =============================================
+const {openWindow, updateWindowData, windows, focusWindow, closeWindow} = useWindowManager()
 const {addNotification} = useNotifications('Создание модуля')
 const {addLog} = useLogger('Создание модуля')
-
 const userStore = useUserStore()
 const menuStore = useMenuEditorStore()
 const moduleStore = useModuleEditorStore()
+const appStore = useAppStore()
+// =============================================
+// STORE REFS (только общие данные)
+// =============================================
+const {locations, selectedGroupId, selectedParentId, adding, creating, tree} = storeToRefs(menuStore)
 
-/* =========================================
-   ЛОКАЛЬНОЕ СОСТОЯНИЕ
-========================================= */
+const {modules} = storeToRefs(moduleStore)
+// =============================================
+// ЛОКАЛЬНОЕ СОСТОЯНИЕ (изолированное для каждого экземпляра)
+// =============================================
 const enterpriseInfo = ref<any>(null)
 const previewWindowId = ref<string | null>(null)
-
 const showDocumentation = ref(false)
 const loadingUPD = ref(false)
 const loadingDEP = ref(false)
 const newDepName = ref('')
 const newDepVersion = ref('')
 const initialDataLoaded = ref(false)
-
 const menuLocationModalOpen = ref(false)
 const menuLocationModalMode = ref<'create' | 'edit'>('create')
-
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
-
-/* =========================================
-   STORE REFS
-========================================= */
-
-// module store
-const {
-  modules,
-  selectedModuleId,
-  loading,
-  formData,
-  moduleFiles,
-  loadingFiles,
-  showFileEditor,
-  fileForm,
-  editingFilePath,
-  activeDepTab,
-  clearingCache,
-  tagsInput,
-  composablesInput,
-  isEditing,
-  currentDeps,
-  clientFiles,
-  serverFiles
-} = storeToRefs(moduleStore)
-
-// menu store
-const {
-  locations,
-  selectedGroupId,
-  selectedParentId,
-  adding,
-  creating,
-  tree,
-} = storeToRefs(menuStore)
-
-/* =========================================
-   КОНСТАНТЫ
-========================================= */
+// Локальный выбранный модуль
+const selectedModuleId = ref<string | null>(props.initialModuleId || null)
+// Локальная форма
+const formData = ref({
+  name: '',
+  fileName: '',
+  description: '',
+  format: 'vue' as 'vue' | 'js' | 'ts',
+  code: '',
+  isPublic: false,
+  tags: [] as string[],
+  previewImage: null as string | null,
+  dependencies: {} as Record<string, string>,
+  devDependencies: {} as Record<string, string>,
+  serverEntry: '',
+  composables: [] as string[]
+})
+// Локальные файлы
+const moduleFiles = ref<any[]>([])
+// Локальное состояние загрузки
+const loading = ref(false)
+const loadingFiles = ref(false)
+const clearingCache = ref(false)
+// Локальный редактор файлов
+const showFileEditor = ref(false)
+const fileForm = ref({
+  name: '',
+  path: '',
+  format: 'vue' as 'vue' | 'js' | 'ts',
+  code: '',
+  isServer: false
+})
+const editingFilePath = ref<string | null>(null)
+// Локальные зависимости
+const activeDepTab = ref<'dependencies' | 'devDependencies'>('dependencies')
+// Локальные инпуты для тегов
+const tagsInput = ref('')
+const composablesInput = ref('')
+// =============================================
+// КОНСТАНТЫ
+// =============================================
 const locationTypes = [
   {label: 'Меню', value: 'menu'},
   {label: 'Модули', value: 'module'}
 ]
-
 const fileFormats = [
   {label: '.vue', value: 'vue'},
   {label: '.js', value: 'js'},
   {label: '.ts', value: 'ts'}
 ]
-
 const availableFormats = [
   {label: '.vue', value: 'vue'},
   {label: '.js', value: 'js'},
   {label: '.ts', value: 'ts'}
 ]
-
-// Форма для модалки создания места с выбором родителя
+// Форма для модалки создания места
 const modalLocationForm = ref({
   title: '',
   placeName: '',
@@ -112,16 +123,48 @@ const modalLocationForm = ref({
   requiredRole: ['Управляющий'] as string[],
   parentId: null as string | null
 })
-
 // Ref для контейнеров Monaco
 const mainMonacoContainer = ref<HTMLElement | null>(null)
 const fileMonacoContainer = ref<HTMLElement | null>(null)
-
-// Рекурсивный сбор папок с указанием groupId
+// =============================================
+// COMPUTED
+// =============================================
+const currentUser = computed(() => ({
+  _id: userStore.userId || 'system',
+  name: userStore.userName || 'System',
+  role: userStore.userRole || 'system'
+}))
+const isEditing = computed(() => !!selectedModuleId.value)
+const currentDeps = computed(() => {
+  if (activeDepTab.value === 'dependencies') {
+    return formData.value.dependencies || {}
+  }
+  return formData.value.devDependencies || {}
+})
+const clientFiles = computed(() => moduleFiles.value.filter(f => !f.isServerFile))
+const serverFiles = computed(() => moduleFiles.value.filter(f => f.isServerFile))
+const editorLanguage = computed(() => {
+  return getMonacoLanguage(formData.value.format)
+})
+const fileEditorLanguage = computed(() => {
+  return getMonacoLanguage(fileForm.value.format)
+})
+const availableParents = computed(() => {
+  if (!selectedGroupId.value) return []
+  const group = locations.value.find(
+      (g: any) => g.groupId === selectedGroupId.value
+  )
+  if (!group) return []
+  return (group.locations || []).filter(
+      (loc: any) => loc.id !== null
+  )
+})
+// =============================================
+// Рекурсивный сбор папок
+// =============================================
 const collectFolderItems = (items: any[], groupId: string, level: number = 0): any[] => {
   const result: any[] = []
   if (!items || !Array.isArray(items)) return result
-
   for (const item of items) {
     if (item.items && Array.isArray(item.items) && item.items.length > 0) {
       const indent = '  '.repeat(level)
@@ -138,13 +181,10 @@ const collectFolderItems = (items: any[], groupId: string, level: number = 0): a
   }
   return result
 }
-
-// Опции для выбора родителя (содержат groupId)
 const parentLocationOptions = computed(() => {
   const options: { id: string | null; groupId: string | null; title: string; level: number; type: string }[] = [
     {id: null, groupId: null, title: '📁 Корень меню (верхний уровень)', level: 0, type: 'root'}
   ]
-
   for (const group of tree.value) {
     if (group.id && group.title) {
       options.push({
@@ -160,71 +200,31 @@ const parentLocationOptions = computed(() => {
       }
     }
   }
-
   return options
 })
-
-/* =========================================
-   COMPUTED
-========================================= */
-const currentUser = computed(() => ({
-  _id: userStore.userId || 'system',
-  name: userStore.userName || 'System',
-  role: userStore.userRole || 'system'
-}))
-
-// Универсальный язык для Monaco на основе формата
-const editorLanguage = computed(() => {
-  return getMonacoLanguage(formData.value.format)
-})
-
-const fileEditorLanguage = computed(() => {
-  return getMonacoLanguage(fileForm.value.format)
-})
-
-const availableParents = computed(() => {
-  if (!selectedGroupId.value) return []
-
-  const group = locations.value.find(
-      (g: any) => g.groupId === selectedGroupId.value
-  )
-
-  if (!group) return []
-
-  return (group.locations || []).filter(
-      (loc: any) => loc.id !== null
-  )
-})
-
-/* =========================================
-   PLACEHOLDER
-========================================= */
+// =============================================
+// PLACEHOLDER
+// =============================================
 const getPlaceholder = () => {
   if (formData.value.format === 'vue') {
     return `
 <script setup>
 import { ref } from 'vue'
-
 const message = ref('Привет из динамического модуля!')
-
 const handleClick = () => {
     message.value = 'Работает!'
 }
 <\/script>
-
 <template>
     <div>
         <h1>{{ message }}</h1>
         <button @click="handleClick">Нажми на меня</button>
     </div>
 </template>
-
 <style scoped>
-
 </style>
   `
   }
-
   if (formData.value.format === 'ts') {
     return `// TypeScript module
 export function main(): string {
@@ -232,7 +232,6 @@ export function main(): string {
 }
 `
   }
-
   if (formData.value.format === 'js') {
     return `// JavaScript module
 export function main() {
@@ -240,11 +239,8 @@ export function main() {
 }
 `
   }
-
   return '// module code...'
 }
-
-// Placeholder для файлов
 const getFilePlaceholder = (format: string) => {
   if (format === 'vue') {
     return `<template>
@@ -252,7 +248,6 @@ const getFilePlaceholder = (format: string) => {
     <h1>Новый компонент</h1>
   </div>
 </template>
-
 <script setup>
 // Ваш код здесь
 <\/script>`
@@ -268,69 +263,217 @@ export function example() {
   console.log('Hello from JavaScript!')
 }`
 }
+// =============================================
+// МЕТОДЫ ЗАГРУЗКИ ДАННЫХ (локальные)
+// =============================================
 
-/* =========================================
-   MODULE API METHODS
-========================================= */
+// ФИКС БАГА №1 (потеря code/isPublic/description/tags/... при выборе модуля):
+// раньше форма заполнялась из ОБЛЕГЧЁННОГО списка modules.value (там только
+// _id/name/fileName/format), из-за чего всё остальное затиралось дефолтами.
+// Теперь — один запрос к новому эндпоинту, отдающему модуль ПОЛНОСТЬЮ
+// (мета + code + files + dependencies), и он же убирает 2 лишних round-trip'а
+// (/files и /dependencies), из-за которых открытие модуля было медленным
+// (см. проблему №3).
+const loadFullModuleData = async (id: string): Promise<any | null> => {
+  if (!id || !enterpriseInfo.value?._id) return null
+  addLog('info', 'Начинаю загрузку полной информации о модуле...')
+  try {
+    const result: any = await $fetch(
+        `/api/enterprises/${enterpriseInfo.value._id}/dynamicModules/${id}`
+    )
+    addLog('success', 'Информация о модуле загружена')
+    return result?.module || null
+  } catch (error) {
+    console.error('loadFullModuleData error:', error)
+    addLog('error', `Не удалось загрузить полные данные модуля - ${ error?.data?.message ||
+    error?.message || error}`)
+    addNotification('error', 'Не удалось загрузить полные данные модуля. Смотрите логированиие')
+    return null
+  }
+}
+
+// Точечные догрузки — используются ТОЛЬКО как быстрый рефреш после
+// локальных мутаций файлов/зависимостей (saveFile/deleteFile/addDependency/
+// removeDependency), где тянуть весь модуль целиком избыточно.
 const loadModuleFiles = async () => {
   if (!selectedModuleId.value || !enterpriseInfo.value?._id) return
-  await moduleStore.loadModuleFilesById(enterpriseInfo.value._id, selectedModuleId.value)
+  loadingFiles.value = true
+  addLog('info', 'Загружаю файлы для модуля...')
+  try {
+    const result = await moduleStore.loadModuleFilesById(
+        enterpriseInfo.value._id,
+        selectedModuleId.value
+    )
+    moduleFiles.value = result.files || []
+    if (result.mainFile) {
+      formData.value.code = result.mainFile.code || ''
+    }
+    addLog('success', 'Файлы загружены!')
+  } catch (error) {
+    addLog('error', `Ошибка загрузки файлов для модуля - ${ error?.data?.message ||
+    error?.message || error}`)
+    console.error('loadModuleFiles error:', error)
+  } finally {
+    loadingFiles.value = false
+  }
 }
-
 const loadDependencies = async () => {
   if (!selectedModuleId.value || !enterpriseInfo.value?._id) return
-  await moduleStore.loadModuleDependencies(enterpriseInfo.value._id, selectedModuleId.value)
-}
+  addLog('info', 'Загружаю зависиомсти для модуля...')
 
+  try {
+    const result = await moduleStore.loadModuleDependencies(
+        enterpriseInfo.value._id,
+        selectedModuleId.value
+    )
+    formData.value.dependencies = result.dependencies || {}
+    formData.value.devDependencies = result.devDependencies || {}
+    addLog('success', 'Зависимости загружены!')
+
+  } catch (error) {
+    addLog('error', `Ошибка загрузки зависимостей для модуля - ${ error?.data?.message ||
+    error?.message || error}`)
+    console.error('loadDependencies error:', error)
+  }
+}
+// loadModule теперь ожидает ПОЛНЫЙ объект модуля (с code, если он есть).
+// mod.code берётся через `??`, а не `||` — чтобы легитимный пустой код
+// ('') не затирался старым значением формы.
+const loadModule = (mod: any) => {
+  if (!mod) return
+  formData.value = {
+    name: mod.name || '',
+    fileName: mod.fileName || '',
+    description: mod.description || '',
+    format: mod.format || 'vue',
+    code: mod.code ?? formData.value.code ?? '',
+    isPublic: mod.isPublic || false,
+    tags: mod.tags || [],
+    previewImage: mod.previewImage || null,
+    dependencies: mod.dependencies || {},
+    devDependencies: mod.devDependencies || {},
+    serverEntry: mod.serverEntry || '',
+    composables: mod.composables || []
+  }
+  tagsInput.value = (mod.tags || []).join(', ')
+  composablesInput.value = (mod.composables || []).join(', ')
+}
+const resetForm = () => {
+  formData.value = {
+    name: '',
+    fileName: '',
+    description: '',
+    format: 'vue',
+    code: getPlaceholder(),
+    isPublic: false,
+    tags: [],
+    previewImage: null,
+    dependencies: {},
+    devDependencies: {},
+    serverEntry: '',
+    composables: []
+  }
+  tagsInput.value = ''
+  composablesInput.value = ''
+  moduleFiles.value = []
+}
+// =============================================
+// ВЫБОР МОДУЛЯ
+// =============================================
+const selectModule = async (id: string | null) => {
+  if (id === selectedModuleId.value) return
+  selectedModuleId.value = id
+  if (!id) {
+    resetForm()
+    if (mainEditorInstance) {
+      mainEditorInstance.setValue(formData.value.code)
+    }
+    syncEditorFiles()
+    return
+  }
+  // Мгновенно показываем то немногое, что уже есть в лёгком списке
+  // (для отзывчивости UI, без ожидания сети), а затем одним запросом
+  // догружаем ВСЁ остальное (code/isPublic/description/tags/files/deps/...)
+  const lightMod = modules.value.find((m: any) => m._id === id)
+  if (lightMod) {
+    formData.value.name = lightMod.name || ''
+    formData.value.fileName = lightMod.fileName || ''
+    formData.value.format = lightMod.format || 'vue'
+  }
+  loadingFiles.value = true
+  try {
+    const full = await loadFullModuleData(id)
+    if (full) {
+      loadModule(full)
+      moduleFiles.value = full.files || []
+    }
+  } finally {
+    loadingFiles.value = false
+  }
+  if (!formData.value.code) {
+    formData.value.code = getPlaceholder()
+  }
+  if (mainEditorInstance) {
+    mainEditorInstance.setValue(formData.value.code)
+  }
+  syncEditorFiles()
+}
+// =============================================
+// СИНХРОНИЗАЦИЯ РЕДАКТОРА
+// =============================================
+const syncEditorFiles = () => {
+  if (!monacoCtx) return
+  const files = buildEditorFiles(formData.value, moduleFiles.value)
+  monacoCtx.fs.loadFiles(files)
+  monacoCtx.vfs.loadModuleFiles({
+    code: formData.value.code,
+    fileName: formData.value.fileName,
+    format: formData.value.format,
+    files: moduleFiles.value
+  })
+}
+// =============================================
+// СОХРАНЕНИЕ МОДУЛЯ
+// =============================================
 const saveModule = async () => {
   if (!enterpriseInfo.value?._id) {
     addNotification('error', 'ID предприятия не найден')
     return
   }
-
   if (!formData.value.name) {
     addNotification('error', 'Введите название модуля')
     return
   }
-
   if (!formData.value.fileName) {
     addNotification('error', 'Введите имя файла')
     return
   }
-
   loading.value = true
-
+  addLog('info', 'Начинаю сохранение модуля...')
   try {
-    // Получаем код из редактора Monaco
     if (mainEditorInstance) {
       formData.value.code = mainEditorInstance.getValue()
     }
-
     const {useModuleApi} = await import('~/composables/useModuleApi')
     const moduleApi = useModuleApi()
-
     const payload = {
       ...formData.value,
       code: formData.value.code || getPlaceholder(),
       createdBy: currentUser.value
     }
-
     const response = await moduleApi.saveModule(
         enterpriseInfo.value._id,
         payload,
         isEditing.value,
         selectedModuleId.value || undefined
     )
-
-    await moduleStore.loadModules(enterpriseInfo.value._id)
-
+    await moduleStore.loadModules(enterpriseInfo.value._id, true)
     if (!isEditing.value) {
       selectedModuleId.value = response.module._id
       addNotification('info', 'Модуль создан')
     } else {
       addNotification('info', 'Модуль обновлён')
     }
-
     emit('saved', response.module)
   } catch (error: any) {
     addNotification(
@@ -343,12 +486,10 @@ const saveModule = async () => {
     loading.value = false
   }
 }
-
-const normalizePath = (
-    name: string,
-    pathInput: string,
-    format: string
-) => {
+// =============================================
+// РАБОТА С ФАЙЛАМИ
+// =============================================
+const normalizePath = (name: string, pathInput: string, format: string) => {
   let basePath = pathInput?.trim() || name.trim()
   basePath = basePath.replace(/^\.\//, '')
   if (!basePath.match(/\.[a-z]+$/)) {
@@ -356,35 +497,28 @@ const normalizePath = (
   }
   return basePath
 }
-
 const saveFile = async () => {
   if (!selectedModuleId.value || !enterpriseInfo.value?._id) {
     addNotification('error', 'Модуль не выбран')
     return
   }
-
   if (!fileForm.value.name) {
     addNotification('warning', 'Введите имя файла')
     return
   }
-
+  addLog('info', 'Сохраняю файл...')
   try {
     loadingUPD.value = true
-
-    // Получаем код из файлового редактора
     if (fileEditorInstance) {
       fileForm.value.code = fileEditorInstance.getValue()
     }
-
     const {useModuleApi} = await import('~/composables/useModuleApi')
     const moduleApi = useModuleApi()
-
     const filePath = normalizePath(
         fileForm.value.name,
         fileForm.value.path,
         fileForm.value.format
     )
-
     const fileData = {
       name: fileForm.value.name,
       path: filePath,
@@ -392,7 +526,6 @@ const saveFile = async () => {
       code: fileForm.value.code || getFilePlaceholder(fileForm.value.format),
       isServerFile: fileForm.value.isServer
     }
-
     await moduleApi.saveFile(
         enterpriseInfo.value._id,
         selectedModuleId.value,
@@ -400,16 +533,13 @@ const saveFile = async () => {
         !!editingFilePath.value,
         editingFilePath.value || undefined
     )
-
     addNotification(
         'info',
         editingFilePath.value ? 'Файл обновлён' : 'Файл добавлен'
     )
-
     await loadModuleFiles()
-    moduleStore.closeFileEditor()
-    await refreshFileSystem()
-
+    closeFileEditor()
+    syncEditorFiles()
   } catch (error: any) {
     console.error('Save file error:', error)
     addNotification('error', error?.message || 'Ошибка сохранения файла')
@@ -418,37 +548,56 @@ const saveFile = async () => {
     loadingUPD.value = false
   }
 }
-
 const deleteFile = async (filePath: string) => {
   if (!selectedModuleId.value || !enterpriseInfo.value?._id) return
-
+  addLog('info', 'Удаляю файл...')
   try {
     const {useModuleApi} = await import('~/composables/useModuleApi')
     const moduleApi = useModuleApi()
-
     await moduleApi.deleteFile(
         enterpriseInfo.value._id,
         selectedModuleId.value,
         filePath
     )
-
     addNotification('info', 'Файл удалён')
     await loadModuleFiles()
-  } catch {
+    syncEditorFiles()
+  } catch (error) {
+    addLog('error', `Ошибка удаления файла - ${ error?.data?.message ||
+    error?.message || error }`)
     addNotification('error', 'Ошибка удаления файла')
   }
 }
-
+const openFileEditor = (file?: any) => {
+  if (file) {
+    fileForm.value = {
+      name: file.name || '',
+      path: file.path || '',
+      format: file.format || 'vue',
+      code: file.code || '',
+      isServer: file.isServerFile || false
+    }
+    editingFilePath.value = file.path || null
+  } else {
+    fileForm.value = { name: '', path: '', format: 'vue', code: '', isServer: false }
+    editingFilePath.value = null
+  }
+  showFileEditor.value = true
+}
+const closeFileEditor = () => {
+  showFileEditor.value = false
+  editingFilePath.value = null
+}
+// =============================================
+// ЗАВИСИМОСТИ
+// =============================================
 const addDependency = async () => {
   if (!newDepName.value || !selectedModuleId.value) return
-
   loadingDEP.value = true
   addLog('info', `Начинаю установку зависимости "${newDepName.value}"...`)
-
   try {
     const {useModuleApi} = await import('~/composables/useModuleApi')
     const moduleApi = useModuleApi()
-
     await moduleApi.addDependency(
         enterpriseInfo.value._id,
         selectedModuleId.value,
@@ -456,11 +605,9 @@ const addDependency = async () => {
         newDepVersion.value || 'latest',
         activeDepTab.value
     )
-
     await loadDependencies()
     addLog('success', `Зависимость "${newDepName.value}" успешно установлена!`)
     addNotification('info', 'Зависимость добавлена')
-
     newDepName.value = ''
     newDepVersion.value = ''
   } catch (error) {
@@ -470,42 +617,33 @@ const addDependency = async () => {
     loadingDEP.value = false
   }
 }
-
 const removeDependency = async (packageName: string) => {
   if (!selectedModuleId.value) return
-
   try {
     const {useModuleApi} = await import('~/composables/useModuleApi')
     const moduleApi = useModuleApi()
-
     await moduleApi.removeDependency(
         enterpriseInfo.value._id,
         selectedModuleId.value,
         packageName,
         activeDepTab.value
     )
-
     await loadDependencies()
     addNotification('info', 'Зависимость удалена')
   } catch {
     addNotification('error', 'Ошибка удаления зависимости')
   }
 }
-
 const clearModuleCache = async () => {
   if (!selectedModuleId.value || !enterpriseInfo.value?._id) return
-
   try {
     clearingCache.value = true
-
     const {useModuleApi} = await import('~/composables/useModuleApi')
     const moduleApi = useModuleApi()
-
     const result = await moduleApi.clearCache(
         selectedModuleId.value,
         enterpriseInfo.value._id
     )
-
     console.log('Cache clear result:', result)
     addNotification('info', 'Кеш модуля очищен')
   } catch (error: any) {
@@ -515,17 +653,14 @@ const clearModuleCache = async () => {
     clearingCache.value = false
   }
 }
-
-// Функция для обновления всех данных меню
+// =============================================
+// МЕНЮ
+// =============================================
 const refreshMenuData = async () => {
   await menuStore.loadLocations()
   await menuStore.loadTree()
   await menuStore.refreshAllMenuData()
 }
-
-/* =========================================
-   MENU API METHODS
-========================================= */
 function openCreateLocationModal() {
   menuLocationModalMode.value = 'create'
   modalLocationForm.value = {
@@ -538,28 +673,22 @@ function openCreateLocationModal() {
   }
   menuLocationModalOpen.value = true
 }
-
 async function handleSaveLocation() {
   if (!modalLocationForm.value.title.trim()) {
     addNotification('warning', 'Введите название места')
     return
   }
-
   if (!modalLocationForm.value.placeName.trim()) {
     addNotification('warning', 'Введите ключ (название файла)')
     return
   }
-
   try {
     creating.value = true
-
     const {useMenuApi} = await import('~/composables/useMenuApi')
     const menuApi = useMenuApi()
-
     const parentId = modalLocationForm.value.parentId
     const selectedOption = parentLocationOptions.value.find(opt => opt.id === parentId)
     const groupId = selectedOption?.groupId
-
     if (parentId && groupId) {
       await menuApi.addMenuItem(
           groupId,
@@ -580,9 +709,7 @@ async function handleSaveLocation() {
       )
       addNotification('info', 'Новая группа меню создана')
     }
-
     await refreshMenuData()
-
     if (!parentId) {
       const newGroup = locations.value.find(
           (g: any) => g.groupTitle === modalLocationForm.value.title
@@ -591,7 +718,6 @@ async function handleSaveLocation() {
         selectedGroupId.value = newGroup.groupId
       }
     }
-
     modalLocationForm.value = {
       title: '',
       placeName: '',
@@ -600,7 +726,6 @@ async function handleSaveLocation() {
       requiredRole: ['Управляющий'],
       parentId: null
     }
-
     window.dispatchEvent(new CustomEvent('modules-updated'))
     menuLocationModalOpen.value = false
   } catch (error: any) {
@@ -610,45 +735,33 @@ async function handleSaveLocation() {
     creating.value = false
   }
 }
-
 const addModuleToMenu = async () => {
   if (!selectedGroupId.value) {
     addNotification('warning', 'Выберите группу')
     return
   }
-
   let moduleId = selectedModuleId.value
-
   if (!moduleId) {
     await saveModule()
     moduleId = selectedModuleId.value
   }
-
   if (!moduleId) {
     addNotification('error', 'Не удалось сохранить модуль')
     return
   }
-
   const mod = modules.value.find((m: any) => m._id === moduleId)
-
   if (!mod) {
     addNotification('error', 'Модуль не найден')
     return
   }
-
   try {
     adding.value = true
-
     const {useMenuApi} = await import('~/composables/useMenuApi')
     const menuApi = useMenuApi()
-
     await menuApi.addModule(mod, selectedGroupId.value, selectedParentId.value)
-
     addNotification('info', 'Модуль добавлен в меню')
     menuStore.resetSelection()
-
     await refreshMenuData()
-
     window.dispatchEvent(new CustomEvent('modules-updated'))
   } catch {
     addNotification('error', 'Модуль не добавлен в меню')
@@ -656,43 +769,44 @@ const addModuleToMenu = async () => {
     adding.value = false
   }
 }
-
-/* =========================================
-   PREVIEW
-========================================= */
-const forcePreviewUpdate = () => {
-  if (previewWindowId.value) {
-    // Отправляем событие для обновления превью
-    window.dispatchEvent(new CustomEvent('force-preview-update'))
-
-    // Или обновляем данные с новым timestamp
-    updateWindowData('modules', previewWindowId.value, {
-      moduleName: formData.value.name,
-      code: formData.value.code,
-      isEditing: isEditing.value,
-      _updated: Date.now()
-    })
-  }
-}
-
+// =============================================
+// ПРЕДПРОСМОТР
+// =============================================
 const openPreviewInWindow = () => {
   let currentCode = formData.value.code
   if (mainEditorInstance) {
     currentCode = mainEditorInstance.getValue()
     formData.value.code = currentCode
   }
-
   if (!currentCode?.trim()) {
     addNotification('warning', 'Нет кода для предпросмотра')
     return
   }
 
-  const id = 'preview'
-  previewWindowId.value = id
+  // ── Если окно превью уже открыто — просто обновляем данные и фокусируем ──
+  if (previewWindowId.value) {
+    const existing = windows.value.find(w => w.itemId === previewWindowId.value)
+    if (existing) {
+      updateWindowData('modules', previewWindowId.value, {
+        moduleName: formData.value.name || 'Без названия',
+        code: currentCode,
+        files: moduleFiles.value,
+        dependencies: formData.value.dependencies,
+        devDependencies: formData.value.devDependencies,
+        moduleId: selectedModuleId.value,
+        _updated: Date.now()
+      })
+      focusWindow(existing.id)
+      return
+    }
+    // Окно было закрыто пользователем — сбрасываем ID
+    previewWindowId.value = null
+  }
 
+  // ── Создаём новое окно превью ──
   openWindow(
       'modules',
-      id,
+      'preview',
       null,
       {
         width: 600,
@@ -708,29 +822,26 @@ const openPreviewInWindow = () => {
         code: currentCode,
         files: moduleFiles.value,
         dependencies: formData.value.dependencies,
+        devDependencies: formData.value.devDependencies,
         moduleId: selectedModuleId.value
       }
   )
 }
-
-/* =========================================
-   IMAGE HANDLING
-========================================= */
+// =============================================
+// ИЗОБРАЖЕНИЯ
+// =============================================
 const handleImageUpload = (event: Event) => {
   const input = event.target as HTMLInputElement
   if (!input.files?.[0]) return
-
   const reader = new FileReader()
   reader.onload = e => {
     formData.value.previewImage = e.target?.result as string
   }
   reader.readAsDataURL(input.files[0])
 }
-
 const removePreview = () => {
   formData.value.previewImage = null
 }
-
 const openDocumentation = () => {
   openWindow(
       'settings',
@@ -744,91 +855,23 @@ const openDocumentation = () => {
       }
   )
 }
-
-const refreshFileSystem = async () => {
-  if (!selectedModuleId.value || !enterpriseInfo.value?._id) return
-
-  try {
-    const response = await fetch(
-        `/api/enterprises/${enterpriseInfo.value._id}/dynamicModules/${selectedModuleId.value}/files`
-    )
-    const data = await response.json()
-
-    if (data.success) {
-      const files = []
-      if (data.mainFile) {
-        files.push({
-          path: data.mainFile.path,
-          content: data.mainFile.code || '',
-          format: data.mainFile.format,
-          name: data.mainFile.name
-        })
-      }
-      if (data.files) {
-        files.push(...data.files)
-      }
-
-      // Обновляем VFS
-      if (monacoCtx?.vfs) {
-        const moduleData = {
-          code: formData.value.code,
-          fileName: formData.value.fileName,
-          format: formData.value.format,
-          files: files
-        }
-        await monacoCtx.vfs.loadModuleFiles(moduleData)
-        console.log('[Creature] VFS updated via refreshFileSystem')
-      }
-
-      // Также можно обновить старую FS, но она обычно обновляется через store
-      // Для синхронизации можно обновить и её
-      if (monacoCtx?.fs) {
-        // Загружаем в старую FS (если нужно)
-        await monacoCtx.fs.loadFilesFromDB(selectedModuleId.value, enterpriseInfo.value._id)
-      }
-
-      // Отправляем событие для других компонентов (если нужно)
-      window.dispatchEvent(new CustomEvent('monaco-files-updated', {
-        detail: { files }
-      }))
-    }
-  } catch (error) {
-    console.error('Failed to refresh files:', error)
-  }
-}
-
-/* =========================================
-   HELPERS
-========================================= */
+// =============================================
+// ВСПОМОГАТЕЛЬНЫЕ
+// =============================================
 const getEnterpriseId = (): string | null => {
-  const saved = localStorage.getItem('currentEnterprise')
-  if (saved) {
-    try {
-      return JSON.parse(saved)._id
-    } catch {
-      return null
-    }
-  }
-  return null
+  return appStore.getEnterpriseId()
 }
-
 // Инициализация файлового редактора
 const initFileEditor = async () => {
   if (!fileMonacoContainer.value) return
-
   await nextTick()
-
   const {ctx} = initMonaco(fileMonacoContainer.value!, {
     language: getMonacoLanguage(fileForm.value.format)
   })
   fileEditorInstance = ctx.editor
   monacoInstance = ctx.monaco
-
-  // Устанавливаем код
   const code = fileForm.value.code || getFilePlaceholder(fileForm.value.format)
   fileEditorInstance.setValue(code)
-
-  // Обновляем язык при изменении формата
   watch(fileEditorLanguage, (newLang) => {
     if (fileEditorInstance && monacoInstance) {
       const model = fileEditorInstance.getModel()
@@ -838,53 +881,15 @@ const initFileEditor = async () => {
     }
   })
 }
-
-/* =========================================
-   WATCHERS
-========================================= */
-
-
+// =============================================
+// WATCHERS
+// =============================================
 watch(tagsInput, value => {
   formData.value.tags = value.split(',').map(v => v.trim()).filter(Boolean)
 })
-
 watch(composablesInput, value => {
   formData.value.composables = value.split(',').map(v => v.trim()).filter(Boolean)
 })
-
-watch(
-    [selectedModuleId, modules],
-    async ([id, mods]) => {
-      if (!id) {
-        moduleStore.resetForm()
-        formData.value.code = getPlaceholder()
-        if (mainEditorInstance) {
-          mainEditorInstance.setValue(formData.value.code)
-        }
-        return
-      }
-
-      if (!mods || mods.length === 0) return
-
-      const mod = mods.find((m: any) => m._id === id)
-      if (!mod) return
-
-      moduleStore.loadModule(mod)
-
-      if (!formData.value.code) {
-        formData.value.code = getPlaceholder()
-      }
-
-      if (mainEditorInstance) {
-        mainEditorInstance.setValue(formData.value.code)
-      }
-
-      await loadModuleFiles()
-      await loadDependencies()
-    },
-    {immediate: true}
-)
-
 watch(
     () => formData.value.format,
     () => {
@@ -896,61 +901,48 @@ watch(
       }
     }
 )
-
 watch(selectedGroupId, () => {
   selectedParentId.value = null
 })
-
 watch(
     () => formData.value.code,
     code => {
       if (!previewWindowId.value) return
-      // Создаем новый объект для триггера реактивности
       updateWindowData('modules', previewWindowId.value, {
         moduleName: formData.value.name,
         code: code,
         isEditing: isEditing.value,
-        // Добавляем timestamp для форсирования обновления
         _updated: Date.now()
       })
     }
 )
-
 watch(showDocumentation, async () => {
   await nextTick()
   setTimeout(() => {
     mainEditorInstance?.layout?.()
   }, 50)
 })
-
 watch(moduleFiles, (newFiles) => {
   if (!previewWindowId.value) return
   updateWindowData('modules', previewWindowId.value, {
     files: newFiles
   })
 })
-
-// Универсальный watch для смены языка подсветки главного редактора
 watch(editorLanguage, (newLang) => {
   if (mainEditorInstance && monacoInstance) {
     const model = mainEditorInstance.getModel()
     if (model) {
       monacoInstance.editor.setModelLanguage(model, newLang)
-      console.log(`[Monaco] Язык изменён на: ${newLang} для формата: ${formData.value.format}`)
     }
   }
 }, {immediate: true})
-
-// Следим за открытием файловой модалки для инициализации редактора
 watch(showFileEditor, async (val) => {
   if (val) {
     await nextTick()
-    // Даем время на рендер DOM
     setTimeout(() => {
       initFileEditor()
     }, 100)
   } else {
-    // Очищаем редактор при закрытии
     if (fileEditorInstance) {
       fileEditorInstance.dispose()
       fileEditorInstance = null
@@ -958,113 +950,128 @@ watch(showFileEditor, async (val) => {
   }
 })
 
-/* =========================================
-   LIFECYCLE
-========================================= */
+watch(() => formData.value.dependencies, (newDeps) => {
+  if (!previewWindowId.value) return
+  updateWindowData('modules', previewWindowId.value, {
+    dependencies: newDeps,
+    _updated: Date.now()
+  })
+}, { deep: true })
 
-let monacoCtx: any = null
+watch(() => formData.value.devDependencies, (newDeps) => {
+  if (!previewWindowId.value) return
+  updateWindowData('modules', previewWindowId.value, {
+    devDependencies: newDeps,
+    _updated: Date.now()
+  })
+}, { deep: true })
+
+// ── При изменении имени модуля — обновляем заголовок превью ──
+watch(() => formData.value.name, (newName) => {
+  if (!previewWindowId.value) return
+  updateWindowData('modules', previewWindowId.value, {
+    moduleName: newName || 'Без названия',
+    _updated: Date.now()
+  })
+})
 
 
+// =============================================
+// LIFECYCLE
+// =============================================
 onMounted(async () => {
-  if (monacoCtx?.vfs && selectedModuleId.value && enterpriseId) {
-    await monacoCtx.vfs.loadFromDB(selectedModuleId.value, enterpriseId)
-  }
-
   const enterpriseId = getEnterpriseId()
-  if (!enterpriseId) return
-
-  enterpriseInfo.value = JSON.parse(localStorage.getItem('currentEnterprise') || 'null')
-
-  await moduleStore.loadModules(enterpriseId)
-  await menuStore.loadLocations()
-  await menuStore.loadTree()
-
-  moduleStore.resetForm()
-  formData.value.code = getPlaceholder()
-
-  initialDataLoaded.value = true
-
-  // Инициализация главного Monaco
-  if (mainMonacoContainer.value) {
-    // ЗАГРУЖАЕМ ФАЙЛЫ В FS
-    let files = []
-    if (selectedModuleId.value) {
-      try {
-        const response = await fetch(
-            `/api/enterprises/${enterpriseId}/dynamicModules/${selectedModuleId.value}/files`
-        )
-        const data = await response.json()
-        if (data.success) {
-          // Добавляем основной файл
-          if (data.mainFile) {
-            files.push({
-              path: data.mainFile.path,
-              content: data.mainFile.code || '',
-              format: data.mainFile.format,
-              name: data.mainFile.name
-            })
-          }
-          // Добавляем дополнительные файлы
-          if (data.files) {
-            files.push(...data.files)
-          }
-        }
-      } catch (error) {
-        console.error('Failed to load files:', error)
+  // Раньше тут был жёсткий `if (!enterpriseId) return` без какого-либо
+  // повторного запроса — если окно открывалось до того, как в localStorage
+  // появлялось currentEnterprise (например, сразу после логина), список
+  // модулей оставался пустым НАВСЕГДА до перезагрузки страницы.
+  // Теперь при отсутствии enterpriseId подписываемся на событие
+  // 'enterprise-login' (его уже диспатчит остальное приложение,
+  // см. MoloMenu.vue) и догружаем список модулей, как только оно придёт.
+  if (!enterpriseId) {
+    const retryOnLogin = () => {
+      const id = getEnterpriseId()
+      if (id) {
+        enterpriseInfo.value = JSON.parse(localStorage.getItem('currentEnterprise') || 'null')
+        moduleStore.loadModules(id, true)
       }
     }
-
-    // ПЕРЕДАЕМ ФАЙЛЫ В MONACO
-    const { ctx } = initMonaco(mainMonacoContainer.value!, {
+    window.addEventListener('enterprise-login', retryOnLogin, { once: true })
+    onUnmounted(() => window.removeEventListener('enterprise-login', retryOnLogin))
+    return
+  }
+  enterpriseInfo.value = JSON.parse(localStorage.getItem('currentEnterprise') || 'null')
+  // Загружаем списки
+  await Promise.all([
+    moduleStore.loadModules(enterpriseId),
+    menuStore.loadLocations(),
+    menuStore.loadTree()
+  ])
+  // Если есть initialModuleId — загружаем его ПОЛНОСТЬЮ (см. фикс бага №1:
+  // раньше здесь брали объект из облегчённого списка modules.value и теряли
+  // code/isPublic/description/tags/dependencies/...)
+  if (props.initialModuleId) {
+    selectedModuleId.value = props.initialModuleId
+    const full = await loadFullModuleData(props.initialModuleId)
+    if (full) {
+      loadModule(full)
+      moduleFiles.value = full.files || []
+    } else {
+      selectedModuleId.value = null
+    }
+  }
+  if (!selectedModuleId.value) {
+    resetForm()
+  }
+  if (!formData.value.code) {
+    formData.value.code = getPlaceholder()
+  }
+  initialDataLoaded.value = true
+  // Инициализация Monaco
+  if (mainMonacoContainer.value) {
+    const files = buildEditorFiles(formData.value, moduleFiles.value)
+    const {ctx} = initMonaco(mainMonacoContainer.value!, {
       language: getMonacoLanguage(formData.value.format),
       moduleId: selectedModuleId.value || undefined,
       enterpriseId: enterpriseId,
-      files: files
+      files
     })
-
     mainEditorInstance = ctx.editor
     monacoInstance = ctx.monaco
     monacoCtx = ctx
-    if (selectedModuleId.value && enterpriseId) {
-      await ctx.vfs.loadFromDB(selectedModuleId.value, enterpriseId)
-    }
-    // Установка начального кода
     if (formData.value.code) {
       mainEditorInstance.setValue(formData.value.code)
     }
   }
 })
-
 onUnmounted(() => {
-  if (debounceTimer) {
-    clearTimeout(debounceTimer)
-  }
-  if (mainEditorInstance) {
-    mainEditorInstance.dispose()
-    mainEditorInstance = null
-  }
-  if (fileEditorInstance) {
-    fileEditorInstance.dispose()
-    fileEditorInstance = null
-  }
+  if (debounceTimer) clearTimeout(debounceTimer)
+  if (mainEditorInstance) { mainEditorInstance.dispose(); mainEditorInstance = null }
+  if (fileEditorInstance) { fileEditorInstance.dispose(); fileEditorInstance = null }
   monacoInstance = null
+  monacoCtx = null
+
+  // Закрываем окно превью вместе с редактором
+  if (previewWindowId.value) {
+    const existing = windows.value.find(w => w.itemId === previewWindowId.value)
+    if (existing) closeWindow(existing.id)
+    previewWindowId.value = null
+  }
 })
 </script>
-
 <template>
   <div class="module-editor">
     <div class="editor-header">
       <div class="header-left">
         <h1>{{ isEditing ? 'Редактирование модуля' : 'Создание модуля' }}</h1>
-
         <div class="header-actions">
-          <MoloButton class="small"
-                      :class="selectedModuleId ? 'default' : 'confirm'"
-                      @click="selectedModuleId = null"
+          <MoloButton
+              class="small"
+              :class="selectedModuleId ? 'default' : 'confirm'"
+              @click="selectModule(null)"
           >
             Новый
           </MoloButton>
-
           <MoloButton
               v-if="formData.format === 'vue'"
               class="small confirm"
@@ -1072,31 +1079,28 @@ onUnmounted(() => {
           >
             Предпросмотр
           </MoloButton>
-
           <MoloButton
               class="small"
-              :class="openDocumentation ? 'confirm' : 'default'"
+              :class="showDocumentation ? 'confirm' : 'default'"
               @click="openDocumentation"
           >
             {{ showDocumentation ? 'Скрыть док.' : 'Документация' }}
           </MoloButton>
         </div>
       </div>
-
       <div class="header-right">
         <MoloSelect
-            v-model="selectedModuleId"
+            :model-value="selectedModuleId"
             :disabled="!modules || modules.length === 0 ? 'Нет модулей' : 'Выбрать модуль'"
             :parent="modules"
             children="name"
             class="module-select"
             valueKey="_id"
+            @update:model-value="selectModule"
         />
       </div>
     </div>
-
     <hr/>
-
     <div class="editor-grid">
       <!-- ОСНОВНЫЕ НАСТРОЙКИ -->
       <div class="main-settings">
@@ -1112,14 +1116,12 @@ onUnmounted(() => {
                   placeholder="Введите название"
                   tLabel="Название"
               />
-
               <MoloInput
                   v-model="formData.fileName"
                   lRequired
                   placeholder="на_английском"
                   tLabel="Имя файла"
               />
-
               <MoloSelect
                   v-model="formData.format"
                   :parent="availableFormats"
@@ -1131,7 +1133,6 @@ onUnmounted(() => {
             </div>
           </template>
         </MoloSection>
-
         <MoloSection>
           <template #header>
             <span>Мета</span>
@@ -1143,7 +1144,6 @@ onUnmounted(() => {
                   placeholder="Что делает модуль?"
                   tLabel="Описание"
               />
-
               <MoloInput
                   v-model="tagsInput"
                   placeholder="ui, таблицы, графики"
@@ -1152,7 +1152,6 @@ onUnmounted(() => {
             </div>
           </template>
         </MoloSection>
-
         <MoloSection>
           <template #header>
             <span>Дополнительно</span>
@@ -1169,10 +1168,8 @@ onUnmounted(() => {
                   type="file"
                   @change="handleImageUpload"
               />
-
               <div v-if="formData.previewImage" class="preview-image">
                 <img :src="formData.previewImage" alt="preview" style="width: 60px"/>
-
                 <MoloButton class="action-btn close small" @click="removePreview">
                   ✕
                 </MoloButton>
@@ -1181,7 +1178,6 @@ onUnmounted(() => {
           </template>
         </MoloSection>
       </div>
-
       <!-- УПРАВЛЕНИЕ МЕНЮ -->
       <div class="menu-settings">
         <MoloSection>
@@ -1198,7 +1194,6 @@ onUnmounted(() => {
                 valueKey="groupId"
                 :key="locations.length"
             />
-
             <MoloSelect
                 v-if="availableParents.length"
                 v-model="selectedParentId"
@@ -1208,7 +1203,6 @@ onUnmounted(() => {
                 tLabel="Родительский элемент"
                 valueKey="id"
             />
-
             <MoloButton
                 :disabled="!selectedGroupId || adding"
                 class="confirm"
@@ -1219,7 +1213,6 @@ onUnmounted(() => {
             </MoloButton>
           </template>
         </MoloSection>
-
         <MoloSection>
           <template #header>
             <span>Работа с меню</span>
@@ -1246,12 +1239,10 @@ onUnmounted(() => {
                 <MoloButton class="small close" @click="emit('close')">
                   Отмена
                 </MoloButton>
-
-                <MoloButton :disabled="loading" class="small confirm" @click="saveModule">
+                <MoloButton :loading="loading" :disabled="loading" class="small confirm" @click="saveModule">
                   <span v-if="!loading">
                     {{ isEditing ? 'Обновить' : 'Создать' }}
                   </span>
-                  <MoloLoaders v-else btnLoader/>
                 </MoloButton>
               </div>
             </section>
@@ -1262,9 +1253,7 @@ onUnmounted(() => {
         </MoloSection>
       </div>
     </div>
-
     <hr/>
-
     <!-- КОД МОДУЛЯ -->
     <MoloSection>
       <template #header>
@@ -1287,14 +1276,12 @@ onUnmounted(() => {
         </div>
       </template>
     </MoloSection>
-
     <hr/>
-
     <!-- ФАЙЛЫ МОДУЛЯ -->
     <MoloSection>
       <template #header>
         <span>Файлы модуля</span>
-        <MoloButton class="confirm small" @click="moduleStore.openFileEditor()">
+        <MoloButton class="confirm small" @click="openFileEditor()">
           Добавить файл
         </MoloButton>
       </template>
@@ -1305,42 +1292,37 @@ onUnmounted(() => {
         <div class="file-list">
           <div v-for="file in clientFiles" :key="file.path" class="file-item">
             <div class="file-info">
-                <span class="file-logo">
-                  <img
-                      v-if="file.format === 'vue'"
-                      :src="vueIcon"
-                      alt=""
-                      class="file-icon"
-                  />
-                  <img
-                      v-else-if="file.format === 'ts'"
-                      :src="tsIcon"
-                      alt=""
-                      class="file-icon"
-                  />
-                  <img v-else :src="jsIcon" alt="" class="file-icon"/>
-                  <i class="devicon devicon-vue"></i>
-                  {{ file.name }}
-                </span>
-
+              <span class="file-logo">
+                <img
+                    v-if="file.format === 'vue'"
+                    :src="vueIcon"
+                    alt=""
+                    class="file-icon"
+                />
+                <img
+                    v-else-if="file.format === 'ts'"
+                    :src="tsIcon"
+                    alt=""
+                    class="file-icon"
+                />
+                <img v-else :src="jsIcon" alt="" class="file-icon"/>
+                {{ file.name }}
+              </span>
               <span class="file-badge">
-                  {{ file.format }}
-                </span>
-
+                {{ file.format }}
+              </span>
               <span class="file-path">
-                  {{ file.path }}
-                </span>
+                {{ file.path }}
+              </span>
             </div>
-
             <div class="file-actions">
               <MoloButton
                   class="action-btn-small edit"
                   title="Редактировать"
-                  @click="moduleStore.openFileEditor(file)"
+                  @click="openFileEditor(file)"
               >
                 ↩
               </MoloButton>
-
               <MoloButton
                   class="action-btn-small delete"
                   title="Удалить"
@@ -1350,7 +1332,6 @@ onUnmounted(() => {
               </MoloButton>
             </div>
           </div>
-
           <div
               v-if="!loadingFiles && clientFiles.length === 0 && serverFiles.length === 0"
               class="file-empty"
@@ -1360,7 +1341,6 @@ onUnmounted(() => {
         </div>
       </template>
     </MoloSection>
-
     <!-- МОДАЛКА РЕДАКТОРА ФАЙЛОВ -->
     <MoloModal
         v-model="showFileEditor"
@@ -1370,7 +1350,7 @@ onUnmounted(() => {
         width="700px"
         :loading="loadingUPD"
         @confirm="saveFile"
-        @cancel="moduleStore.closeFileEditor()"
+        @cancel="closeFileEditor"
     >
       <template #body>
         <div style="display: flex; flex-direction: column; gap: 16px;">
@@ -1381,14 +1361,12 @@ onUnmounted(() => {
                 placeholder="Button"
                 tLabel="Имя файла (без расширения)"
             />
-
             <MoloInput
                 v-model="fileForm.path"
                 placeholder="components/Button"
                 tLabel="Путь (опционально)"
                 help-text="Оставьте пустым для автоматического пути"
             />
-
             <MoloSelect
                 v-model="fileForm.format"
                 :parent="fileFormats"
@@ -1397,7 +1375,6 @@ onUnmounted(() => {
                 valueKey="value"
             />
           </div>
-
           <div class="file-editor-container">
             <ClientOnly>
               <div ref="fileMonacoContainer" class="file-monaco-editor"></div>
@@ -1406,9 +1383,7 @@ onUnmounted(() => {
         </div>
       </template>
     </MoloModal>
-
     <hr/>
-
     <!-- ЗАВИСИМОСТИ -->
     <div class="dependencies">
       <MoloSection>
@@ -1421,7 +1396,6 @@ onUnmounted(() => {
             >
               dependencies
             </MoloButton>
-
             <MoloButton
                 :class="activeDepTab === 'devDependencies' ? 'confirm small' : 'default small'"
                 @click="activeDepTab = 'devDependencies'"
@@ -1436,7 +1410,6 @@ onUnmounted(() => {
             <span>Версия</span>
             <span>Действия</span>
           </div>
-
           <div class="dep-list">
             <div
                 v-for="(version, pkg) in currentDeps"
@@ -1445,7 +1418,6 @@ onUnmounted(() => {
             >
               <span class="dep-name">{{ pkg }}</span>
               <span class="dep-version">{{ version }}</span>
-
               <button
                   class="action-btn-small delete"
                   @click="removeDependency(pkg as string)"
@@ -1453,14 +1425,12 @@ onUnmounted(() => {
                 ×
               </button>
             </div>
-
             <div v-if="Object.keys(currentDeps).length === 0" class="dep-empty">
               Нет зависимостей
             </div>
           </div>
         </template>
       </MoloSection>
-
       <MoloSection>
         <template #header>
           <span>Добавить зависимость</span>
@@ -1475,7 +1445,6 @@ onUnmounted(() => {
               placeholder="package-name"
               tLabel="Пакет"
           />
-
           <MoloInput
               v-model="newDepVersion"
               placeholder="latest"
@@ -1485,8 +1454,7 @@ onUnmounted(() => {
       </MoloSection>
     </div>
   </div>
-
-  <!-- МОДАЛКА СОЗДАНИЯ МЕСТА В МЕНЮ С ВЫБОРОМ РОДИТЕЛЯ -->
+  <!-- МОДАЛКА СОЗДАНИЯ МЕСТА В МЕНЮ -->
   <MoloModal
       v-model="menuLocationModalOpen"
       title="Создание места в меню"
@@ -1496,8 +1464,7 @@ onUnmounted(() => {
       close-on-overlay
       @confirm="handleSaveLocation"
       help-text="Вы можете создать вложенное меню, выбрав родительский элемент.
-        Если выберите родителя (папку), новое место создастся внутри неё как подменю
-  "
+      Если выберите родителя (папку), новое место создастся внутри неё как подменю"
   >
     <template #body>
       <div style="display: flex; flex-direction: column; gap: 16px;">
@@ -1515,8 +1482,6 @@ onUnmounted(() => {
               placeholder="Например: info"
           />
         </section>
-
-
         <MoloSelect
             v-model="modalLocationForm.type"
             :parent="locationTypes"
@@ -1524,7 +1489,6 @@ onUnmounted(() => {
             tLabel="Тип места"
             valueKey="value"
         />
-
         <MoloSelect
             v-model="modalLocationForm.parentId"
             :parent="parentLocationOptions"
@@ -1533,7 +1497,6 @@ onUnmounted(() => {
             valueKey="id"
             help-text="Выберите, внутри какого места создать новое"
         />
-
         <MoloInput
             v-model.number="modalLocationForm.order"
             tLabel="Порядок сортировки"
@@ -1545,7 +1508,6 @@ onUnmounted(() => {
     </template>
   </MoloModal>
 </template>
-
 <style scoped>
 .module-editor {
   display: flex;
@@ -1554,7 +1516,6 @@ onUnmounted(() => {
   padding: 20px;
   box-sizing: border-box;
 }
-
 .editor-header {
   display: flex;
   justify-content: space-between;
@@ -1562,62 +1523,52 @@ onUnmounted(() => {
   flex-wrap: wrap;
   gap: 20px;
 }
-
 .header-left {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 20px;
 }
-
 .header-left h1 {
   margin: 0;
   font-size: 24px;
 }
-
 .header-actions {
   display: flex;
   gap: 8px;
-
 }
-
 .header-right {
   display: flex;
   align-items: center;
   justify-content: center;
   width: 250px;
 }
-
 .editor-grid {
   display: grid;
   grid-template-columns: 1fr 320px;
   gap: 10px;
 }
-
 .main-settings {
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
-
 .menu-settings {
   display: flex;
   flex-direction: column;
+  justify-content: space-between;
   gap: 10px;
 }
-
 .editor-actions {
   display: flex;
   gap: 5px;
 }
-
 .code-container {
   display: flex;
   height: 500px;
   width: 100%;
   overflow: hidden;
 }
-
 .file-editor-container {
   display: flex;
   height: 400px;
@@ -1626,21 +1577,17 @@ onUnmounted(() => {
   border: 1px solid #3c3c3c;
   border-radius: 4px;
 }
-
 .file-monaco-editor {
   height: 100%;
   width: 100%;
 }
-
 .form-row {
   display: flex;
   gap: 10px;
 }
-
 .form-row > * {
   flex: 1;
 }
-
 .checkbox-label {
   width: fit-content;
   display: flex;
@@ -1650,26 +1597,22 @@ onUnmounted(() => {
   color: rgba(255, 255, 255, 0.9);
   font-size: 14px;
 }
-
 .preview-upload {
   display: flex;
   flex-direction: row;
   align-items: center;
   gap: 8px;
 }
-
 .preview-image {
   display: flex;
   align-items: center;
   gap: 10px;
 }
-
 .file-list {
   display: flex;
   flex-direction: column;
   gap: 5px;
 }
-
 .file-item {
   display: flex;
   gap: 15px;
@@ -1680,21 +1623,17 @@ onUnmounted(() => {
   padding: 5px 0;
   border-bottom: 1px solid var(--half_opacity_border);
 }
-
 .file-item:last-child {
   border-bottom: none;
 }
-
 .file-logo {
   display: flex;
   gap: 10px;
   align-items: center;
 }
-
 .file-icon {
   width: 20px;
 }
-
 .file-info {
   display: flex;
   flex-direction: row;
@@ -1702,7 +1641,6 @@ onUnmounted(() => {
   gap: 8px;
   flex: 1;
 }
-
 .file-badge {
   font-size: 10px;
   background: #3c3c3c;
@@ -1710,28 +1648,23 @@ onUnmounted(() => {
   border-radius: 10px;
   color: #aaa;
 }
-
 .file-badge.server {
   background: #3a6ea5;
   color: #fff;
 }
-
 .file-path {
   font-size: 11px;
   color: #666;
 }
-
 .file-empty {
   text-align: center;
   color: #666;
   padding: 20px;
 }
-
 .file-actions {
   display: flex;
   gap: 4px;
 }
-
 .action-btn-small {
   padding: 2px 8px;
   font-size: 14px;
@@ -1742,32 +1675,26 @@ onUnmounted(() => {
   color: #ccc;
   transition: all 0.2s;
 }
-
 .action-btn-small:hover {
   background: #333;
 }
-
 .action-btn-small.edit:hover {
   border-color: #3a6ea5;
   color: #3a6ea5;
 }
-
 .action-btn-small.delete:hover {
   border-color: #ef4444;
   color: #ef4444;
 }
-
 .dep-tabs {
   display: flex;
   gap: 10px;
 }
-
 .dep-list {
   max-height: 300px;
   overflow-y: auto;
   border-radius: 4px;
 }
-
 .dep-list-header {
   display: grid;
   gap: 16px;
@@ -1781,7 +1708,6 @@ onUnmounted(() => {
   letter-spacing: 0.5px;
   color: rgba(255, 255, 255, 0.5);
 }
-
 .dep-item {
   display: grid;
   grid-template-columns: 1fr 100px 70px;
@@ -1792,15 +1718,12 @@ onUnmounted(() => {
   border-bottom: 1px solid #3c3c3c;
   transition: all 0.2s ease;
 }
-
 .dep-item:last-child {
   border-bottom: none;
 }
-
 .dep-item:hover {
   background: #2a2a2a;
 }
-
 .dep-name {
   font-family: 'Monaco', 'Menlo', monospace;
   font-size: 13px;
@@ -1810,7 +1733,6 @@ onUnmounted(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
 .dep-version {
   font-family: 'Monaco', 'Menlo', monospace;
   font-size: 12px;
@@ -1821,64 +1743,52 @@ onUnmounted(() => {
   text-align: center;
   justify-self: start;
 }
-
 .dep-empty {
   text-align: center;
   color: #666;
   padding: 40px 20px;
   font-size: 14px;
 }
-
 .dependencies {
   display: flex;
   flex-direction: row;
   gap: 20px;
 }
-
 .loader-wrapper {
   display: flex;
   justify-content: center;
   align-items: center;
   padding: 40px;
 }
-
 hr {
   border-color: #3c3c3c;
   margin: 16px 0;
 }
-
 @media (max-width: 768px) {
   .form-row {
     flex-direction: column;
   }
-
   .modal-content {
     width: 95%;
     max-height: 90vh;
   }
-
   .file-editor-container {
     height: 300px;
   }
-
   .dependencies {
     flex-direction: column;
   }
-
   .editor-header {
     flex-direction: column;
     align-items: stretch;
   }
-
   .header-left {
     flex-direction: column;
     align-items: stretch;
   }
-
   .header-actions {
     flex-wrap: wrap;
   }
-
   .editor-grid {
     grid-template-columns: 1fr;
   }

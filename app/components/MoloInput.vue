@@ -302,7 +302,7 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
 }
 
 input:focus {
-  border-color: var(--half_opacity_border_hover);
+  border-color: var(--borber-color_main);
 }
 
 input::placeholder {

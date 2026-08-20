@@ -2,6 +2,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { useDebounceFn } from '@vueuse/core'
+import { useEnterpriseModulesStore } from './enterpriseModulesStore'
 
 // Тип для публичного модуля (браузер)
 export interface BrowserModule {
@@ -19,9 +20,15 @@ export interface BrowserModule {
 }
 
 export const useModulesStore = defineStore('modules', () => {
-    // ========== Модули предприятия (было) ==========
-    const modules = ref<any[]>([])
-    const loading = ref(false)
+    // ========== Модули предприятия ==========
+    // Раньше это был ТРЕТИЙ независимый список модулей предприятия
+    // (свой modules[], свой fetchModules(), свой enterpriseId) —
+    // полный дубликат того, что уже есть в moloMenuStore и
+    // moduleEditorStore, с собственными несинхронными багами.
+    // Теперь это просто ссылка на единый enterpriseModulesStore.
+    const sharedModules = useEnterpriseModulesStore()
+    const modules = computed(() => sharedModules.modules)
+    const loading = computed(() => sharedModules.loading)
     const enterpriseId = ref<string | null>(null)
 
     // ========== Браузер (публичные модули) ==========
@@ -176,23 +183,14 @@ export const useModulesStore = defineStore('modules', () => {
         hasEditorAccess.value = false
     }
 
-    // ========== Старые методы (модули предприятия) без изменений ==========
+    // ========== Старые методы (модули предприятия) — теперь тонкие обёртки ==========
     const setEnterprise = (id: string) => {
         enterpriseId.value = id
     }
 
-    const fetchModules = async () => {
+    const fetchModules = async (force = false) => {
         if (!enterpriseId.value) return
-        loading.value = true
-        try {
-            const res = await $fetch(`/api/enterprises/${enterpriseId.value}/dynamicModules`)
-            modules.value = res.modules || []
-        } catch (e) {
-            console.error('Ошибка загрузки модулей', e)
-            modules.value = []
-        } finally {
-            loading.value = false
-        }
+        await sharedModules.load(enterpriseId.value, force)
     }
 
     const getById = (id: string) => modules.value.find(m => m._id === id)

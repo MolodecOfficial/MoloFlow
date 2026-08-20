@@ -149,6 +149,16 @@ export default defineEventHandler(async (event) => {
                         componentPath: 'modules/creature'
                     },
                     {
+                        id: 'browser',
+                        placeName: 'browser',
+                        title: 'Браузер',
+                        type: 'item',
+                        requiredRole: ['Управляющий'],
+                        isActive: true,
+                        componentName: 'Browser',
+                        componentPath: 'modules/browser'
+                    },
+                    {
                         id: 'preview',
                         placeName: 'preview',
                         title: 'Предпоказ модуля',
@@ -160,27 +170,7 @@ export default defineEventHandler(async (event) => {
                     }
                 ]
             },
-            {
-                id: 'search',
-                placeName: 'search',
-                title: 'Поиск модуля',
-                order: 6,
-                requiredRole: ['Управляющий'],
-                isActive: true,
-                type: 'module',
-                items: [
-                    {
-                        id: 'browser',
-                        placeName: 'browser',
-                        title: 'Браузер',
-                        type: 'item',
-                        requiredRole: ['Управляющий'],
-                        isActive: true,
-                        componentName: 'Browser',
-                        componentPath: 'modules/browser'
-                    }
-                ]
-            }
+
         ];
 
         for (const group of fullMenu) {

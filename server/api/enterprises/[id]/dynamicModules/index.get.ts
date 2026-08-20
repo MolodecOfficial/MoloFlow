@@ -1,5 +1,9 @@
 import { DynamicModule } from '~~/server/models/dynamicModules.model';
 
+// Поля, которых достаточно для отрисовки пунктов меню.
+// Никакого code / files / dependencies — это и есть основной вес ответа.
+const MENU_FIELDS = '_id name fileName format description';
+
 export default defineEventHandler(async (event) => {
     try {
         const url = getRequestURL(event);
@@ -16,10 +20,21 @@ export default defineEventHandler(async (event) => {
             });
         }
 
-        const modules = await DynamicModule.find({
-            enterpriseId,
-            isActive: true
-        }).sort({ createdAt: -1 });
+        // ?minimal=1 — используется меню (MoloMenu), которому нужны только
+        // название/формат/fileName. Полный код/файлы/зависимости в этом случае
+        // не запрашиваются и не гоняются по сети — это и было причиной медленной загрузки меню.
+        const isMinimal = getQuery(event).minimal === '1' || getQuery(event).minimal === 'true';
+
+        let query = DynamicModule.find({ enterpriseId, isActive: true }).sort({ createdAt: -1 });
+
+        if (isMinimal) {
+            query = query.select(MENU_FIELDS).lean();
+            const modules = await query;
+            return { success: true, modules };
+        }
+
+        // Полная выдача — как раньше, для редактора модулей, которому нужен code/files/dependencies
+        const modules = await query;
 
         return {
             success: true,

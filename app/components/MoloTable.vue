@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import {computed, onMounted, onUnmounted, ref} from 'vue'
-import {colToName, type TableRow, useTableData} from '~~/app/composables/MoloTable/useTableData'
-import {useSelection} from '~~/app/composables/MoloTable/useSelection'
-import {useEditing} from '~~/app/composables/MoloTable/useEditing'
-import {useZoom} from '~~/app/composables/MoloTable/useZoom'
-import {useResize} from '~~/app/composables/MoloTable/useResize'
-import {useScroll} from '~~/app/composables/MoloTable/useScroll'
-import {useExcel} from '~~/app/composables/MoloTable/useExcel'
+import {colToName, type TableRow, useTableData} from '~~/app/composables/moloTable/useTableData'
+import {useSelection} from '~~/app/composables/moloTable/useSelection'
+import {useEditing} from '~~/app/composables/moloTable/useEditing'
+import {useZoom} from '~~/app/composables/moloTable/useZoom'
+import {useResize} from '~~/app/composables/moloTable/useResize'
+import {useScroll} from '~~/app/composables/moloTable/useScroll'
+import {useExcel} from '~~/app/composables/moloTable/useExcel'
 
 // ===== Пропсы и эмиты =====
 const props = defineProps<{

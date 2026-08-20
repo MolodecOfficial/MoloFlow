@@ -2,10 +2,15 @@ export function useModuleApi(){
     const { addLog } = useLogger('API модулей')
     const { addNotification } = useNotifications('API модулей')
 
-    const fetchModules = async (enterpriseId: string) => {
+    // minimal=true по умолчанию: для выпадающего списка модулей не нужен их код,
+    // нужны только name/fileName/format. Раньше сюда всегда прилетал полный code
+    // каждого модуля предприятия — ради того, чтобы просто показать список названий.
+    const fetchModules = async (enterpriseId: string, minimal = true) => {
         addLog('info', 'Загружаем модули...')
         try {
-            const res = await $fetch(`/api/enterprises/${enterpriseId}/dynamicModules`)
+            const res = await $fetch(`/api/enterprises/${enterpriseId}/dynamicModules`, {
+                params: minimal ? { minimal: '1' } : {}
+            })
             addLog('success', `Загружено ${res.modules?.length || 0} модулей`)
             return res.modules || []
         } catch (e: any) {
@@ -14,13 +19,15 @@ export function useModuleApi(){
         }
     }
 
+    // Возвращает и mainFile (с кодом главного файла модуля), и дополнительные files —
+    // одним запросом. Раньше mainFile из этого же ответа просто выбрасывался,
+    // из-за чего код модуля приходилось тащить отдельно из другого, более тяжёлого запроса.
     const loadModuleFiles = async (enterpriseId: string, moduleId: string) => {
         addLog('info', 'Загружаем файлы модуля...')
         try {
             const response = await $fetch(`/api/enterprises/${enterpriseId}/dynamicModules/${moduleId}/files`)
             addLog('success', `Загружено ${response.files?.length || 0} файлов`)
 
-            // Логируем наличие основного кода
             if (response.mainFile?.code) {
                 addLog('success', `Основной код найден, длина: ${response.mainFile.code.length}`)
             } else {
@@ -28,10 +35,13 @@ export function useModuleApi(){
                 console.error('[API] No mainFile.code in response:', response)
             }
 
-            return response.files || []
+            return {
+                mainFile: response.mainFile || null,
+                files: response.files || []
+            }
         } catch (err: any) {
             addLog('error', `Ошибка: ${err}`)
-            return []
+            return { mainFile: null, files: [] }
         }
     }
 

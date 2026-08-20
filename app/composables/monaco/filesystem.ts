@@ -47,7 +47,19 @@ export class FileSystem {
         return Array.from(this.files.keys())
     }
 
-    // ЗАГРУЗКА ФАЙЛОВ ИЗ БД
+    // Синхронная замена всего набора файлов БЕЗ похода в сеть.
+    // Используется, когда данные уже есть на руках (например, из Pinia-стора),
+    // чтобы не дублировать fetch, который уже был сделан в другом месте.
+    loadFiles(files: FileNode[]) {
+        this.files.clear()
+        for (const f of files) {
+            this.files.set(f.path, f)
+        }
+    }
+
+    // ЗАГРУЗКА ФАЙЛОВ ИЗ БД — оставлена для ручных действий
+    // (например, пункт контекстного меню редактора "Load Files from Database").
+    // НЕ вызывать автоматически на маунте компонента — для этого есть loadFiles() выше.
     async loadFilesFromDB(moduleId: string, enterpriseId: string) {
         try {
             const response = await fetch(
@@ -56,10 +68,8 @@ export class FileSystem {
             const data = await response.json()
 
             if (data.success) {
-                // Очищаем текущие файлы
                 this.files.clear()
 
-                // Добавляем основной файл
                 if (data.mainFile) {
                     this.files.set(data.mainFile.path, {
                         path: data.mainFile.path,
@@ -69,7 +79,6 @@ export class FileSystem {
                     })
                 }
 
-                // Добавляем дополнительные файлы
                 if (data.files) {
                     for (const file of data.files) {
                         this.files.set(file.path, {
@@ -120,7 +129,6 @@ export class FileSystem {
             const data = await response.json()
 
             if (data.success) {
-                // Обновляем локальный кеш
                 this.files.set(path, {
                     path: path,
                     content: content,
@@ -157,7 +165,6 @@ export class FileSystem {
             const data = await response.json()
 
             if (data.success) {
-                // Удаляем из локального кеша
                 this.files.delete(path)
                 console.log(`[FileSystem] File ${path} deleted from DB`)
                 return true

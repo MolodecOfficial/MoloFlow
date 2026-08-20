@@ -1,3 +1,4 @@
+<!-- MoloWindow.vue -->
 <script setup lang="ts">
 import type {WindowItem} from '~/types/window'
 import {useWindowDrag} from '~/composables/useWindowDrag'
@@ -5,9 +6,7 @@ import {useWindowResize} from '~/composables/useWindowResize'
 import {ref, computed, onMounted, onUnmounted} from 'vue'
 import RestoreIcon from '~~/public/min.svg'
 import {useUserStore} from "~~/stores/userStore"
-import {windowThemes, windowButtonStyles, THEME_STORAGE_KEY, BUTTON_STYLE_STORAGE_KEY} from '~~/types/window-themes'
-
-
+import {getAllThemes, getAllButtonStyles, THEME_STORAGE_KEY, BUTTON_STYLE_STORAGE_KEY} from '~~/types/window-themes'
 
 const userStore = useUserStore()
 const role = ref('')
@@ -55,8 +54,8 @@ const windowRef = ref<HTMLElement>()
 const isMinimizing = ref(false)
 const isClosing = ref(false)
 
-const currentTheme = ref(windowThemes[0])
-const currentButtonStyle = ref(windowButtonStyles[0])
+const currentTheme = ref()
+const currentButtonStyle = ref()
 
 const isMaximized = computed(() => props.window.size.isMaximized === true)
 
@@ -184,43 +183,88 @@ const getResizeCursor = (edge: string) => {
 const loadTheme = () => {
   const saved = localStorage.getItem(THEME_STORAGE_KEY)
   if (saved) {
-    const theme = windowThemes.find(t => t.id === saved)
-    if (theme) currentTheme.value = theme
+    const allThemes = getAllThemes()
+    const theme = allThemes.find(t => t.id === saved)
+    if (theme) {
+      currentTheme.value = theme
+      applyTheme(theme)
+    }
+  }
+  if (!currentTheme.value) {
+    const allThemes = getAllThemes()
+    currentTheme.value = allThemes[0]
+    applyTheme(allThemes[0])
   }
 }
 
 const loadButtonStyle = () => {
   const saved = localStorage.getItem(BUTTON_STYLE_STORAGE_KEY)
   if (saved) {
-    const style = windowButtonStyles.find(s => s.id === saved)
-    if (style) currentButtonStyle.value = style
+    const allStyles = getAllButtonStyles()
+    const style = allStyles.find(s => s.id === saved)
+    if (style) {
+      currentButtonStyle.value = style
+      applyButtonStyle(style)
+    }
+  }
+  if (!currentButtonStyle.value) {
+    const allStyles = getAllButtonStyles()
+    currentButtonStyle.value = allStyles[0]
+    applyButtonStyle(allStyles[0])
   }
 }
 
-const handleThemeChange = (e: CustomEvent) => { currentTheme.value = e.detail }
-const handleButtonStyleChange = (e: CustomEvent) => { currentButtonStyle.value = e.detail }
+const applyTheme = (theme: any) => {
+  if (!theme) return
+  Object.entries(theme.styles).forEach(([key, value]) => {
+    document.documentElement.style.setProperty(`--window-${key}`, value as string)
+  })
+}
 
-const windowStyles = computed(() => ({
-  '--window-header-bg': currentTheme.value.styles.headerBg,
-  '--window-header-border': currentTheme.value.styles.headerBorder,
-  '--window-header-text': currentTheme.value.styles.headerText,
-  '--window-content-bg': currentTheme.value.styles.contentBg,
-  '--window-content-text': currentTheme.value.styles.contentText,
-  '--window-border-color': currentTheme.value.styles.borderColor,
-  '--window-border-radius': currentTheme.value.styles.borderRadius,
-  '--window-backdrop-blur': currentTheme.value.styles.backdropBlur,
-  '--window-controls-bg': currentTheme.value.styles.controlsBg,
-  '--window-controls-hover': currentTheme.value.styles.controlsHover,
-  '--window-accent': currentTheme.value.styles.accentColor,
-  '--button-controls-border': currentButtonStyle.value.styles.controlsBorder,
-  '--button-button-border': currentButtonStyle.value.styles.buttonBorder,
-  '--button-button-bg': currentButtonStyle.value.styles.buttonBg,
-  '--button-button-hover-bg': currentButtonStyle.value.styles.buttonHoverBg,
-  '--button-button-text-color': currentButtonStyle.value.styles.buttonTextColor,
-  '--button-button-hover-text-color': currentButtonStyle.value.styles.buttonHoverTextColor || currentButtonStyle.value.styles.buttonTextColor,
-  '--button-controls-gap': currentButtonStyle.value.styles.controlsGap,
-  '--button-controls-padding': currentButtonStyle.value.styles.controlsPadding
-}))
+const applyButtonStyle = (style: any) => {
+  if (!style) return
+  Object.entries(style.styles).forEach(([key, value]) => {
+    document.documentElement.style.setProperty(`--button-${key}`, value as string)
+  })
+}
+
+const handleThemeChange = (e: CustomEvent) => {
+  currentTheme.value = e.detail
+  applyTheme(e.detail)
+}
+const handleButtonStyleChange = (e: CustomEvent) => {
+  currentButtonStyle.value = e.detail
+  applyButtonStyle(e.detail)
+}
+
+const windowStyles = computed(() => {
+  const theme = currentTheme.value
+  const buttonStyle = currentButtonStyle.value
+
+  if (!theme || !buttonStyle) return {}
+
+  return {
+    '--window-header-bg': theme.styles.headerBg,
+    '--window-header-border': theme.styles.headerBorder,
+    '--window-header-text': theme.styles.headerText,
+    '--window-content-bg': theme.styles.contentBg,
+    '--window-content-text': theme.styles.contentText,
+    '--window-border-color': theme.styles.borderColor,
+    '--window-border-radius': theme.styles.borderRadius,
+    '--window-backdrop-blur': theme.styles.backdropBlur,
+    '--window-controls-bg': theme.styles.controlsBg,
+    '--window-controls-hover': theme.styles.controlsHover,
+    '--window-accent': theme.styles.accentColor,
+    '--button-controls-border': buttonStyle.styles.controlsBorder || 'none',
+    '--button-button-border': buttonStyle.styles.buttonBorder || 'none',
+    '--button-button-bg': buttonStyle.styles.buttonBg || 'transparent',
+    '--button-button-hover-bg': buttonStyle.styles.buttonHoverBg || 'rgba(255, 255, 255, 0.1)',
+    '--button-button-text-color': buttonStyle.styles.buttonTextColor || 'white',
+    '--button-button-hover-text-color': buttonStyle.styles.buttonHoverTextColor || buttonStyle.styles.buttonTextColor || 'white',
+    '--button-controls-gap': buttonStyle.styles.controlsGap || '6px',
+    '--button-controls-padding': buttonStyle.styles.controlsPadding || '2px',
+  }
+})
 
 onMounted(() => {
   window.addEventListener('theme-changed', handleThemeChange as EventListener)
@@ -266,10 +310,7 @@ watch(() => props.window?.zIndex, (newZIndex) => {
                 resizing: isResizing,
                 'maximized': isMaximized
             }"
-        :style="{
-                ...windowStyles,
-                cursor: isDragging ? 'grabbing' : 'default',
-            }"
+        :style="windowStyles"
     >
       <div class="window-header" @mousedown="handleDragStart">
         <div class="window-title">{{ props.window?.fullTitle || props.window?.itemTitle || windowId || 'Окно' }}</div>
@@ -287,7 +328,7 @@ watch(() => props.window?.zIndex, (newZIndex) => {
               title="Свернуть"
               v-if="!isModal"
           >
-            _
+            <span class="control-icon">_</span>
           </button>
           <button
               class="control-btn maximize"
@@ -296,12 +337,8 @@ watch(() => props.window?.zIndex, (newZIndex) => {
               :title="isMaximized ? 'Восстановить' : 'На весь экран'"
               v-if="!isModal"
           >
-            <img
-                v-if="isMaximized"
-                class="control-icon restore-icon"
-                :src="RestoreIcon"
-            />
-            <span v-else class="control-icon">⛶</span>
+
+            <span class="control-icon">⛶</span>
           </button>
           <button
               class="control-btn close"
@@ -309,7 +346,7 @@ watch(() => props.window?.zIndex, (newZIndex) => {
               @mousedown.stop
               title="Закрыть"
           >
-            ×
+            <span class="control-icon">×</span>
           </button>
         </div>
       </div>
@@ -317,10 +354,10 @@ watch(() => props.window?.zIndex, (newZIndex) => {
       <div class="window-content">
         <div class="content">
           <slot
-            :key="refreshKey"
-            :refreshKey="refreshKey"
-            :windowData="windowData"
-        />
+              :key="refreshKey"
+              :refreshKey="refreshKey"
+              :windowData="windowData"
+          />
         </div>
       </div>
 
@@ -355,10 +392,10 @@ watch(() => props.window?.zIndex, (newZIndex) => {
   justify-content: center;
   align-items: center;
   position: fixed;
-  left: 20px;
-  top: 20px;
-  width: calc(100vw - 40px);
-  height: calc(100vh - 40px);
+  left: 10px;
+  top: 10px;
+  width: calc(100vw - 10px);
+  height: calc(100vh - 10px);
   z-index: 1;
 }
 
@@ -382,7 +419,7 @@ watch(() => props.window?.zIndex, (newZIndex) => {
   border-radius: var(--window-border-radius, 10px);
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow: visible;
   position: relative;
   width: 100%;
   height: 100%;
@@ -391,24 +428,19 @@ watch(() => props.window?.zIndex, (newZIndex) => {
       blur(20px)
       saturate(100%)
       brightness(100%);
-
   -webkit-backdrop-filter:
       blur(30px)
       saturate(180%)
       brightness(110%);
-
   box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, 0.29),
       inset 0 -1px 0 rgba(255, 255, 255, 0.03),
       0 15px 40px rgba(0, 0, 0, 0);
-
   transition:
       border-radius .25s ease,
       transform .25s ease,
       box-shadow .25s ease;
 }
-
-
 
 .window.maximized {
   border-radius: 10px;
@@ -452,7 +484,7 @@ watch(() => props.window?.zIndex, (newZIndex) => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px;
+  padding: 5px 5px;
   gap: 15px;
   background: var(--window-header-bg, var(--half_opacity_bg));
   border-bottom: 1px solid var(--window-header-border, var(--half_opacity_border));
@@ -470,6 +502,15 @@ watch(() => props.window?.zIndex, (newZIndex) => {
   text-overflow: ellipsis;
   flex: 1;
   min-width: 0;
+  padding: 0 5px;
+}
+
+.window-content {
+  flex: 1;
+  overflow: hidden; /* ← Добавить или изменить на: */
+  overflow-y: auto;
+  position: relative;
+  min-height: 0;
 }
 
 .header-logger {
@@ -505,7 +546,7 @@ watch(() => props.window?.zIndex, (newZIndex) => {
   color: var(--button-button-text-color, white);
   width: 28px;
   height: 28px;
-  border-radius: 6px;
+  border-radius: 4px;
   font-size: 20px;
   line-height: 1;
   cursor: pointer;
@@ -516,45 +557,17 @@ watch(() => props.window?.zIndex, (newZIndex) => {
   flex-shrink: 0;
 }
 
+.control-btn .control-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+/* Базовое наведение для всех кнопок */
 .control-btn:hover {
-  color: var(--button-button-hover-text-color, white);
-}
-
-.control-btn.maximize:hover {
-  border-color: #0c92ff;
-  color: #0c92ff;
-}
-
-.control-btn.close:hover {
-  border-color: #ff0a21;
-  color: #ff0a21;
-}
-
-.control-btn.minimize:hover {
-  border-color: #ffc107;
-  color: #ffc107;
-}
-
-.control-btn.refresh:hover {
-  border-color: #1eef6f;
-  color: #1eef6f;
-}
-
-.window-content {
-  color: var(--window-content-text, rgba(255, 255, 255, 0.9));
-  background: var(--window-content-bg, transparent);
-  overflow: auto;
-  box-sizing: border-box;
-  flex: 1;
-  min-height: 0;
-}
-
-.restore-icon {
-  width: 16px;
-  height: 16px;
-  object-fit: contain;
-  filter: brightness(0) invert(1);
-  transition: filter 0.2s ease;
+  background: var(--button-button-hover-bg, rgba(255, 255, 255, 0.1));
+  color: var(--button-button-hover-text-color, var(--button-button-text-color));
 }
 
 .control-btn.maximize:hover .restore-icon {
@@ -567,61 +580,14 @@ watch(() => props.window?.zIndex, (newZIndex) => {
   z-index: 10;
 }
 
-.resize-n {
-  top: 0;
-  left: 10px;
-  right: 10px;
-  height: 6px;
-}
-
-.resize-s {
-  bottom: 0;
-  left: 10px;
-  right: 10px;
-  height: 6px;
-}
-
-.resize-w {
-  top: 10px;
-  left: 0;
-  width: 6px;
-  bottom: 10px;
-}
-
-.resize-e {
-  top: 10px;
-  right: 0;
-  width: 6px;
-  bottom: 10px;
-}
-
-.resize-nw {
-  top: 0;
-  left: 0;
-  width: 15px;
-  height: 15px;
-}
-
-.resize-ne {
-  top: 0;
-  right: 0;
-  width: 15px;
-  height: 15px;
-}
-
-.resize-sw {
-  bottom: 0;
-  left: 0;
-  width: 15px;
-  height: 15px;
-}
-
-.resize-se {
-  bottom: 0;
-  right: 0;
-  width: 15px;
-  height: 15px;
-}
+.resize-n { top: 0; left: 10px; right: 10px; height: 6px; }
+.resize-s { bottom: 0; left: 10px; right: 10px; height: 6px; }
+.resize-w { top: 10px; left: 0; width: 6px; bottom: 10px; }
+.resize-e { top: 10px; right: 0; width: 6px; bottom: 10px; }
+.resize-nw { top: 0; left: 0; width: 15px; height: 15px; }
+.resize-ne { top: 0; right: 0; width: 15px; height: 15px; }
+.resize-sw { bottom: 0; left: 0; width: 15px; height: 15px; }
+.resize-se { bottom: 0; right: 0; width: 15px; height: 15px; }
 
 .window.dragging,
 .window.resizing {

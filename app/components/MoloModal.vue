@@ -11,7 +11,7 @@ const props = defineProps<{
   cancelText?: string         // текст на кнопке отмены
   closeOnOverlay?: boolean    // закрытие по клику на фон
   modalText?: string          // текст для модалки
-  helpText?: string           // текст для подсказок и помощи
+  helpText?: boolean | string           // текст для подсказок и помощи
   loading?: boolean           // состояние загрузки
 }>()
 

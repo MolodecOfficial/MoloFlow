@@ -79,38 +79,6 @@ const handleImport = async (mod) => {
   }
 }
 
-const openModuleEditor = () => {
-  openWindow('modules', 'creature', null, { width: 1200, height: 800, minWidth: 800, minHeight: 600 }, false, 'modules/creature')
-}
-
-const editorMode = () => {
-  openWindow('settings', 'confirm', null, { width: 450, height: 300, minWidth: 350, minHeight: 220 }, true, null, null, {
-    type: 'access',
-    message: 'Введите код доступа к режиму редактора',
-    fields: [{
-      key: 'accessCode',
-      type: 'text',
-      label: 'Код доступа',
-      placeholder: 'Введите код доступа',
-      required: true
-    }],
-    onConfirm: async (payload) => {
-      const accessCode = typeof payload === 'string' ? payload : payload?.accessCode
-      addLog('info', 'Проверка кода доступа...')
-      if (enableEditor(accessCode)) {
-        addNotification('success', 'Доступ к редактору разрешён')
-        addLog('success', 'Режим редактора активирован')
-        openModuleEditor()
-      } else {
-        addLog('warning', `Неверный код доступа: ${accessCode}`)
-        addNotification('error', 'Неверный код доступа')
-        throw new Error('Неверный код доступа')
-      }
-    }
-  })
-}
-
-
 onMounted(() => {
   const entData = localStorage.getItem('currentEnterprise')
   if (entData) {
@@ -286,7 +254,7 @@ onMounted(() => {
 .modules-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
-  gap: 20px;
+  gap: 10px;
   width: 100%;
 }
 
@@ -351,14 +319,12 @@ onMounted(() => {
   justify-content: center;
   border-radius: 12px;
   overflow: hidden;
-  background: var(--half_opacity_bg);
-  border: 1px solid var(--half_opacity_border);
   position: relative;
 }
 
 .logo {
-  width: 150%;
-  height: 100%;
+  width: 80%;
+  height: 80%;
   object-fit: contain;
   background: transparent;
   transition: transform 0.3s ease;

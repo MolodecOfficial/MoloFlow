@@ -302,7 +302,7 @@ const resetForm = () => {
 .form-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 1.2rem;
+  gap: 10px;
 }
 
 .form-group {

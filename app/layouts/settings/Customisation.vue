@@ -1,39 +1,47 @@
+<!-- Customisation.vue -->
 <script setup lang="ts">
 import {
   windowThemes,
+  windowButtonStyles,
   type WindowTheme,
   type WindowButtonStyle,
-  windowButtonStyles,
-  type WindowTitleStyle,
+  getAllThemes,
+  getAllButtonStyles,
   THEME_STORAGE_KEY,
   BUTTON_STYLE_STORAGE_KEY,
 } from '~~/types/window-themes'
+import StyleEditor from '~~/app/components/MoloStyleEditor.vue'
 
 const selectedTheme = ref<WindowTheme>(windowThemes[0])
 const selectedButtonStyle = ref<WindowButtonStyle>(windowButtonStyles[0])
+const allThemes = ref<WindowTheme[]>([])
+const allButtonStyles = ref<WindowButtonStyle[]>([])
+const showEditor = ref(false)
+const { openWindow } = useWindowManager()
 
-onMounted(() => {
-  // Загрузка темы
+// Загрузка всех тем и стилей
+const loadAll = () => {
+  allThemes.value = getAllThemes()
+  allButtonStyles.value = getAllButtonStyles()
+}
+
+const loadSelected = () => {
   const savedThemeId = localStorage.getItem(THEME_STORAGE_KEY)
   if (savedThemeId) {
-    const theme = windowThemes.find(t => t.id === savedThemeId)
+    const theme = allThemes.value.find(t => t.id === savedThemeId)
     if (theme) {
       selectedTheme.value = theme
-      applyTheme(theme)
     }
   }
 
-  // Загрузка стиля кнопок
   const savedButtonId = localStorage.getItem(BUTTON_STYLE_STORAGE_KEY)
   if (savedButtonId) {
-    const buttonStyle = windowButtonStyles.find(b => b.id === savedButtonId)
+    const buttonStyle = allButtonStyles.value.find(b => b.id === savedButtonId)
     if (buttonStyle) {
       selectedButtonStyle.value = buttonStyle
-      applyButtonStyle(buttonStyle)
     }
   }
-
-})
+}
 
 const applyTheme = (theme: WindowTheme) => {
   localStorage.setItem(THEME_STORAGE_KEY, theme.id)
@@ -51,46 +59,52 @@ const applyButtonStyle = (buttonStyle: WindowButtonStyle) => {
   window.dispatchEvent(new CustomEvent('button-style-changed', { detail: buttonStyle }))
 }
 
-
 const selectTheme = (theme: WindowTheme) => {
   selectedTheme.value = theme
   applyTheme(theme)
 }
+
 const selectButtonStyle = (buttonStyle: WindowButtonStyle) => {
   selectedButtonStyle.value = buttonStyle
   applyButtonStyle(buttonStyle)
 }
 
+const handleThemeUpdated = () => {
+  loadAll()
+  loadSelected()
+}
 
-const previewStyle = computed(() => {
-  const theme = selectedTheme.value
-  const buttonStyle = selectedButtonStyle.value
-  return {
-    '--preview-header-bg': theme.styles.headerBg,
-    '--preview-header-border': theme.styles.headerBorder,
-    '--preview-header-text': theme.styles.headerText,
-    '--preview-content-bg': theme.styles.contentBg,
-    '--preview-content-text': theme.styles.contentText,
-    '--preview-border': theme.styles.borderColor,
-    '--preview-radius': theme.styles.borderRadius,
-    '--preview-blur': theme.styles.backdropBlur,
-    '--preview-accent': theme.styles.accentColor,
-    '--preview-controls-border': buttonStyle.styles.controlsBorder,
-    '--preview-button-border': buttonStyle.styles.buttonBorder,
-    '--preview-button-bg': buttonStyle.styles.buttonBg,
-    '--preview-button-hover-bg': buttonStyle.styles.buttonHoverBg,
-    '--preview-button-text': buttonStyle.styles.buttonTextColor,
-    '--preview-button-hover-text': buttonStyle.styles.buttonHoverTextColor || buttonStyle.styles.buttonTextColor,
-    '--preview-controls-gap': buttonStyle.styles.controlsGap,
-    '--preview-controls-padding': buttonStyle.styles.controlsPadding
-  }
+const handleStyleUpdated = () => {
+  loadAll()
+  loadSelected()
+}
+
+onMounted(() => {
+  loadAll()
+  loadSelected()
+
+  // Слушаем изменения из редактора
+  window.addEventListener('theme-changed', (e: CustomEvent) => {
+    if (e.detail) {
+      selectedTheme.value = e.detail
+    }
+  })
+  window.addEventListener('button-style-changed', (e: CustomEvent) => {
+    if (e.detail) {
+      selectedButtonStyle.value = e.detail
+    }
+  })
 })
 </script>
 
 <template>
   <div class="customisation-container">
-    <div class="info-message">
-      <span>На данный момент доступен небольшой набор кастомизации. Больше возможностей будет по мере выхода обновлений</span>
+    <!-- Редактор стилей -->
+    <div v-if="showEditor" class="editor-wrapper">
+      <StyleEditor
+          @theme-updated="handleThemeUpdated"
+          @style-updated="handleStyleUpdated"
+      />
     </div>
 
     <div class="content-wrapper">
@@ -100,10 +114,13 @@ const previewStyle = computed(() => {
           <h3>Тема оформления окон</h3>
           <div class="themes-grid">
             <div
-                v-for="theme in windowThemes"
+                v-for="theme in allThemes"
                 :key="theme.id"
                 class="theme-card"
-                :class="{ active: selectedTheme.id === theme.id }"
+                :class="{
+                  active: selectedTheme.id === theme.id,
+                  custom: theme.isCustom
+                }"
                 @click="selectTheme(theme)"
             >
               <div class="theme-preview" :style="{ backgroundColor: theme.previewColor }">
@@ -118,22 +135,28 @@ const previewStyle = computed(() => {
                 <div class="preview-content"></div>
               </div>
               <div class="theme-info">
-                <h4>{{ theme.name }}</h4>
+                <h4>
+                  {{ theme.name }}
+                  <span v-if="theme.isCustom" class="custom-badge">Пользовательская</span>
+                </h4>
                 <p>{{ theme.description }}</p>
               </div>
             </div>
           </div>
         </div>
-
+        <hr>
         <!-- Стиль кнопок -->
         <div class="buttons-section">
           <h3>Стиль кнопок окна</h3>
           <div class="buttons-grid">
             <div
-                v-for="buttonStyle in windowButtonStyles"
+                v-for="buttonStyle in allButtonStyles"
                 :key="buttonStyle.id"
                 class="button-card"
-                :class="{ active: selectedButtonStyle.id === buttonStyle.id }"
+                :class="{
+                  active: selectedButtonStyle.id === buttonStyle.id,
+                  custom: buttonStyle.isCustom
+                }"
                 @click="selectButtonStyle(buttonStyle)"
             >
               <div class="button-preview">
@@ -160,45 +183,39 @@ const previewStyle = computed(() => {
                 </div>
               </div>
               <div class="button-info">
-                <h4>{{ buttonStyle.name }}</h4>
+                <h4>
+                  {{ buttonStyle.name }}
+                  <span v-if="buttonStyle.isCustom" class="custom-badge">Пользовательская</span>
+                </h4>
                 <p>{{ buttonStyle.description }}</p>
               </div>
             </div>
           </div>
         </div>
-
       </div>
+
       <!-- Предпросмотр -->
       <div class="preview-section">
-        <h3>Предпросмотр</h3>
-        <div class="demo-window" :style="previewStyle">
+        <div class="demo-nav">
+          <span>Предпросмотр</span>
+          <MoloButton @click="showEditor = !showEditor">
+            {{ showEditor ? 'Закрыть' : 'Редактор стилей' }}
+          </MoloButton>
+        </div>
+        <div class="demo-window">
           <div class="demo-header">
-            <div class="demo-controls" :style="{
-              gap: 'var(--preview-controls-gap)',
-              padding: 'var(--preview-controls-padding)',
-              border: 'var(--preview-controls-border)'
-            }">
-              <span class="demo-btn" :style="{
-                border: 'var(--preview-button-border)',
-                background: 'var(--preview-button-bg)',
-                color: 'var(--preview-button-text)'
-              }">_</span>
-              <span class="demo-btn" :style="{
-                border: 'var(--preview-button-border)',
-                background: 'var(--preview-button-bg)',
-                color: 'var(--preview-button-text)'
-              }">⛶</span>
-              <span class="demo-btn" :style="{
-                border: 'var(--preview-button-border)',
-                background: 'var(--preview-button-bg)',
-                color: 'var(--preview-button-text)'
-              }">×</span>
+            <span class="demo-title">Заголовок окна</span>
+            <div class="demo-controls">
+              <span class="demo-btn">↻</span>
+              <span class="demo-btn">_</span>
+              <span class="demo-btn">⛶</span>
+              <span class="demo-btn">×</span>
             </div>
           </div>
           <div class="demo-content">
             <p>Так будет выглядеть ваше окно</p>
             <p>Текст и элементы интерфейса</p>
-            <MoloButton class="confirm">Кнопка</MoloButton>
+            <MoloButton>Кнопка</MoloButton>
           </div>
         </div>
       </div>
@@ -227,23 +244,6 @@ h3 {
   font-size: 18px;
   font-weight: 500;
   color: rgba(255, 255, 255, 0.9);
-}
-
-hr {
-  width: 100%;
-  border: none;
-  border-top: 1px solid var(--half_opacity_border);
-  margin: 10px 0;
-}
-
-.info-message {
-  padding: 15px;
-  background: rgba(30, 239, 111, 0.1);
-  border: 1px solid rgba(30, 239, 111, 0.2);
-  border-radius: 8px;
-  color: rgba(255, 255, 255, 0.8);
-  font-size: 14px;
-  line-height: 1.5;
 }
 
 .content-wrapper {
@@ -278,18 +278,37 @@ hr {
 }
 
 .theme-card:hover,
-.button-card:hover,
-.title-card:hover {
+.button-card:hover {
   transform: translateY(-2px);
   background: rgba(255, 255, 255, 0.05);
   border-color: rgba(30, 114, 239, 0.3);
 }
 
 .theme-card.active,
-.button-card.active,
-.title-card.active {
-  border-color: #2196F3;
-  background: rgba(30, 96, 239, 0.05);
+.button-card.active {
+  border-color: var(--borber-color_main);
+  background: var(--half_opacity_bg);
+}
+
+.theme-card.custom,
+.button-card.custom {
+  border-color: rgba(255, 193, 7, 0.3);
+}
+
+.theme-card.custom.active,
+.button-card.custom.active {
+  border-color: #ffc107;
+  background: rgba(255, 193, 7, 0.05);
+}
+
+.custom-badge {
+  font-size: 9px;
+  background: rgba(255, 193, 7, 0.2);
+  color: #ffc107;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-left: 6px;
+  font-weight: 400;
 }
 
 .theme-preview {
@@ -377,66 +396,42 @@ hr {
   line-height: 1.3;
 }
 
-.title-section {
-  display: flex;
-  flex-direction: column;
-}
-
-.title-options {
-  display: flex;
-  flex-direction: column;
-  gap: 15px;
-}
-
-.title-card {
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 12px;
-  padding: 15px;
-  cursor: pointer;
-  transition: all 0.2s;
-  flex: 1;
-}
-
-.title-card h4 {
-  margin: 0 0 8px 0;
-  color: white;
-  font-size: 16px;
-}
-
-.title-card p {
-  margin: 0;
-  color: rgba(255, 255, 255, 0.6);
-  font-size: 13px;
-  line-height: 1.4;
-}
-
 .preview-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
   position: sticky;
   top: 20px;
   background: rgba(0, 0, 0, 0.2);
   border-radius: 12px;
-  padding: 20px;
+  padding: 10px;
 }
 
+/* ДЕМО ОКНО С ИСПОЛЬЗОВАНИЕМ v-bind */
 .demo-window {
   width: 100%;
-  border-radius: v-bind('previewStyle["--preview-radius"]');
-  background: v-bind('previewStyle["--preview-content-bg"]');
-  border: 1px solid v-bind('previewStyle["--preview-border"]');
-  backdrop-filter: v-bind('previewStyle["--preview-blur"]');
+  border-radius: v-bind('selectedTheme?.styles.borderRadius || "10px"');
+  background: v-bind('selectedTheme?.styles.contentBg || "rgba(30, 30, 40, 0.7)"');
+  border: v-bind('`1px solid ${selectedTheme?.styles.borderColor || "rgba(255, 255, 255, 0.1)"}`');
+  backdrop-filter: v-bind('selectedTheme?.styles.backdropBlur || "blur(10px)"');
   overflow: hidden;
   transition: all 0.3s ease;
 }
 
-.demo-header {
-  padding: 10px 15px;
-  background: v-bind('previewStyle["--preview-header-bg"]');
-  border-bottom: 1px solid v-bind('previewStyle["--preview-header-border"]');
+.demo-nav {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  color: v-bind('previewStyle["--preview-header-text"]');
+}
+
+.demo-header {
+  padding: 8px;
+  background: v-bind('selectedTheme?.styles.headerBg || "rgba(30, 30, 40, 0.7)"');
+  border-bottom: v-bind('`1px solid ${selectedTheme?.styles.headerBorder || "rgba(255, 255, 255, 0.1)"}`');
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: v-bind('selectedTheme?.styles.headerText || "white"');
 }
 
 .demo-title {
@@ -447,6 +442,11 @@ hr {
 .demo-controls {
   display: flex;
   border-radius: 6px;
+  align-items: center;
+  justify-content: center;
+  gap: v-bind('selectedButtonStyle?.styles.controlsGap || "6px"');
+  padding: v-bind('selectedButtonStyle?.styles.controlsPadding || "2px"');
+  border: v-bind('selectedButtonStyle?.styles.controlsBorder || "none"');
 }
 
 .demo-btn {
@@ -455,44 +455,29 @@ hr {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 20px;
+  font-size: 18px;
   border-radius: 4px;
   transition: all 0.2s;
   cursor: default;
   text-align: center;
+  border: v-bind('selectedButtonStyle?.styles.buttonBorder || "none"');
+  background: v-bind('selectedButtonStyle?.styles.buttonBg || "transparent"');
+  color: v-bind('selectedButtonStyle?.styles.buttonTextColor || "white"');
 }
 
 .demo-btn:hover {
-  background: v-bind('previewStyle["--preview-button-hover-bg"]');
-  color: v-bind('previewStyle["--preview-button-hover-text"]');
+  background: v-bind('selectedButtonStyle?.styles.buttonHoverBg || "rgba(255, 255, 255, 0.1)"');
+  color: v-bind('selectedButtonStyle?.styles.buttonHoverTextColor || selectedButtonStyle?.styles.buttonTextColor || "white"');
 }
 
 .demo-content {
   padding: 20px;
-  color: v-bind('previewStyle["--preview-content-text"]');
+  color: v-bind('selectedTheme?.styles.contentText || "rgba(255, 255, 255, 0.9)"');
   font-size: 14px;
 }
 
 .demo-content p {
   margin: 0 0 10px 0;
-}
-
-.demo-accent-btn {
-  background: v-bind('previewStyle["--preview-accent"]');
-  color: #020b18;
-  border: none;
-  padding: 8px 16px;
-  border-radius: 4px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
-  margin-top: 10px;
-}
-
-
-
-.demo-accent-btn:hover {
-  filter: brightness(1.1);
 }
 
 @media (max-width: 768px) {
@@ -502,6 +487,11 @@ hr {
 
   .preview-section {
     position: static;
+  }
+
+  .info-message {
+    flex-direction: column;
+    align-items: stretch;
   }
 }
 </style>

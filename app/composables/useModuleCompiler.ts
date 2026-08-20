@@ -5,6 +5,7 @@ import * as compiler from '@vue/compiler-sfc'
 import { loadModule } from 'vue3-sfc-loader'
 import * as Babel from '@babel/standalone'
 import presetTypeScript from '@babel/preset-typescript'
+import { useModuleCache, makeModuleSignature, type CompiledResult } from '~~/app/composables/useModuleCache'
 
 // ======================================================
 // Типы
@@ -57,14 +58,12 @@ function parseCompilationError(error: any, code?: string): {
     let column: number | null = null
     let fileName = 'dynamic.vue'
 
-    // 1. Парсим ошибку vue/compiler-sfc
     const sfcMatch = message.match(/\((\d+):(\d+)\)/)
     if (sfcMatch) {
         line = parseInt(sfcMatch[1])
         column = parseInt(sfcMatch[2])
     }
 
-    // 2. Парсим ошибку Babel
     if (!line) {
         const babelMatch = message.match(/\((\d+):(\d+)\)/)
         if (babelMatch) {
@@ -73,7 +72,6 @@ function parseCompilationError(error: any, code?: string): {
         }
     }
 
-    // 3. Парсим ошибку из стека
     if (!line) {
         const stackLineMatch = stack.match(/:(\d+):(\d+)/)
         if (stackLineMatch) {
@@ -82,7 +80,6 @@ function parseCompilationError(error: any, code?: string): {
         }
     }
 
-    // 4. Парсим TypeScript ошибки
     if (!line) {
         const tsMatch = message.match(/line\s+(\d+)/i)
         if (tsMatch) {
@@ -90,7 +87,6 @@ function parseCompilationError(error: any, code?: string): {
         }
     }
 
-    // 5. Извлекаем имя файла
     const fileMatch = message.match(/at\s+([^\s]+\.vue)/)
     if (fileMatch) {
         fileName = fileMatch[1]
@@ -103,7 +99,6 @@ function parseCompilationError(error: any, code?: string): {
         }
     }
 
-    // 6. Извлекаем контекст кода
     let codeContext = ''
     if (line && code) {
         const lines = code.split('\n')
@@ -119,10 +114,8 @@ function parseCompilationError(error: any, code?: string): {
             return `${marker} ${lineNum} │ ${l}`
         }).join('\n')
 
-        // Добавляем указатель на ошибку ТОЛЬКО если есть column
         if (column) {
             const lineContent = lines[line - 1] || ''
-            // Ограничиваем column длиной строки
             const safeColumn = Math.min(column - 1, lineContent.length)
             const prefixLen = maxLineNum + 4
             const pointerLine = ' '.repeat(prefixLen + safeColumn) + '^'
@@ -130,7 +123,6 @@ function parseCompilationError(error: any, code?: string): {
         }
     }
 
-    // 7. Формируем понятное сообщение
     let cleanMessage = message
     if (cleanMessage.includes('at ')) {
         cleanMessage = cleanMessage.split('at ')[0].trim()
@@ -185,11 +177,10 @@ function normalizePath(path: string): string {
 }
 
 // ======================================================
-// 🔥 ТРАНСПИЛЯЦИЯ TypeScript в JavaScript для SFC
+// Транспиляция TypeScript в JavaScript для SFC
 // ======================================================
 function transpileTypeScriptSFC(code: string): string {
     try {
-        // Транспилируем TypeScript в JavaScript
         const result = Babel.transform(code, {
             presets: [
                 [presetTypeScript, {
@@ -209,24 +200,27 @@ function transpileTypeScriptSFC(code: string): string {
         return result?.code || code
     } catch (e: any) {
         console.warn('[ModuleCompiler] TypeScript transpilation error:', e.message)
-        // Возвращаем исходный код, если транспиляция не удалась
         return code
     }
 }
 
 // ======================================================
-// 🔥 КЛЮЧЕВОЕ: Компиляция Vue компонента через vue3-sfc-loader
+// Компиляция вложенного Vue компонента через vue3-sfc-loader
+//
+// ВАЖНО: раньше здесь был addStyle() {} — пустышка, из-за которой стили
+// импортированных .vue компонентов ("import Foo from './Foo.vue'")
+// молча выбрасывались. Теперь стиль прокидывается наружу через onStyle,
+// чтобы попасть в общий CSS модуля.
 // ======================================================
 async function compileVueComponentFromSource(
     code: string,
     fileName: string,
-    moduleId: string
+    moduleId: string,
+    onStyle?: (css: string) => void
 ): Promise<any> {
     try {
-        // Транспилируем TypeScript если это .vue файл с TS
         let processedCode = code
         if (fileName.endsWith('.vue') && code.includes('lang="ts"')) {
-            // Извлекаем script с type="ts" и транспилируем
             const scriptRegex = /<script[^>]*lang="ts"[^>]*>([\s\S]*?)<\/script>/
             const match = code.match(scriptRegex)
             if (match) {
@@ -247,7 +241,9 @@ async function compileVueComponentFromSource(
                 if (files[normalized]) return files[normalized]
                 throw new Error(`File not found: ${normalized}`)
             },
-            addStyle() {},
+            addStyle(textContent: string) {
+                onStyle?.(textContent)
+            },
         }
 
         const mod: any = await loadModule(fileName, options)
@@ -259,19 +255,16 @@ async function compileVueComponentFromSource(
 }
 
 // ======================================================
-// 🔥 КЛЮЧЕВОЕ: Обработка JS/TS модулей - СОХРАНЯЕМ ЭКСПОРТЫ
+// Обработка JS/TS модулей - сохраняем экспорты
 // ======================================================
 function processJSModule(code: string, isTypeScript: boolean): string {
-    // Транспилируем TS если нужно
     if (isTypeScript) {
         code = transpileTypeScriptSFC(code)
     }
 
-    // Убираем import-ы
     code = code.replace(/import\s+.*?from\s*['"].*?['"]\s*;?/g, '')
     code = code.replace(/import\s*['"].*?['"]\s*;?/g, '')
 
-    // Заменяем export на присваивание в exports
     code = code.replace(/export\s+default\s+/g, 'module.exports.default = ')
     code = code.replace(/export\s+function\s+(\w+)/g, 'exports.$1 = function')
     code = code.replace(/export\s+const\s+(\w+)\s*=/g, 'exports.$1 =')
@@ -293,31 +286,26 @@ function processJSModule(code: string, isTypeScript: boolean): string {
 }
 
 // ======================================================
-// 🔥 ПОИСК ФАЙЛОВ
+// Поиск файлов
 // ======================================================
 function findFileData(importPath: string, localFiles: Map<string, any>): any | null {
-    // Очищаем путь
     let cleanPath = importPath
         .replace(/^\.\//, '')
         .replace(/^\.\.\//, '')
         .replace(/\\/g, '/')
         .trim()
 
-    // Убираем возможные расширения для поиска
     const extensions = ['.vue', '.ts', '.js']
     const hasExtension = extensions.some(ext => cleanPath.endsWith(ext))
 
-    // Прямой поиск
     if (localFiles.has(cleanPath)) return localFiles.get(cleanPath)
 
-    // Поиск с разными расширениями
     if (!hasExtension) {
         for (const ext of extensions) {
             if (localFiles.has(cleanPath + ext)) return localFiles.get(cleanPath + ext)
         }
     }
 
-    // Поиск по имени файла
     const fileName = cleanPath.split('/').pop() || cleanPath
     const fileNameWithoutExt = fileName.replace(/\.(vue|ts|js)$/, '')
 
@@ -338,12 +326,13 @@ function findFileData(importPath: string, localFiles: Map<string, any>): any | n
 }
 
 // ======================================================
-// 🔥 ГЛАВНАЯ ФУНКЦИЯ: Обработка импортов в script
+// Обработка импортов в script
 // ======================================================
 async function processImports(
     scriptContent: string,
     localFiles: Map<string, any>,
-    moduleId: string
+    moduleId: string,
+    onStyle?: (css: string) => void
 ): Promise<{ inlinedCode: string, dynamicComponents: Record<string, any> }> {
 
     const dynamicComponents: Record<string, any> = {}
@@ -361,7 +350,8 @@ async function processImports(
             const compiled = await compileVueComponentFromSource(
                 fileData.code,
                 importPath.replace(/^\.\//, ''),
-                moduleId
+                moduleId,
+                onStyle
             )
             if (compiled) {
                 dynamicComponents[importName] = compiled
@@ -434,18 +424,17 @@ const ${importName} = (function() {
 }
 
 // ======================================================
-// 🔥 ОСНОВНАЯ ФУНКЦИЯ: Подготовка SFC с поддержкой TypeScript
+// Подготовка SFC с поддержкой TypeScript
 // ======================================================
 async function prepareSFC(
     code: string,
     localFiles: Map<string, any>,
-    moduleId: string
+    moduleId: string,
+    onStyle?: (css: string) => void
 ): Promise<{ sfc: string, dynamicComponents: Record<string, any> }> {
 
-    // Проверяем наличие TypeScript в script
     let processedCode = code
 
-    // Если есть script с lang="ts", транспилируем его
     const tsScriptRegex = /<script[^>]*lang="ts"[^>]*>([\s\S]*?)<\/script>/
     const tsMatch = processedCode.match(tsScriptRegex)
     if (tsMatch) {
@@ -459,7 +448,7 @@ async function prepareSFC(
 
         if (scriptMatch) {
             const scriptContent = scriptMatch[1]
-            const { inlinedCode, dynamicComponents } = await processImports(scriptContent, localFiles, moduleId)
+            const { inlinedCode, dynamicComponents } = await processImports(scriptContent, localFiles, moduleId, onStyle)
 
             const declarations = globalComposables
                 ? Object.keys(globalComposables).map(name => `var ${name} = window.__moduleComposables?.${name}`).join('\n')
@@ -475,46 +464,179 @@ async function prepareSFC(
 }
 
 // ======================================================
-// Стили
+// Стили — теперь с рефкаунтом по moduleId, а не привязаны к
+// экземпляру composable. Раньше при закрытии одного окна модуля
+// (unmount -> reset() -> removeStyle()) мог удалиться тег стилей,
+// который уже успело создать/переиспользовать НОВОЕ окно того же
+// модуля, если оно открылось почти одновременно. Теперь стиль
+// физически удаляется из DOM только когда закрыты ВСЕ окна модуля.
 // ======================================================
-function createStyleManager(moduleId: string) {
+const cache = useModuleCache()
+
+function applyStyleToDom(moduleId: string, css: string) {
+    if (typeof document === 'undefined') return
     const styleId = `dynamic-module-style-${moduleId}`
-    return {
-        addStyle(textContent: string) {
-            if (typeof document === 'undefined') return
-            let el = document.getElementById(styleId) as HTMLStyleElement
-            if (!el) {
-                el = document.createElement('style')
-                el.id = styleId
-                el.setAttribute('data-module-id', moduleId)
-                document.head.appendChild(el)
-            }
-            el.textContent = textContent
-        },
-        removeStyle() {
-            const el = document.getElementById(styleId)
-            if (el) el.remove()
+    let el = document.getElementById(styleId) as HTMLStyleElement | null
+    if (!el) {
+        el = document.createElement('style')
+        el.id = styleId
+        el.setAttribute('data-module-id', moduleId)
+        document.head.appendChild(el)
+    }
+    el.textContent = css
+}
+
+function removeStyleFromDomIfUnused(moduleId: string) {
+    if (cache.hasActiveInstances(moduleId)) return
+    if (typeof document === 'undefined') return
+    const styleId = `dynamic-module-style-${moduleId}`
+    const el = document.getElementById(styleId)
+    if (el) el.remove()
+}
+
+// ======================================================
+// ЯДРО КОМПИЛЯЦИИ — не трогает Vue-рефы, не знает про UI.
+// Его можно вызывать из открытия окна ИЛИ из фонового прогрева
+// (precompileModule), с дедупликацией через кэш: если фоновый прогрев
+// уже компилирует модуль, окно просто дождётся тот же промис вместо
+// повторной компиляции.
+// ======================================================
+async function runCompilation(
+    code: string,
+    filesList: any[],
+    dependencies: Record<string, string>,
+    moduleId: string,
+    signature: string
+): Promise<CompiledResult> {
+
+    const registry = await loadAllComponents()
+    ;(window as any).__moduleComposables = globalComposables
+
+    let cssParts: string[] = []
+    const onStyle = (css: string) => {
+        if (css) cssParts.push(css)
+    }
+
+    const localFiles = new Map<string, any>()
+    for (const file of filesList || []) {
+        if (file.isServerFile) continue
+        let filePath = file.path || `${file.name}.${file.format || 'vue'}`
+        filePath = normalizePath(filePath)
+        if (!filePath) continue
+        if (!filePath.match(/\.(vue|js|ts)$/)) {
+            filePath += '.' + (file.format || 'vue')
         }
+        const fileCode = file.code || ''
+        localFiles.set(filePath, { code: fileCode, path: filePath, format: file.format })
+        const fileName = filePath.split('/').pop() || filePath
+        localFiles.set(fileName, { code: fileCode, path: filePath, format: file.format })
+        const withoutExt = filePath.replace(/\.(vue|js|ts)$/, '')
+        localFiles.set(withoutExt, { code: fileCode, path: filePath, format: file.format })
+    }
+
+    const { sfc, dynamicComponents } = await prepareSFC(code, localFiles, moduleId, onStyle)
+
+    const files: Record<string, string> = { 'dynamic.vue': sfc }
+
+    const options: any = {
+        moduleCache: { vue: Vue },
+        compiler,
+        async getFile(url: any) {
+            const normalized = normalizePath(typeof url === 'string' ? url : url?.url || '')
+            const virtual = getVirtualModule(normalized)
+            if (virtual) return virtual
+            if (files[normalized]) return files[normalized]
+            const pkg = normalized.split('/')[0]
+            if (dependencies[pkg]) return `export default {}`
+            throw new Error(`Module not found: ${normalized}`)
+        },
+        addStyle(textContent: string) {
+            onStyle(textContent)
+        },
+    }
+
+    const mod: any = await loadModule('dynamic.vue', options)
+    const component = markRaw(mod.default || mod)
+
+    component.components = {
+        ...(component.components || {}),
+        ...registry,
+        ...dynamicComponents,
+    }
+    component.props = {
+        ...(component.props || {}),
+        moduleId: { type: String, default: moduleId },
+    }
+
+    return {
+        component,
+        dynamicComponents,
+        css: cssParts.join('\n'),
+        signature
+    }
+}
+
+/**
+ * Компилирует модуль и кладёт результат в общий кэш, НЕ трогая
+ * никакие UI-рефы. Предназначена для фонового прогрева: вызывается
+ * сразу после того, как список модулей меню загрузился, чтобы к моменту
+ * клика пользователя по модулю компиляция уже была готова (или хотя бы
+ * уже шла — окно тогда просто дождётся тот же промис).
+ *
+ * Дублирующиеся вызовы (тот же moduleId+signature) переиспользуют
+ * один и тот же in-flight промис.
+ */
+export async function precompileModule(
+    moduleId: string,
+    code: string,
+    filesList: any[] = [],
+    dependencies: Record<string, string> = {},
+    version?: number | string
+): Promise<void> {
+    if (!globalComposables) return
+    if (!code?.trim()) return
+
+    const signature = makeModuleSignature(code, filesList, dependencies, version)
+
+    if (cache.isCompiledFresh(moduleId, signature)) return
+
+    const existing = cache.getCompiled(moduleId)
+    if (existing?.inFlight) {
+        await existing.inFlight.catch(() => {})
+        return
+    }
+
+    const promise = runCompilation(code, filesList, dependencies, moduleId, signature)
+    cache.setCompiledInFlight(moduleId, promise)
+
+    try {
+        const result = await promise
+        cache.setCompiledResult(moduleId, result)
+    } catch (e) {
+        console.warn(`[ModuleCompiler] Фоновая компиляция модуля ${moduleId} не удалась:`, e)
+        // не кэшируем ошибку — окно при открытии просто попробует ещё раз
+        // и покажет пользователю нормальную ошибку компиляции
     }
 }
 
 // ======================================================
-// ОСНОВНОЙ COMPOSABLE
+// ОСНОВНОЙ COMPOSABLE — используется конкретным окном
 // ======================================================
 export const useModuleCompiler = () => {
     const compiledComponent = shallowRef<any>(null)
     const compiling = ref(false)
     const compileError = ref<string | null>(null)
-    const compileErrorDetails = ref<any>(null) // <-- ДОБАВЛЯЕМ
+    const compileErrorDetails = ref<any>(null)
     const activeKey = ref(0)
     const lastModuleId = ref<string | null>(null)
-    let styleManager: ReturnType<typeof createStyleManager> | null = null
+    let instanceAcquiredFor: string | null = null
 
     async function compileModule(
         code: string,
         filesList: any[] = [],
         dependencies: Record<string, string> = {},
-        moduleId?: string
+        moduleId?: string,
+        version?: number | string
     ) {
         compileError.value = null
         compileErrorDetails.value = null
@@ -523,12 +645,8 @@ export const useModuleCompiler = () => {
         if (!code?.trim()) {
             compileError.value = 'No code provided'
             compileErrorDetails.value = {
-                message: 'No code provided',
-                stack: '',
-                line: null,
-                column: null,
-                fileName: 'dynamic.vue',
-                codeContext: ''
+                message: 'No code provided', stack: '', line: null, column: null,
+                fileName: 'dynamic.vue', codeContext: ''
             }
             return
         }
@@ -536,18 +654,39 @@ export const useModuleCompiler = () => {
         if (!globalComposables) {
             compileError.value = 'Composables not initialized'
             compileErrorDetails.value = {
-                message: 'Composables not initialized',
-                stack: '',
-                line: null,
-                column: null,
-                fileName: 'dynamic.vue',
-                codeContext: ''
+                message: 'Composables not initialized', stack: '', line: null, column: null,
+                fileName: 'dynamic.vue', codeContext: ''
             }
             return
         }
 
-        compiling.value = true
         const id = moduleId || 'anon'
+        const signature = makeModuleSignature(code, filesList, dependencies, version)
+
+        // Переключение окна на другой модуль внутри того же composable —
+        // отпускаем "слот" предыдущего модуля прежде чем занять новый
+        if (lastModuleId.value && lastModuleId.value !== id) {
+            releaseCurrentInstance()
+        }
+        lastModuleId.value = id
+
+        if (instanceAcquiredFor !== id) {
+            cache.acquireInstance(id)
+            instanceAcquiredFor = id
+        }
+
+        // ---- 1. Кэш-хит: компиляция уже готова (скорее всего — прогрета в фоне) ----
+        // Никакого Babel, никакого vue3-sfc-loader — просто переиспользуем.
+        if (cache.isCompiledFresh(id, signature)) {
+            const cached = cache.getCompiled(id)!
+            compiledComponent.value = cached.component
+            applyStyleToDom(id, cached.css)
+            activeKey.value++
+            compiling.value = false
+            return
+        }
+
+        compiling.value = true
 
         const TIMEOUT_MS = 15000
         let timeoutId: ReturnType<typeof setTimeout> | null = null
@@ -561,88 +700,48 @@ export const useModuleCompiler = () => {
                 }, TIMEOUT_MS)
             })
 
-            const compilePromise = (async () => {
-                if (lastModuleId.value && lastModuleId.value !== id) {
-                    reset()
-                }
-                lastModuleId.value = id
+            // ---- 2. Компиляция уже идёт (например, фоновый прогрев ещё не закончил) ----
+            // Ждём тот же промис вместо того, чтобы запускать вторую компиляцию.
+            const existing = cache.getCompiled(id)
+            const compilePromise = existing?.inFlight
+                ?? (() => {
+                    const p = runCompilation(code, filesList, dependencies, id, signature)
+                    cache.setCompiledInFlight(id, p)
+                    return p
+                })()
 
-                const registry = await loadAllComponents()
-                ;(window as any).__moduleComposables = globalComposables
-                styleManager = createStyleManager(id)
+            const result = await Promise.race([compilePromise, timeoutPromise]) as CompiledResult
 
-                const localFiles = new Map<string, any>()
-                for (const file of filesList || []) {
-                    if (file.isServerFile) continue
-                    let filePath = file.path || `${file.name}.${file.format || 'vue'}`
-                    filePath = normalizePath(filePath)
-                    if (!filePath) continue
-                    if (!filePath.match(/\.(vue|js|ts)$/)) {
-                        filePath += '.' + (file.format || 'vue')
-                    }
-                    const fileCode = file.code || ''
-                    localFiles.set(filePath, { code: fileCode, path: filePath, format: file.format })
-                    const fileName = filePath.split('/').pop() || filePath
-                    localFiles.set(fileName, { code: fileCode, path: filePath, format: file.format })
-                    const withoutExt = filePath.replace(/\.(vue|js|ts)$/, '')
-                    localFiles.set(withoutExt, { code: fileCode, path: filePath, format: file.format })
-                }
+            cache.setCompiledResult(id, result)
 
-                const { sfc, dynamicComponents } = await prepareSFC(code, localFiles, id)
-
-                const files: Record<string, string> = { 'dynamic.vue': sfc }
-
-                const options: any = {
-                    moduleCache: { vue: Vue },
-                    compiler,
-                    async getFile(url: any) {
-                        const normalized = normalizePath(typeof url === 'string' ? url : url?.url || '')
-                        const virtual = getVirtualModule(normalized)
-                        if (virtual) return virtual
-                        if (files[normalized]) return files[normalized]
-                        const pkg = normalized.split('/')[0]
-                        if (dependencies[pkg]) return `export default {}`
-                        throw new Error(`Module not found: ${normalized}`)
-                    },
-                    addStyle(textContent: string) {
-                        styleManager?.addStyle(textContent)
-                    },
-                }
-
-                const mod: any = await loadModule('dynamic.vue', options)
-                const component = markRaw(mod.default || mod)
-
-                component.components = {
-                    ...(component.components || {}),
-                    ...registry,
-                    ...dynamicComponents,
-                }
-                component.props = {
-                    ...(component.props || {}),
-                    moduleId: { type: String, default: id },
-                }
-
-                compiledComponent.value = component
-                activeKey.value++
-                compileError.value = null
-                compileErrorDetails.value = null
-            })()
-
-            await Promise.race([compilePromise, timeoutPromise])
+            compiledComponent.value = result.component
+            applyStyleToDom(id, result.css)
+            activeKey.value++
+            compileError.value = null
+            compileErrorDetails.value = null
 
         } catch (e: any) {
             console.error('[ModuleCompiler] Error:', e)
 
-            // Используем функцию парсинга ошибок
             const parsed = parseCompilationError(e, code)
 
             compileError.value = parsed.message
             compileErrorDetails.value = parsed
             compiledComponent.value = null
-            styleManager?.removeStyle()
+            // Ошибку не кэшируем как "готовую компиляцию" — cache.setCompiledResult
+            // просто не вызывался в этой ветке, так что следующая попытка
+            // (после того как автор поправит код) начнётся с чистого листа
         } finally {
             compiling.value = false
             if (timeoutId) clearTimeout(timeoutId)
+        }
+    }
+
+    function releaseCurrentInstance() {
+        if (instanceAcquiredFor) {
+            cache.releaseInstance(instanceAcquiredFor)
+            removeStyleFromDomIfUnused(instanceAcquiredFor)
+            instanceAcquiredFor = null
         }
     }
 
@@ -652,16 +751,28 @@ export const useModuleCompiler = () => {
         compileErrorDetails.value = null
         activeKey.value++
         lastModuleId.value = null
-        styleManager?.removeStyle()
+        releaseCurrentInstance()
+    }
+
+    /**
+     * Обязательно вызывать в onUnmounted окна/компонента.
+     * Отличие от reset(): семантически это "окно закрылось", а не
+     * "внутри окна сменился модуль" — но по факту делает то же самое:
+     * отпускает свой "слот" использования модуля и удаляет стиль из DOM,
+     * только если это было последнее окно, использовавшее модуль.
+     */
+    function dispose() {
+        releaseCurrentInstance()
     }
 
     return {
         compiledComponent,
         compiling,
         compileError,
-        compileErrorDetails, // <-- ЭКСПОРТИРУЕМ
+        compileErrorDetails,
         compileModule,
         reset,
+        dispose,
         activeKey,
     }
 }

@@ -60,7 +60,6 @@ const loadUserData = () => {
       // Обновляем только если изменилось
       if (enterpriseName.value !== newName) {
         enterpriseName.value = newName
-        addLog('info', `Название предприятия обновлено: ${newName}`)
       }
     } catch {
       enterpriseName.value = 'Ошибка загрузки'
@@ -94,6 +93,13 @@ const loadUserData = () => {
   isLoading.value = false
 }
 
+const openSettings = () => {
+  openWindow(
+      'settings',
+      'customisation'
+  )
+}
+
 // Предзагрузка всех данных предприятия (вкладки, стандарты, записи)
 const preloadEnterpriseData = async () => {
   if (dataPreloadStarted.value) return
@@ -105,36 +111,15 @@ const preloadEnterpriseData = async () => {
     // Загружаем данные предприятия из хранилища, если нужно
     if (!appStore.getEnterpriseId()) {
       appStore.loadEnterpriseFromStorage()
+      addLog('warning', 'Информация о предприятии не найдена, загружаю!')
     }
-
-    // Если есть ID предприятия - загружаем все данные
-    if (appStore.getEnterpriseId()) {
-      await appStore.preloadAllTabsData()
-      addLog('success', 'Все данные предприятия успешно предзагружены')
-    } else {
-      addLog('warning', 'Нет авторизации в предприятии, данные не предзагружены')
-    }
+    addLog('success', `Информация предприятия ${enterpriseName.value} загружена!`)
   } catch (error) {
     addLog('error', 'Ошибка при предзагрузке данных предприятия')
     console.error(error)
   }
 }
 
-const preloadEditorData = async () => {
-  const enterpriseId = appStore.getEnterpriseId()
-  if (!enterpriseId) return
-
-  addLog('info', 'Предзагрузка данных для редактора модулей...')
-
-  // Загружаем всё параллельно
-  await Promise.allSettled([
-    moduleEditorStore.loadModules(enterpriseId),
-    menuEditorStore.loadLocations(),
-    menuEditorStore.loadTree()
-  ])
-
-  addLog('success', 'Данные для редактора модулей предзагружены')
-}
 
 // Слушатель изменений в localStorage (для других вкладок)
 const handleStorageChange = async (e: StorageEvent) => {
@@ -162,7 +147,7 @@ onMounted(async () => {
 
   // Запускаем предзагрузку данных предприятия в фоне
   // Не блокируем отображение интерфейса
-  preloadEnterpriseData()
+  await preloadEnterpriseData()
 
   // Слушаем изменения localStorage из других вкладок
   window.addEventListener('storage', handleStorageChange)
@@ -243,7 +228,7 @@ function deleteUser() {
 
           <div class="user-section">
             <div class="user-card">
-              <div class="user-avatar">
+              <div class="user-avatar" @click="openSettings">
                 {{ name?.charAt(0)?.toUpperCase() || 'U' }}
               </div>
 
@@ -511,10 +496,7 @@ function deleteUser() {
   align-items: center;
   gap: 14px;
   flex-shrink: 0;
-  border: 1px solid var(--half_opacity_border);
-  padding: 10px 20px;
   border-radius: 10px;
-  background: var(--half_opacity_bg);
 }
 
 .user-card {
@@ -526,6 +508,7 @@ function deleteUser() {
 }
 
 .user-avatar {
+  cursor: pointer;
   width: 42px;
   height: 42px;
   border-radius: 6px;
@@ -535,7 +518,18 @@ function deleteUser() {
   font-weight: 700;
   font-size: 15px;
   color: #ffffff;
-  background: linear-gradient(135deg, #3872ef, #7c3aed);
+  animation: aaaaa 1s infinite ease-in-out;
+}
+
+@keyframes aaaaa {
+  0% {
+    background: linear-gradient(135deg, #3872ef, #7c3aed);
+
+  }
+  100% {
+    background: linear-gradient(135deg,  #7c3aed, #3872ef);
+
+  }
 }
 
 .user-info {

@@ -2,15 +2,19 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { useModuleApi } from '~~/app/composables/useModuleApi'
+import { useEnterpriseModulesStore } from './enterpriseModulesStore'
 
 export const useModuleEditorStore = defineStore('moduleEditor', () => {
     // Получаем API-функции
-    const { fetchModules, loadModuleFiles, loadDependencies } = useModuleApi()
+    const { loadModuleFiles, loadDependencies } = useModuleApi()
 
-    // Модули
-    const modules = ref<any[]>([])
-    const modulesLoaded = ref(false)
-    const modulesLoading = ref(false)
+    // Модули — БОЛЬШЕ НЕ отдельный список, а витрина над общим
+    // enterpriseModulesStore. Тот же кэш, что видит меню (MoloMenu.vue),
+    // видит и редактор модулей. Один fetch на двоих, один источник правды.
+    const sharedModules = useEnterpriseModulesStore()
+    const modules = computed(() => sharedModules.modules)
+    const modulesLoaded = computed(() => sharedModules.loaded)
+    const modulesLoading = computed(() => sharedModules.loading)
     const selectedModuleId = ref<string | null>(null)
     const loading = ref(false)
 
@@ -71,23 +75,25 @@ export const useModuleEditorStore = defineStore('moduleEditor', () => {
     // ACTIONS
     // ============================================
 
-    const loadModules = async (enterpriseId: string) => {
-        if (modulesLoaded.value || modulesLoading.value) return
-        modulesLoading.value = true
-        try {
-            modules.value = await fetchModules(enterpriseId)
-            modulesLoaded.value = true
-        } catch (error) {
-            console.error('loadModules error:', error)
-        } finally {
-            modulesLoading.value = false
-        }
+    // force=true — принудительная перезагрузка (например, после создания нового модуля).
+    // Теперь просто проксирует в общий enterpriseModulesStore — тот же кэш,
+    // что и у меню, так что после saveModule() достаточно инвалидировать
+    // ОДИН раз, и обновится и меню, и этот список.
+    const loadModules = async (enterpriseId: string, force = false) => {
+        await sharedModules.load(enterpriseId, force)
     }
 
+    // Один запрос отдаёт и mainFile (код главного файла модуля), и доп. файлы.
+    // formData.code проставляется отсюда — больше не нужно тащить code
+    // из облегчённого списка модулей (там его больше нет).
     const loadModuleFilesById = async (enterpriseId: string, moduleId: string) => {
         loadingFiles.value = true
         try {
-            moduleFiles.value = await loadModuleFiles(enterpriseId, moduleId)
+            const result = await loadModuleFiles(enterpriseId, moduleId)
+            moduleFiles.value = result.files || []
+            if (result.mainFile) {
+                formData.value.code = result.mainFile.code || ''
+            }
         } finally {
             loadingFiles.value = false
         }
@@ -112,8 +118,12 @@ export const useModuleEditorStore = defineStore('moduleEditor', () => {
         }
         tagsInput.value = ''
         composablesInput.value = ''
+        moduleFiles.value = []
     }
 
+    // Проставляет лёгкие поля модуля (name/fileName/format/description/tags/...).
+    // code сюда сознательно НЕ берётся из mod (в облегчённом списке его нет) —
+    // он приходит отдельно из loadModuleFilesById(), которая грузит его вместе с файлами.
     const loadModule = (mod: any) => {
         if (!mod) return
         formData.value = {
@@ -121,7 +131,7 @@ export const useModuleEditorStore = defineStore('moduleEditor', () => {
             fileName: mod.fileName || '',
             description: mod.description || '',
             format: mod.format || 'vue',
-            code: mod.code || '',
+            code: '',
             isPublic: mod.isPublic || false,
             tags: mod.tags || [],
             previewImage: mod.previewImage || null,
@@ -132,6 +142,82 @@ export const useModuleEditorStore = defineStore('moduleEditor', () => {
         }
         tagsInput.value = (mod.tags || []).join(', ')
         composablesInput.value = (mod.composables || []).join(', ')
+    }
+
+    const loadFullModule = async (
+        enterpriseId:string,
+        moduleId:string
+    )=>{
+
+        const service = useModuleService()
+
+
+        const full =
+            await service.fetchFullModuleData(
+                moduleId,
+                enterpriseId
+            )
+
+
+        formData.value = {
+
+            name:
+            full.name,
+
+            fileName:
+            full.fileName,
+
+            description:
+            full.description,
+
+
+            format:
+            full.format,
+
+
+            code:
+            full.code,
+
+
+            isPublic:
+            full.isPublic,
+
+
+            tags:
+            full.tags,
+
+
+            previewImage:
+                full.previewImage || null,
+
+
+            dependencies:
+            full.dependencies,
+
+
+            devDependencies:
+            full.devDependencies,
+
+
+            serverEntry:
+            full.serverEntry,
+
+
+            composables:
+            full.composables
+
+        }
+
+
+        moduleFiles.value =
+            full.files
+
+
+        selectedModuleId.value =
+            moduleId
+
+
+        return full
     }
 
     const openFileEditor = (file?: any) => {
@@ -186,6 +272,7 @@ export const useModuleEditorStore = defineStore('moduleEditor', () => {
         // Actions
         resetForm,
         loadModule,
+        loadFullModule,
         openFileEditor,
         closeFileEditor,
         loadModules,

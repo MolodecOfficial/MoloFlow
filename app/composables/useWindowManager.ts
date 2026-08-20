@@ -4,6 +4,49 @@ import type { WindowItem, WindowSizeOptions } from '~/types/window'
 
 const windows = ref<WindowItem[]>([])
 let zIndexCounter = 100
+let cascadeStep = 0
+
+// Отступ снизу под панель/док, чтобы окна не открывались точно под меню
+const TOPBAR_OFFSET = 90
+const CASCADE_STEP_X = 34
+const CASCADE_STEP_Y = 28
+
+const getViewport = () => ({
+    width: typeof window !== 'undefined' ? window.innerWidth : 1280,
+    height: typeof window !== 'undefined' ? window.innerHeight : 800,
+})
+
+// Не даёт окну оказаться за пределами видимой области — актуально и для
+// каскадной раскладки, и для восстановления сохранённой позиции на экране
+// меньшего размера, чем тот, где окно в прошлый раз сохранялось.
+const clampToViewport = (pos: { x: number; y: number }, size: { width: number; height: number }) => {
+    const { width: vw, height: vh } = getViewport()
+    const maxX = Math.max(16, vw - size.width - 16)
+    const maxY = Math.max(TOPBAR_OFFSET, vh - size.height - 16)
+    return {
+        x: Math.min(Math.max(16, pos.x), maxX),
+        y: Math.min(Math.max(TOPBAR_OFFSET, pos.y), maxY),
+    }
+}
+
+// Каскад, который "заворачивается" на новый круг, как только упирается
+// в правый/нижний край экрана — раньше окна просто улетали за пределы
+// вьюпорта после ~10-15 открытий подряд.
+const getCascadePosition = (width: number, height: number) => {
+    const { width: vw, height: vh } = getViewport()
+    const maxSteps = Math.max(
+        1,
+        Math.floor((vw - width - 32) / CASCADE_STEP_X),
+        Math.floor((vh - height - TOPBAR_OFFSET - 32) / CASCADE_STEP_Y)
+    )
+    const step = cascadeStep % maxSteps
+    cascadeStep++
+
+    return clampToViewport(
+        { x: 80 + step * CASCADE_STEP_X, y: TOPBAR_OFFSET + step * CASCADE_STEP_Y },
+        { width, height }
+    )
+}
 
 // Ключ для localStorage (можно привязать к enterpriseId)
 const STORAGE_PREFIX = 'window_settings_'
@@ -64,7 +107,7 @@ export function useWindowManager() {
         componentPath?: string,
         moduleData?: any,
         extraData?: any,
-        customTitle?: string  // 👈 Явный заголовок на русском
+        customTitle?: string
     ) => {
         // Генерируем ключ для сохранения настроек
         const windowKey = getWindowKey(groupId, itemId, subGroupId)
@@ -111,7 +154,12 @@ export function useWindowManager() {
         }
 
         let initialSize = { ...defaultSize }
-        let initialPosition = { x: 80 + windows.value.length * 30, y: 10 + windows.value.length * 50 }
+
+        // Раньше позиция считалась как `80 + windows.length * 30` без ограничений —
+        // после десятка открытых окон новые улетали за пределы экрана и их
+        // приходилось искать вручную. Теперь каскад "заворачивается", когда
+        // упирается в правый/нижний край, и учитывает реальный размер окна.
+        let initialPosition = getCascadePosition(initialSize.width, initialSize.height)
         let isMaximized = false
 
         if (savedSettings && !isModal) {
@@ -121,8 +169,13 @@ export function useWindowManager() {
                 minWidth: defaultSize.minWidth,
                 minHeight: defaultSize.minHeight,
             }
-            // initialPosition = savedSettings.position
-            // isMaximized = savedSettings.isMaximized || false
+            // Раньше сохранённая позиция игнорировалась (была закомментирована) —
+            // окно всегда открывалось по каскаду, даже если пользователь его
+            // специально передвинул в удобное место. Теперь восстанавливаем её,
+            // но clampToViewport() не даст окну вылезти за экран, если с прошлого
+            // раза разрешение уменьшилось (например, открыли с другого монитора).
+            initialPosition = clampToViewport(savedSettings.position, initialSize)
+            isMaximized = savedSettings.isMaximized || false
         }
 
         // Проверка на уже открытое (не модальное) окно

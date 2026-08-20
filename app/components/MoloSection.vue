@@ -42,19 +42,7 @@
   border-radius: inherit;
 
   padding: 1px;
-
-  background:
-      linear-gradient(
-          135deg,
-          rgba(255, 255, 255, 0.15),
-          rgba(255, 255, 255, 0.02),
-          rgba(255, 255, 255, 0.11)
-      );
-
-  -webkit-mask:
-      linear-gradient(#fff 0 0) content-box,
-      linear-gradient(#fff 0 0);
-
+  
   -webkit-mask-composite: xor;
   mask-composite: exclude;
 
@@ -93,12 +81,7 @@
 
   border-bottom: 1px solid rgba(255,255,255,.08);
 
-  background:
-      linear-gradient(
-          180deg,
-          rgba(255, 255, 255, 0.02),
-          transparent
-      );
+
   color: #c7c7c7;
 }
 

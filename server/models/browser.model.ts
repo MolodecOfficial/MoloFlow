@@ -113,5 +113,3 @@ browserModuleSchema.methods.incrementDownloads = async function() {
 };
 
 export const BrowserModule = mongoose.models.BrowserModule || mongoose.model('BrowserModule', browserModuleSchema);
-
-export default mongoose.model('Browser', browserSchema);
