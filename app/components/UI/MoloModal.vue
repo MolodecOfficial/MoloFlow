@@ -99,22 +99,22 @@ const handleOverlayClick = () => {
             <h3>{{ title || 'Подтверждение' }}</h3>
             <div class="modal-actions">
               <slot name="footer">
-                <MoloButton
+                <UIMoloButton
                     v-if="!hideCancel"
                     class="close"
                     :disabled="isLoading"
                     @click="close"
                 >
                   {{ cancelText || 'Отмена' }}
-                </MoloButton>
-                <MoloButton
+                </UIMoloButton>
+                <UIMoloButton
                     class="confirm"
                     :disabled="isLoading"
                     @click="confirm"
                 >
-                  <MoloLoaders v-if="isLoading" btnLoader />
+                  <UIMoloLoaders v-if="isLoading" btnLoader />
                   <span v-else>{{ confirmText || 'Подтвердить' }}</span>
-                </MoloButton>
+                </UIMoloButton>
               </slot>
             </div>
           </div>

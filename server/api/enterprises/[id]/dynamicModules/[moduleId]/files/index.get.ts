@@ -1,4 +1,5 @@
-import { DynamicModule } from '~~/server/models/dynamicModules.model';
+// ПУТЬ В ПРОЕКТЕ: server/api/enterprises/[id]/dynamicModules/[moduleId]/files/index.get.ts
+import { findDynamicModuleByKey } from '~~/app/utils/dynamicModuleLookup';
 
 export default defineEventHandler(async (event) => {
     const moduleId = getRouterParam(event, 'moduleId');
@@ -8,7 +9,7 @@ export default defineEventHandler(async (event) => {
         throw createError({ statusCode: 400, message: 'Missing moduleId or enterpriseId' });
     }
 
-    const module = await DynamicModule.findOne({ _id: moduleId, enterpriseId });
+    const module = await findDynamicModuleByKey(enterpriseId, moduleId);
     if (!module) {
         throw createError({ statusCode: 404, message: 'Module not found' });
     }

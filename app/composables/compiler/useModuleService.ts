@@ -1,4 +1,4 @@
-import { useModuleCache, type RawModuleData } from '~~/app/composables/useModuleCache'
+import { useModuleCache, type RawModuleData } from './useModuleCache'
 
 export function useModuleService() {
 

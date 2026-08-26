@@ -1,9 +1,8 @@
 <!-- MockDataPreview.vue -->
 <script lang="ts" setup>
 import { computed } from 'vue'
-import MoloTable from './MoloTable.vue'
-import MoloCard from './MoloCard.vue'
-import MoloList from './MoloList.vue'
+import MoloTable from './layout/MoloTable.vue'
+
 
 const props = defineProps<{
   fields: any[]
@@ -154,40 +153,13 @@ const stylesFromStandard = computed(() => props.standard?.styles || {})
 <template>
   <div class="mock-preview">
     <div class="preview-body">
-      <MoloTable
+      <LayoutMoloTable
           v-if="viewType === 'table'"
           :columns="tableColumns"
           :data="groupedData"
           :settings="standard"
           :styles="stylesFromStandard"
           :groups="props.groups"
-      />
-
-      <div v-else-if="viewType === 'card'" class="cards-grid" :style="{
-        display: 'grid',
-        gridTemplateColumns: `repeat(${cardColumnsCount}, minmax(0, 1fr))`,
-        gap: '16px'
-      }">
-        <MoloCard
-            v-for="card in cardItems"
-            :key="card._id"
-            :item="card.entry"
-            :settings="{ fields: card.fields.map(f => f.key) }"
-            :fields="card.fields"
-            :styles="stylesFromStandard"
-            :group-name="card.group?.name"
-            :group-description="card.group?.description"
-            :group-image="card.group?.image"
-            :group-link="card.group?.link"
-        />
-      </div>
-
-      <MoloList
-          v-else-if="viewType === 'list'"
-          :items="actualData"
-          :groups="props.groups"
-          :settings="listSettings"
-          :styles="stylesFromStandard"
       />
     </div>
   </div>

@@ -1,8 +1,10 @@
+// ПУТЬ В ПРОЕКТЕ: server/api/enterprises/[id]/dynamicModules/[moduleId]/index.put.ts
 import { DynamicModule } from '~~/server/models/dynamicModules.model';
+import { findDynamicModuleByKey } from '~~/app/utils/dynamicModuleLookup';
 
 export default defineEventHandler(async (event) => {
     const enterpriseId = getRouterParam(event, 'id');        // enterpriseId
-    const moduleId = getRouterParam(event, 'moduleId');      // moduleId
+    const moduleId = getRouterParam(event, 'moduleId');      // moduleId или fileName
 
     const body = await readBody(event);
     const user = event.context.user;
@@ -28,10 +30,20 @@ export default defineEventHandler(async (event) => {
         delete body.isOfficial;
     }
 
-    // ИЩЕМ ПО ОБОИМ ПОЛЯМ: enterpriseId И moduleId
+    // Сначала резолвим реальный документ по fileName ИЛИ _id — иначе, как и в
+    // остальных эндпоинтах, findOneAndUpdate с {_id: moduleId} упадёт CastError'ом,
+    // если moduleId это fileName ('checkingAPI'), а не настоящий ObjectId.
+    const existing = await findDynamicModuleByKey(enterpriseId, moduleId);
+    if (!existing) {
+        throw createError({
+            statusCode: 404,
+            message: 'Module not found or access denied'
+        });
+    }
+
     const updatedModule = await DynamicModule.findOneAndUpdate(
         {
-            _id: moduleId,           // ID модуля
+            _id: existing._id,
             enterpriseId: enterpriseId  // ID предприятия (для безопасности)
         },
         {

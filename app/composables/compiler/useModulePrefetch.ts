@@ -10,8 +10,8 @@
 // прогрев доберётся до нужного модуля, — fetchFullModuleData/compileModule
 // просто отработают как обычно (см. дедупликацию in-flight в кэше).
 
-import { useModuleService } from '~~/app/composables/useModuleService'
-import { precompileModule } from '~~/app/composables/useModuleCompiler'
+import { useModuleService } from './useModuleService'
+import { precompileModule } from './useModuleCompiler'
 
 let prefetchInFlight = false
 

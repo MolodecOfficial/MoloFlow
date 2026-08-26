@@ -54,7 +54,7 @@ async function registerUser() {
 
 <template>
   <section class="auth-container">
-    <MoloGround/>
+    <LayoutMoloGround/>
 
     <section class="auth-main-container">
       <section class="auth-header">

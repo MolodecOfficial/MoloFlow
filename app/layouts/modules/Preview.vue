@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch, onErrorCaptured, onMounted, onUnmounted } from 'vue'
-import { useModuleCompiler, setGlobalComposables } from '~/composables/useModuleCompiler'
+import { useModuleCompiler, setGlobalComposables } from '~/composables/compiler/useModuleCompiler'
 import { useLogger } from '~/composables/useLogger'
 import { useNotifications } from '~/composables/useNotifications'
 import { useWindowManager } from '~/composables/useWindowManager'
@@ -182,7 +182,7 @@ const formattedError = computed(() => {
     <div class="preview-content">
       <!-- Загрузка -->
       <div v-if="loading" class="loading-state">
-        <MoloLoaders wndLoader />
+        <UIMoloLoaders wndLoader />
         <span>Компиляция…</span>
       </div>
 

@@ -7,10 +7,10 @@ export default defineEventHandler(async (event) => {
     const body = await readBody(event);
     const { fileName, data } = body || {};
 
-    if (!moduleId || !fileName) {
+    if (!moduleId) {
         throw createError({
             statusCode: 400,
-            message: `moduleId and fileName are required`
+            message: `moduleId is required`
         });
     }
 
@@ -19,13 +19,17 @@ export default defineEventHandler(async (event) => {
 
     try {
         const sandbox = await getModuleSandbox(moduleId, mod.enterpriseId);
-        const result = await sandbox.executeFile(fileName, data || {});
-        return result;
+        // Теперь executeFile возвращает { result, logs }
+        const { result, logs } = await sandbox.executeFile(fileName, data || {});
+        return { result, logs };
     } catch (error: any) {
         console.error(`[Execute API] Error:`, error.message);
+        // Если ошибка уже содержит логи (из песочницы), передаём их
+        const logs = error.data?.logs || [];
         throw createError({
             statusCode: error.statusCode || 500,
-            message: error.message || 'Script execution failed'
+            message: error.message || 'Script execution failed',
+            data: { logs }
         });
     }
 });

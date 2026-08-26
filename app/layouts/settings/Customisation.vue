@@ -198,9 +198,9 @@ onMounted(() => {
       <div class="preview-section">
         <div class="demo-nav">
           <span>Предпросмотр</span>
-          <MoloButton @click="showEditor = !showEditor">
+          <UIMoloButton @click="showEditor = !showEditor">
             {{ showEditor ? 'Закрыть' : 'Редактор стилей' }}
-          </MoloButton>
+          </UIMoloButton>
         </div>
         <div class="demo-window">
           <div class="demo-header">
@@ -215,7 +215,7 @@ onMounted(() => {
           <div class="demo-content">
             <p>Так будет выглядеть ваше окно</p>
             <p>Текст и элементы интерфейса</p>
-            <MoloButton>Кнопка</MoloButton>
+            <UIMoloButton>Кнопка</UIMoloButton>
           </div>
         </div>
       </div>

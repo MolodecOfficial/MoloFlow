@@ -381,35 +381,35 @@ watch(activeTab, () => {
 </script>
 
 <template>
-  <MoloSection>
+  <UIMoloSection>
     <template #header>
       <div class="tabs">
-        <MoloButton
+        <UIMoloButton
             class="small"
             :class="{ confirm: activeTab === 'themes' }"
             @click="activeTab = 'themes'"
         >
           Темы окон
-        </MoloButton>
-        <MoloButton
+        </UIMoloButton>
+        <UIMoloButton
             class="small"
             :class="{ confirm: activeTab === 'buttons' }"
             @click="activeTab = 'buttons'"
         >
           Стили кнопок
-        </MoloButton>
+        </UIMoloButton>
       </div>
       <div class="list-header" v-if="activeTab === 'themes'">
         <span class="count">Всего: {{ customThemes.length }} кастомных тем</span>
-        <MoloButton class="confirm small" @click="openCreateTheme">
+        <UIMoloButton class="confirm small" @click="openCreateTheme">
           Создать тему
-        </MoloButton>
+        </UIMoloButton>
       </div>
       <div class="list-header" v-if="activeTab === 'buttons'">
         <span class="count">Всего: {{ customButtonStyles.length }} кастомных стилей</span>
-        <MoloButton class="confirm small" @click="openCreateButtonStyle">
+        <UIMoloButton class="confirm small" @click="openCreateButtonStyle">
           Создать стиль
-        </MoloButton>
+        </UIMoloButton>
       </div>
     </template>
 
@@ -435,8 +435,8 @@ watch(activeTab, () => {
             <div class="item-desc">{{ theme.description }}</div>
           </div>
           <div class="item-actions">
-            <MoloButton class="small" @click="editTheme(theme)" title="Редактировать">✎</MoloButton>
-            <MoloButton class="small close" @click="openDeleteThemeModal(theme.id)" title="Удалить">✕</MoloButton>
+            <UIMoloButton class="small" @click="editTheme(theme)" title="Редактировать">✎</UIMoloButton>
+            <UIMoloButton class="small close" @click="openDeleteThemeModal(theme.id)" title="Удалить">✕</UIMoloButton>
           </div>
         </div>
       </div>
@@ -477,16 +477,16 @@ watch(activeTab, () => {
             <div class="item-desc">{{ style.description }}</div>
           </div>
           <div class="item-actions">
-            <MoloButton class="small" @click="editButtonStyle(style)" title="Редактировать">✎</MoloButton>
-            <MoloButton class="small close" @click="openDeleteButtonModal(style.id)" title="Удалить">✕</MoloButton>
+            <UIMoloButton class="small" @click="editButtonStyle(style)" title="Редактировать">✎</UIMoloButton>
+            <UIMoloButton class="small close" @click="openDeleteButtonModal(style.id)" title="Удалить">✕</UIMoloButton>
           </div>
         </div>
       </div>
     </template>
-  </MoloSection>
+  </UIMoloSection>
 
   <!-- Модалка подтверждения удаления -->
-  <MoloModal
+  <UIMoloModal
       v-model="deleteModal"
       title="Удалить?"
       help-text="Удаление является безвозвратным, вернуть элемент будет невозможно!"
@@ -497,10 +497,10 @@ watch(activeTab, () => {
         Вы уверены, что хотите удалить этот элемент?
       </p>
     </template>
-  </MoloModal>
+  </UIMoloModal>
 
   <!-- Модалка для создания/редактирования -->
-  <MoloModal
+  <UIMoloModal
       v-model="showCreateModal"
       :title="isEditMode ? 'Редактировать' : 'Создать новый'"
       width="700px"
@@ -510,13 +510,13 @@ watch(activeTab, () => {
     <template #body>
       <!-- Форма для темы -->
       <div v-if="activeTab === 'themes'" class="modal-body">
-        <MoloInput
+        <UIMoloInput
             tLabel="Название"
             lRequired
             placeholder="Название темы"
             v-model="form.name"
         />
-        <MoloInput
+        <UIMoloInput
             tLabel="Описание"
             lRequired
             placeholder="Краткое описание"
@@ -588,7 +588,7 @@ watch(activeTab, () => {
               </div>
             </div>
             <div class="form-group">
-              <MoloInput
+              <UIMoloInput
                   tLabel="Скругление"
                   lRequired
                   placeholder="10px"
@@ -596,7 +596,7 @@ watch(activeTab, () => {
               />
             </div>
             <div class="form-group">
-              <MoloInput
+              <UIMoloInput
                   tLabel="Размытие"
                   lRequired
                   placeholder="blur(10px)"
@@ -609,13 +609,13 @@ watch(activeTab, () => {
 
       <!-- Форма для стиля кнопок -->
       <div v-if="activeTab === 'buttons'" class="modal-body">
-        <MoloInput
+        <UIMoloInput
             tLabel="Название"
             lRequired
             placeholder="Название стиля"
             v-model="buttonForm.name"
         />
-        <MoloInput
+        <UIMoloInput
             tLabel="Описание"
             lRequired
             placeholder="Краткое описание"
@@ -761,7 +761,7 @@ watch(activeTab, () => {
 
             <!-- Отступы -->
             <div class="form-group">
-              <MoloInput
+              <UIMoloInput
                   tLabel="Отступ между кнопками"
                   lRequired
                   placeholder="6px"
@@ -769,7 +769,7 @@ watch(activeTab, () => {
               />
             </div>
             <div class="form-group">
-              <MoloInput
+              <UIMoloInput
                   tLabel="Отступ контейнера"
                   lRequired
                   placeholder="2px"
@@ -814,11 +814,11 @@ watch(activeTab, () => {
         <div class="demo-content">
           <p>Так будет выглядеть ваше окно</p>
           <p>Текст и элементы интерфейса</p>
-          <MoloButton>Кнопка</MoloButton>
+          <UIMoloButton>Кнопка</UIMoloButton>
         </div>
       </div>
     </template>
-  </MoloModal>
+  </UIMoloModal>
 </template>
 
 <style scoped>

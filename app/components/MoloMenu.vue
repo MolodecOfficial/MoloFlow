@@ -1,45 +1,38 @@
 <script setup lang="ts">
-import {computed, nextTick, onMounted, onUnmounted, ref} from 'vue'
-import {storeToRefs} from 'pinia'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { storeToRefs } from 'pinia'
+import { useEnterprise } from '~~/app/composables/useEnterprise'
 import lock from '~~/public/lock.svg'
 import tsIcon from '~~/public/ts.png'
 import jsIcon from '~~/public/js.png'
-import {useMoloMenuStore} from '~~/stores/moloMenuStore'
-import {useAppStore} from "~~/stores/appStore";
+import { useMoloMenuStore } from '~~/stores/moloMenuStore'
+import { useWindowManager } from '~/composables/useWindowManager'
 
 const props = defineProps<{ role: string }>()
 const emit = defineEmits<{
   'lock-hover': [value: boolean]
-  'open-window': [...args: any[]]
 }>()
 
-// ===== STORE =====
 const menuStore = useMoloMenuStore()
-const appStore = useAppStore()
-const {addLog} = useLogger('Меню')
-const {menuGroups, staticModuleGroups, dynamicModules, menuLoaded} = storeToRefs(menuStore)
+const { openWindow } = useWindowManager()
+const { addLog } = useLogger('Меню')
+const { menuGroups, staticModuleGroups, dynamicModules, menuLoaded } = storeToRefs(menuStore)
 
-// ===== STATE =====
+const enterprise = useEnterprise()
+
 const loading = ref(!menuLoaded.value)
+const executingModules = ref<Set<string>>(new Set())
 const isLoaded = ref(false)
 const showLock = ref(false)
 const tooltipX = ref(0)
 const tooltipY = ref(0)
 
-// ===== STATE (Command Deck) =====
 const isOpen = ref(false)
 const activeGroupId = ref<string | null>(null)
 const breadcrumbStack = ref<any[]>([])
 const searchQuery = ref('')
 const searchInputRef = ref<HTMLInputElement | null>(null)
 
-const enterpriseData = () => {
-  return appStore.getEnterpriseId()
-}
-
-const getToken = () => localStorage.getItem('enterprise_token')
-
-// ===== ДИНАМИЧЕСКИЕ ПУНКТЫ МОДУЛЕЙ =====
 const createDynamicItems = () => {
   return dynamicModules.value
       .filter((m: any) => m && m._id)
@@ -64,14 +57,11 @@ const createDynamicItems = () => {
 }
 
 const modulesGroups = computed(() => {
-  const isLoggedIn = getToken() && enterpriseData()
-  if (!isLoggedIn) return []
-
+  if (!enterprise.isLoggedIn.value) return []
   const staticModules = staticModuleGroups.value
   const dynamic = createDynamicItems()
-
   return dynamic.length
-      ? [...staticModules, {title: 'Мои модули', items: dynamic}]
+      ? [...staticModules, { title: 'Мои модули', items: dynamic }]
       : staticModules
 })
 
@@ -79,45 +69,100 @@ const allGroups = computed(() => {
   const merged = [...menuGroups.value, ...modulesGroups.value]
   return merged.map((g: any, idx: number) => ({
     ...g,
-    id: g.id || g.groupId
+    id: g.id || g.groupId || `group_${idx}`
   }))
 })
 
-// ===== ОСНОВНОЙ COMPUTED ДЛЯ КЛАССОВ ОРБА =====
 const orbClasses = computed(() => ({
   lg: loading.value === true,
   empty: isLoaded.value === true && allGroups.value.length === 0
 }))
 
 const loadAll = async (force = false) => {
-  const enterprise = enterpriseData()
+  const enterpriseId = enterprise.enterpriseId.value
 
-  if (enterprise) {
+  if (enterpriseId) {
     addLog("info", 'Загружаю меню для предприятия...');
   }
 
   await Promise.all([
     menuStore.loadMenu(props.role, force),
-    enterprise ? menuStore.loadDynamicModules(enterprise, force) : Promise.resolve()
+    enterpriseId ? menuStore.loadDynamicModules(enterpriseId, force) : Promise.resolve()
   ])
 
-  // ПРОВЕРКА ДО ЦИКЛА
-  if (dynamicModules.value.length === 0) {
+  if (dynamicModules.value.length === 0 && enterpriseId) {
     addLog('error', 'Ошибка загрузки меню: Динамические модули не загружены')
-    return // или continue, если нужно выполнить другой код
+    return
   }
 
-  // Теперь цикл выполняется только если есть модули
   for (const module of dynamicModules.value) {
-    if (module && (module.format === 'js' || module.format === 'ts') && module.isActive) {
-      console.log('Execute module:', module.name)
+    if (module && (module.format === 'js' || module.format === 'ts') && module.isActive !== false) {
+      addLog('info', `Автозапуск модуля-скрипта: ${module.name}`)
+      try {
+        const response = await $fetch(`/api/execute/${module._id}`, {
+          method: 'POST',
+          body: {
+            data: {
+              moduleName: module.name,
+              enterpriseId: enterpriseId,
+              isAutoStart: true
+            }
+          }
+        })
+
+        // 🔥 Исправлено: добавляем логи через тот же addLog (глобальный)
+        if (response.logs && response.logs.length) {
+          for (const log of response.logs) {
+            let type: 'info' | 'warning' | 'error' | 'success' = 'info';
+            if (log.includes('ERROR')) type = 'error';
+            else if (log.includes('WARN')) type = 'warning';
+            else if (log.includes('SUCCESS')) type = 'success';
+            addLog(type, log);
+          }
+        }
+        addLog('success', `Модуль-скрипт "${module.name}" выполнен успешно`)
+      } catch (err: any) {
+        addLog('error', `Ошибка при запуске "${module.name}": ${err?.data?.message || err?.message || err}`)
+        if (err.data?.logs) {
+          for (const log of err.data.logs) {
+            addLog('error', log);
+          }
+        }
+      }
     }
   }
 }
 
-// =====================================================================
-// COMMAND DECK — навигация по панели
-// =====================================================================
+watch(
+    () => enterprise.isLoggedIn.value,
+    async (isLoggedIn, wasLoggedIn) => {
+      if (isLoggedIn !== wasLoggedIn) {
+        addLog('info', isLoggedIn ? 'Вход в предприятие' : 'Выход из предприятия')
+        menuStore.invalidateMenu()
+        menuStore.invalidateDynamicModules()
+        loading.value = true
+        await loadAll(true)
+        loading.value = false
+        isLoaded.value = true
+      }
+    },
+    { immediate: false }
+)
+
+watch(
+    () => enterprise.enterpriseId.value,
+    async (newId, oldId) => {
+      if (newId && newId !== oldId) {
+        addLog('info', 'Сменилось предприятие, обновляю меню...')
+        menuStore.invalidateMenu()
+        menuStore.invalidateDynamicModules()
+        loading.value = true
+        await loadAll(true)
+        loading.value = false
+        isLoaded.value = true
+      }
+    }
+)
 
 const ACCENT_PALETTE = ['#5b8def', '#8b5cf6', '#33d17a', '#d29922', '#ef5b8d', '#3ecfd6']
 const categoryColor = (title: string) => {
@@ -155,7 +200,7 @@ const flattenItems = (items: any[], group: any, parents: any[] = []): any[] => {
   let out: any[] = []
   for (const item of (items || [])) {
     if (item?.isActive === false) continue
-    out.push({item, group, parents: [...parents]})
+    out.push({ item, group, parents: [...parents] })
     if (item.items?.length) {
       out = out.concat(flattenItems(item.items, group, [...parents, item]))
     }
@@ -178,13 +223,87 @@ const resultPath = (result: any) => {
   return parts.filter(Boolean).join(' / ')
 }
 
+const restartModule = async (moduleData: any) => {
+  if (!moduleData) return
+
+  const moduleId = moduleData._id
+
+  if (executingModules.value.has(moduleId)) {
+    addLog('warning', `Модуль "${moduleData.name}" уже выполняется`)
+    return
+  }
+
+  try {
+    executingModules.value.add(moduleId)
+    addLog('info', `Перезапуск модуля: ${moduleData.name}`)
+
+    const enterpriseId = enterprise.enterpriseId.value
+    if (!enterpriseId) {
+      addLog('error', 'Нет ID предприятия')
+      return
+    }
+
+    const response = await $fetch(`/api/execute/${moduleData._id}`, {
+      method: 'POST',
+      body: {
+        data: {
+          moduleName: moduleData.name,
+          enterpriseId: enterpriseId,
+          moduleId: moduleId
+        }
+      }
+    })
+
+    // 🔥 Добавляем логи из ответа в MoloLogger
+    if (response.logs && response.logs.length) {
+      const { addLog: addModuleLog } = useLogger('Модуль');
+      for (const log of response.logs) {
+        // Определяем тип лога по наличию маркеров
+        let type: 'info' | 'warning' | 'error' | 'success' = 'info';
+        if (log.includes('ERROR')) type = 'error';
+        else if (log.includes('WARN')) type = 'warning';
+        else if (log.includes('SUCCESS')) type = 'success';
+        addModuleLog(type, log);
+      }
+    }
+
+    addLog('success', `Модуль "${moduleData.name}" выполнен успешно`)
+
+  } catch (error: any) {
+    console.error('Restart error:', error)
+    addLog('error', `Ошибка при выполнении модуля: ${error.message}`)
+    // Если в ошибке есть логи, тоже показываем их
+    if (error.data?.logs) {
+      const { addLog: addModuleLog } = useLogger('Модуль');
+      for (const log of error.data.logs) {
+        addModuleLog('error', log);
+      }
+    }
+  } finally {
+    executingModules.value.delete(moduleId)
+  }
+}
+
+
 const openItem = (item: any, group: any, parent?: any) => {
   if (item.isScript) {
     restartModule(item.moduleData)
     closePanel()
     return
   }
-  openWindow(group.id, item, parent)
+
+  if (item.isModule) {
+    // Пользовательский модуль из БД. Ключ окна = fileName, который
+    // пользователь задал при создании модуля (см. createDynamicItems выше,
+    // поле placeName) — вводить id вручную не нужно, он уже в moduleData.
+    openWindow(item.placeName, item.moduleData)
+  } else {
+    // Системный экран платформы (Login, Configurator и т.п.). Ключ должен
+    // совпадать с ключом в composables/systemWindows.ts — используем id
+    // самого пункта меню, это и есть его "имя файла" в терминах системы окон.
+    openWindow(item.id || item.placeName, item.data)
+  }
+
   closePanel()
 }
 
@@ -236,66 +355,9 @@ const closePanel = () => {
 
 const togglePanel = () => (isOpen.value ? closePanel() : openPanel())
 
-// =====================================================================
-// Открытие окна / перезапуск скрипта
-// =====================================================================
+// Размеры системных экранов больше не дублируются здесь — единственный
+// источник правды: composables/systemWindows.ts
 
-const getSizeOptions = (id: string) => {
-  const presets: Record<string, any> = {
-    login: {width: 400, height: 450},
-    browser: {width: 900, height: 650},
-    register: {width: 1000, height: 650},
-    customisation: {width: 800, height: 600},
-    creature: {width: 1000, height: 650},
-    control: {width: 1000, height: 650},
-  }
-  return presets[id]
-}
-
-const openWindow = (groupId: string, item: any, parent?: any) => {
-  if (!item) return
-
-  const sizeOptions = getSizeOptions(item.id)
-  const placeName = item.placeName || item.id
-  const parentPlaceName = parent?.placeName || parent?.id
-  const title = item.title || item.moduleData?.name || 'Модуль'
-
-  let moduleData = item.moduleData || {}
-
-  if (item.format === 'vue' && item.moduleId) {
-    moduleData = {
-      ...moduleData,
-      moduleId: item.moduleId,
-      _id: item.moduleId,
-      name: title,
-      format: item.format,
-      code: moduleData.code || ''
-    }
-  }
-
-  emit('open-window',
-      groupId,
-      placeName,
-      parentPlaceName,
-      sizeOptions,
-      false,
-      item.componentPath || item.componentName || 'modules/DynamicModuleLoader',
-      moduleData,
-      undefined,
-      title
-  )
-}
-
-const restartModule = async (moduleData: any) => {
-  if (!moduleData) return
-  try {
-    console.log('Restart module:', moduleData.name)
-  } catch (e) {
-    console.error('Restart error:', e)
-  }
-}
-
-// ===== LOCK =====
 const onLockEnter = () => {
   if (props.role === 'Пользователь') {
     showLock.value = true
@@ -315,20 +377,31 @@ const handleMouseMove = (e: MouseEvent) => {
   tooltipY.value = e.clientY + 10
 }
 
-// ===== Горячие клавиши =====
 const handleGlobalKeydown = (e: KeyboardEvent) => {
-  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'q') {
+  // ФИКС: e.key зависит от раскладки клавиатуры. На русской раскладке
+  // физическая клавиша Q — это "Й", и Ctrl+Q в моменте с русской
+  // раскладкой давал e.key === 'й', а не 'q' — сочетание "не работало"
+  // в зависимости от того, какой язык ввода был активен в моменте нажатия.
+  // e.code — физическое положение клавиши, от раскладки/языка НЕ зависит.
+  const isToggleCombo = (e.ctrlKey || e.metaKey) && !e.altKey && e.code === 'KeyQ'
+
+  if (isToggleCombo) {
+    if (e.repeat) return // не дёргаем toggle повторно, если клавишу держат зажатой
     e.preventDefault()
+    e.stopPropagation()
     togglePanel()
   } else if (e.key === 'Escape' && isOpen.value) {
     closePanel()
   }
 }
 
-// ===== LIFECYCLE =====
 onMounted(async () => {
   window.addEventListener('mousemove', handleMouseMove)
-  window.addEventListener('keydown', handleGlobalKeydown)
+  // ФИКС: capture: true — перехватываем keydown РАНЬШЕ вложенных полей
+  // ввода/редакторов кода (Monaco и т.п.), которые могут вызывать
+  // stopPropagation() на своих сочетаниях клавиш и не давать событию
+  // дойти до window в обычной фазе всплытия
+  window.addEventListener('keydown', handleGlobalKeydown, { capture: true })
 
   const alreadyCached = menuLoaded.value
   if (!alreadyCached) loading.value = true
@@ -343,29 +416,12 @@ onMounted(async () => {
 
 onUnmounted(() => {
   window.removeEventListener('mousemove', handleMouseMove)
-  window.removeEventListener('keydown', handleGlobalKeydown)
-})
-
-const handleUpdate = async () => {
-  await loadAll(true)
-}
-
-window.addEventListener('storage', handleUpdate)
-window.addEventListener('enterprise-login', handleUpdate)
-window.addEventListener('enterprise-logout', handleUpdate)
-window.addEventListener('modules-updated', handleUpdate)
-
-onUnmounted(() => {
-  window.removeEventListener('storage', handleUpdate)
-  window.removeEventListener('enterprise-login', handleUpdate)
-  window.removeEventListener('enterprise-logout', handleUpdate)
-  window.removeEventListener('modules-updated', handleUpdate)
+  window.removeEventListener('keydown', handleGlobalKeydown, { capture: true })
 })
 </script>
 
 <template>
   <div class="deck-wrapper">
-    <!-- ===== Триггер ===== -->
     <div class="launcher-row" @mouseenter="onLockEnter" @mouseleave="onLockLeave">
       <button class="launcher-btn" :class="{ open: isOpen }" @click="togglePanel">
         <span class="orb" :class="orbClasses">
@@ -378,7 +434,7 @@ onUnmounted(() => {
       </button>
 
       <div v-if="loading" class="loading-inline">
-        <MoloLoaders wnd-loader/>
+        <UIMoloLoaders wnd-loader/>
       </div>
 
       <div v-else class="quick-dock">
@@ -395,13 +451,11 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <!-- ===== Панель управления ===== -->
     <Teleport to="body">
       <transition name="deck-fade">
         <div v-if="isOpen" class="deck-overlay" @click.self="closePanel">
           <transition name="deck-pop" appear>
             <div class="deck-panel">
-              <!-- Командная строка -->
               <div class="deck-header">
                 <div class="prompt-box">
                   <span class="prompt-caret">›</span>
@@ -414,10 +468,9 @@ onUnmounted(() => {
                       @keydown.esc="closePanel"
                   />
                 </div>
-                <MoloButton class="small close" title="Закрыть (Esc)" @click="closePanel">✕</MoloButton>
+                <UIMoloButton class="small close" title="Закрыть (Esc)" @click="closePanel">✕</UIMoloButton>
               </div>
 
-              <!-- Режим поиска -->
               <div v-if="searchQuery.trim()" class="search-mode">
                 <div v-if="searchResults.length" class="search-list">
                   <button
@@ -448,7 +501,6 @@ onUnmounted(() => {
                 </div>
               </div>
 
-              <!-- Обычный режим -->
               <div v-else class="deck-body">
                 <aside class="rail">
                   <button
@@ -476,11 +528,15 @@ onUnmounted(() => {
                   </div>
 
                   <div v-if="currentItems.length" class="items-grid">
-                    <MoloButton
+                    <UIMoloButton
                         v-for="item in currentItems"
                         :key="item.id"
                         class="item-card"
-                        :class="{ folder: item.items?.length, script: item.isScript }"
+                        :class="{
+                          folder: item.items?.length,
+                          script: item.isScript,
+                          executing: item.isScript && executingModules.has(item.moduleId)
+                        }"
                         @click="handleCardClick(item)"
                     >
                       <span class="card-icon">
@@ -490,18 +546,25 @@ onUnmounted(() => {
                         <span v-else class="vue-badge">V</span>
                       </span>
                       <span class="card-title">{{ item.title }}</span>
-                      <span>{{ item.description }}</span>
                       <span v-if="item.items?.length" class="card-meta">{{ item.items.length }} пунктов</span>
-                      <span v-else-if="item.isScript" class="card-meta">скрипт · {{ item.format }}</span>
+                      <span v-else-if="item.isScript" class="card-meta">
+                        <span v-if="executingModules.has(item.moduleId)" class="executing-indicator">
+                          ⏳ выполняется...
+                        </span>
+                        <span v-else>скрипт · {{ item.format }}</span>
+                      </span>
                       <span v-else class="card-meta">открыть окно</span>
 
                       <span
                           v-if="item.isScript"
                           class="restart-btn"
+                          :class="{ spinning: executingModules.has(item.moduleId) }"
                           title="Перезапустить"
                           @click.stop="restartModule(item.moduleData)"
-                      >↻</span>
-                    </MoloButton>
+                      >
+                        ↻
+                      </span>
+                    </UIMoloButton>
                   </div>
                   <div v-else class="empty-block">
                     <span class="empty-emoji">📦</span>
@@ -515,7 +578,6 @@ onUnmounted(() => {
       </transition>
     </Teleport>
 
-    <!-- Замок -->
     <div v-if="showLock" class="lock-overlay">
       <img :src="lock" class="lock-icon"/>
       <div class="lock-tooltip" :style="{ left: tooltipX + 'px', top: tooltipY + 'px' }">
@@ -534,7 +596,6 @@ onUnmounted(() => {
   padding: 10px 20px;
 }
 
-/* ===== Триггер ===== */
 .launcher-row {
   display: flex;
   align-items: center;
@@ -686,7 +747,6 @@ onUnmounted(() => {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--blip-color) 25%, transparent);
 }
 
-/* ===== Оверлей / панель ===== */
 .deck-overlay {
   position: fixed;
   inset: 0;
@@ -768,7 +828,6 @@ onUnmounted(() => {
   color: var(--text-muted);
 }
 
-/* ===== Тело: рейка + сетка ===== */
 .deck-body {
   display: flex;
   min-height: 0;
@@ -917,6 +976,17 @@ onUnmounted(() => {
   border-color: rgba(139, 92, 246, 0.5);
 }
 
+.item-card.executing {
+  border-color: var(--borber-color_main);
+  box-shadow: 0 0 15px rgba(91, 141, 239, 0.3);
+  animation: pulse-border 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-border {
+  0%, 100% { border-color: var(--borber-color_main); }
+  50% { border-color: rgba(91, 141, 239, 0.3); }
+}
+
 .card-icon {
   width: 34px;
   height: 34px;
@@ -959,6 +1029,16 @@ onUnmounted(() => {
   font-family: 'JetBrains Mono', monospace;
 }
 
+.executing-indicator {
+  color: var(--borber-color_main);
+  animation: pulse-text 1s ease-in-out infinite;
+}
+
+@keyframes pulse-text {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
 .restart-btn {
   position: absolute;
   top: 10px;
@@ -981,7 +1061,16 @@ onUnmounted(() => {
   transform: rotate(180deg);
 }
 
-/* ===== Поиск ===== */
+.restart-btn.spinning {
+  animation: spin 1s linear infinite;
+  color: var(--borber-color_main);
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
 .search-mode {
   flex: 1;
   overflow-y: auto;
@@ -1079,7 +1168,6 @@ onUnmounted(() => {
   opacity: 0.7;
 }
 
-/* ===== Замок ===== */
 .lock-overlay {
   position: fixed;
   inset: 0;
@@ -1110,7 +1198,6 @@ onUnmounted(() => {
   white-space: nowrap;
 }
 
-/* ===== Доступность ===== */
 .launcher-btn:focus-visible,
 .dock-blip:focus-visible,
 .rail-item:focus-visible,
@@ -1124,30 +1211,24 @@ onUnmounted(() => {
   .orb-ring {
     animation: none;
   }
-
   .orb-core.lg {
     animation: none;
   }
-
   .item-card:hover {
     transform: none;
   }
 }
 
-/* ===== Адаптив ===== */
 @media (max-width: 720px) {
   .deck-overlay {
     padding: 4vh 10px 10px;
   }
-
   .deck-panel {
     max-height: 88vh;
   }
-
   .deck-body {
     flex-direction: column;
   }
-
   .rail {
     width: 100%;
     display: flex;
@@ -1157,16 +1238,13 @@ onUnmounted(() => {
     border-bottom: 1px solid var(--panel-border);
     padding: 8px;
   }
-
   .rail-item {
     flex-shrink: 0;
     width: auto;
   }
-
   .rail-label {
     max-width: 100px;
   }
-
   .launcher-kbd {
     display: none;
   }

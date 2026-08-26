@@ -211,7 +211,7 @@ onMounted(() => {
 
 <template>
   <section class="auth-container">
-    <MoloGround/>
+    <LayoutMoloGround/>
     <section class="auth-main-container">
       <section class="auth-header">
         <section class="auth-nav">
@@ -270,11 +270,11 @@ onMounted(() => {
         <span class="welcome-text">Добро пожаловать. Выполните вход в систему</span>
         <section class="auth-login">
           <div class="form__group field">
-            <input v-model="name" class="form__field" placeholder="Имя пользователя" name="username" id='username' required/>
+            <input v-model="name" class="form__field" placeholder="Имя пользователя" name="username" id='username' required @keydown.enter="loginUser"/>
             <label for="username" class="form__label">Имя пользователя</label>
           </div>
           <div class="form__group field">
-            <input v-model="password" class="form__field" placeholder="Пароль" type="password" name="password" id='password' required/>
+            <input v-model="password" class="form__field" placeholder="Пароль" type="password" name="password" id='password' required @keydown.enter="loginUser"/>
             <label for="password" class="form__label">Пароль</label>
           </div>
         </section>
@@ -335,6 +335,7 @@ onMounted(() => {
                 required
                 autofocus
                 :disabled="loading"
+                @keydown.enter="verify2FA"
             />
             <label for="code" class="form__label">Код из Google Authenticator</label>
           </div>
@@ -350,9 +351,11 @@ onMounted(() => {
         <section class="login_status">
           <!-- Кнопка для шага входа - только если выбран модуль -->
           <button
+              type="button"
               v-if="step === 'login' && selected"
               class="login-btn"
               @click="loginUser"
+              @keydown.enter="loginUser"
               :disabled="!name || !password || loading"
           >
             <div v-if="loading" class="modern-loader"></div>

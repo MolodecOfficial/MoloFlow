@@ -3,10 +3,12 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { useModuleApi } from '~~/app/composables/useModuleApi'
 import { useEnterpriseModulesStore } from './enterpriseModulesStore'
+import { useModuleService } from "~~/app/composables/compiler/useModuleService";
 
 export const useModuleEditorStore = defineStore('moduleEditor', () => {
     // Получаем API-функции
     const { loadModuleFiles, loadDependencies } = useModuleApi()
+
 
     // Модули — БОЛЬШЕ НЕ отдельный список, а витрина над общим
     // enterpriseModulesStore. Тот же кэш, что видит меню (MoloMenu.vue),

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref, watch } from 'vue'
-import { setGlobalComposables, useModuleCompiler } from '~/composables/useModuleCompiler'
-import { useModuleService } from '~/composables/useModuleService'
+import { setGlobalComposables, useModuleCompiler } from '~/composables/compiler/useModuleCompiler'
+import { useModuleService } from '~/composables/compiler/useModuleService'
 import { useLogger } from '~/composables/useLogger'
 import { useNotifications } from '~/composables/useNotifications'
 import { useWindowManager } from '~/composables/useWindowManager'
@@ -138,7 +138,7 @@ onUnmounted(() => {
 <template>
   <div class="dynamic-module-loader">
     <div v-if="isLoadingModule" class="loading-state">
-      <MoloLoaders wndLoader/>
+      <UIMoloLoaders wndLoader/>
       <span>Загрузка данных модуля...</span>
     </div>
     <div v-else-if="error" class="error-state">
@@ -146,7 +146,7 @@ onUnmounted(() => {
       <div class="error-message">{{ error }}</div>
     </div>
     <div v-else-if="compiling" class="loading-state">
-      <MoloLoaders wndLoader/>
+      <UIMoloLoaders wndLoader/>
       <span>Компиляция модуля...</span>
     </div>
     <component

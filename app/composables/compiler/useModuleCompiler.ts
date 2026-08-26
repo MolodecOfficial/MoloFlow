@@ -5,7 +5,7 @@ import * as compiler from '@vue/compiler-sfc'
 import { loadModule } from 'vue3-sfc-loader'
 import * as Babel from '@babel/standalone'
 import presetTypeScript from '@babel/preset-typescript'
-import { useModuleCache, makeModuleSignature, type CompiledResult } from '~~/app/composables/useModuleCache'
+import { useModuleCache, makeModuleSignature, type CompiledResult } from './useModuleCache'
 
 // ======================================================
 // Типы

@@ -38,7 +38,7 @@ const handleClick = (event: MouseEvent) => {
   >
     <!-- Спиннер при загрузке -->
     <span v-if="loading" class="molo-btn__spinner">
-      <MoloLoaders btn-loader/>
+      <UIMoloLoaders btn-loader/>
     </span>
 
     <!-- Слот для содержимого -->

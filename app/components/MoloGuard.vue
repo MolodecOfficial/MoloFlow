@@ -87,8 +87,8 @@ onMounted(() => {
         <h1>Доступ запрещен</h1>
         <p>У вас недостаточно прав для просмотра этой страницы</p>
         <div class="actions">
-          <MoloButton @click="goBack" class="close">Назад</MoloButton>
-          <MoloButton @click="goToLogin" class="confirm">На главную</MoloButton>
+          <UIMoloButton @click="goBack" class="close">Назад</UIMoloButton>
+          <UIMoloButton @click="goToLogin" class="confirm">На главную</UIMoloButton>
         </div>
       </div>
     </div>

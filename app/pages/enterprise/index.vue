@@ -94,10 +94,7 @@ const loadUserData = () => {
 }
 
 const openSettings = () => {
-  openWindow(
-      'settings',
-      'customisation'
-  )
+  openWindow('checkingAPI')
 }
 
 // Предзагрузка всех данных предприятия (вкладки, стандарты, записи)
@@ -190,7 +187,7 @@ function deleteUser() {
 
       <!-- Уведомления -->
       <div class="notifications-wrapper">
-        <MoloNotice
+        <LayoutMoloNotice
             v-for="(notification, index) in notifications"
             :key="notification.id"
             :notice_type="notification.type"
@@ -204,7 +201,7 @@ function deleteUser() {
 
       <!-- Логгер -->
       <div class="logger-wrapper">
-        <MoloLogger />
+        <LayoutMoloLogger />
       </div>
 
       <!-- Загрузка -->
@@ -238,9 +235,9 @@ function deleteUser() {
               </div>
             </div>
 
-            <MoloButton @click="deleteUser" class="close">
+            <UIMoloButton @click="deleteUser" class="close">
               <span>Выйти</span>
-            </MoloButton>
+            </UIMoloButton>
           </div>
         </header>
 
@@ -251,7 +248,7 @@ function deleteUser() {
               @open-window="openWindow"
           />
 
-          <WindowsManager
+          <WindowWindowsManager
               :windows="windows"
               @close="closeWindow"
               @focus="focusWindow"

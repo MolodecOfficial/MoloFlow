@@ -97,19 +97,19 @@ onMounted(() => {
   <div class="browser-container">
     <!-- Фильтры - фиксированная ширина -->
     <div class="filters-panel">
-      <MoloSection>
+      <UIMoloSection>
         <template #header>
           Фильтры
         </template>
         <template #main>
-          <MoloInput
+          <UIMoloInput
               v-model="searchQuery"
               type="text"
               tLabel="Найдите модуль в поиске"
               placeholder="Поиск по названию, описанию, тегам..."
               @input="setBrowserSearchQuery"
           />
-          <MoloSelect
+          <UIMoloSelect
               v-model="formatFilter"
               @change="setBrowserFormatFilter"
               :parent="formats"
@@ -119,7 +119,7 @@ onMounted(() => {
               valueKey="value"
               all="Все форматы"
           />
-          <MoloSelect
+          <UIMoloSelect
               v-model="sortBy"
               @change="setBrowserSortBy"
               :parent="sorts"
@@ -129,19 +129,19 @@ onMounted(() => {
               valueKey="value"
           />
         </template>
-      </MoloSection>
+      </UIMoloSection>
     </div>
 
     <!-- Основной контент -->
     <div class="modules-content">
-      <MoloLoaders wndLoader v-if="loading" />
+      <UIMoloLoaders wndLoader v-if="loading" />
 
       <div v-else-if="modules.length === 0" class="empty">
         Модулей не найдено
       </div>
 
       <div v-else class="modules-grid">
-        <MoloSection v-for="mod in modules" :key="mod._id" class="module-card">
+        <UIMoloSection v-for="mod in modules" :key="mod._id" class="module-card">
           <template #header>
             <div class="card-header-content">
               <div class="card-name">
@@ -154,13 +154,13 @@ onMounted(() => {
                 />
               </div>
               <div class="actions">
-                <MoloButton
+                <UIMoloButton
                     v-if="mod.files?.length"
                     class="confirm small"
                     @click="showTooltip(mod._id)"
                 >
                   Файлы
-                </MoloButton>
+                </UIMoloButton>
                 <Transition name="tooltip">
                   <div v-if="activeTooltip === mod._id" class="files-tooltip">
                     <div class="tooltip-content">
@@ -173,15 +173,15 @@ onMounted(() => {
                     </div>
                   </div>
                 </Transition>
-                <MoloButton
+                <UIMoloButton
                     class="confirm small"
                     @click="handleImport(mod)"
                     :disabled="isImportingModule(mod._id)"
                 >
-                  <MoloLoaders btnLoader v-if="isImportingModule(mod._id)" />
+                  <UIMoloLoaders btnLoader v-if="isImportingModule(mod._id)" />
                   <span v-else>Импорт</span>
 
-                </MoloButton>
+                </UIMoloButton>
               </div>
             </div>
           </template>
@@ -209,13 +209,13 @@ onMounted(() => {
             </div>
             <code class="mod_version">Номер сборки: {{ mod.version }}</code>
           </template>
-        </MoloSection>
+        </UIMoloSection>
       </div>
 
       <div class="pagination" v-if="totalPages > 1">
-        <MoloButton :disabled="currentPage === 1" @click="setBrowserPage(currentPage - 1)">←</MoloButton>
+        <UIMoloButton :disabled="currentPage === 1" @click="setBrowserPage(currentPage - 1)">←</UIMoloButton>
         <span>Страница {{ currentPage }} из {{ totalPages }}</span>
-        <MoloButton :disabled="currentPage === totalPages" @click="setBrowserPage(currentPage + 1)">→</MoloButton>
+        <UIMoloButton :disabled="currentPage === totalPages" @click="setBrowserPage(currentPage + 1)">→</UIMoloButton>
       </div>
     </div>
   </div>

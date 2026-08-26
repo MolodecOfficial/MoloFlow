@@ -101,7 +101,7 @@ const resetForm = () => {
     <form @submit.prevent="createEnterprise" class="enterprise-form">
       <div class="form-grid">
         <div class="form-group full-width">
-          <MoloInput
+          <UIMoloInput
               label="enterpriseName"
               tLabel="Полное наименование предприятия"
               lRequired
@@ -114,7 +114,7 @@ const resetForm = () => {
         </div>
 
         <!-- ИНН, КПП, ОГРН в одной строке -->
-        <MoloInput
+        <UIMoloInput
             label="inn"
             tLabel="ИНН"
             lRequired
@@ -126,7 +126,7 @@ const resetForm = () => {
             v-model="inn"
         />
 
-        <MoloInput
+        <UIMoloInput
             label="kpp"
             tLabel="КПП"
             lRequired
@@ -137,7 +137,7 @@ const resetForm = () => {
             v-model="kpp"
         />
 
-        <MoloInput
+        <UIMoloInput
             label="ogrn"
             tLabel="ОГРН"
             lRequired
@@ -151,7 +151,7 @@ const resetForm = () => {
 
         <!-- Юридический адрес с поиском -->
         <div class="form-group full-width">
-          <MoloInput
+          <UIMoloInput
               label="legalAddress"
               tLabel="Юридический адрес"
               lRequired
@@ -174,7 +174,7 @@ const resetForm = () => {
 
         <!-- Фактический адрес с поиском -->
         <div class="form-group full-width" v-if="!sameAddress">
-          <MoloInput
+          <UIMoloInput
               label="actualAddress"
               tLabel="Фактический адрес"
               type="text"
@@ -185,7 +185,7 @@ const resetForm = () => {
         </div>
 
         <!-- Телефон и Email -->
-        <MoloInput
+        <UIMoloInput
             label="phone"
             tLabel="Телефон"
             lRequired
@@ -197,7 +197,7 @@ const resetForm = () => {
             :phone="true"
         />
 
-        <MoloInput
+        <UIMoloInput
             label="email"
             tLabel="Email"
             lRequired
@@ -209,7 +209,7 @@ const resetForm = () => {
         />
 
         <!-- Руководитель -->
-        <MoloInput
+        <UIMoloInput
             label="director"
             tLabel="Руководитель"
             lRequired
@@ -221,7 +221,7 @@ const resetForm = () => {
         />
 
         <!-- ОКВЭД -->
-        <MoloInput
+        <UIMoloInput
             label="okved"
             tLabel="Основной ОКВЭД"
             lRequired
@@ -233,7 +233,7 @@ const resetForm = () => {
         />
 
         <!-- Ключ доступа -->
-        <MoloInput
+        <UIMoloInput
             label="keypass"
             tLabel="Ключ доступа к предприятию"
             lRequired
@@ -245,7 +245,7 @@ const resetForm = () => {
         />
 
         <!-- Форма собственности -->
-        <MoloSelect
+        <UIMoloSelect
             tLabel="Форма собственности"
             lRequired
             v-model="ownershipForm"
@@ -257,10 +257,10 @@ const resetForm = () => {
 
       <hr/>
 
-      <MoloButton type="submit" class="confirm" :disabled="loading">
+      <UIMoloButton type="submit" class="confirm" :disabled="loading">
         <div v-if="loading" class="modern-loader"></div>
         <span v-else>Создать предприятие</span>
-      </MoloButton>
+      </UIMoloButton>
     </form>
   </div>
 </template>

@@ -1,4 +1,5 @@
-import { DynamicModule } from '~~/server/models/dynamicModules.model';
+// ПУТЬ В ПРОЕКТЕ: server/api/enterprises/[id]/dynamicModules/[moduleId]/dependencies/index.get.ts
+import { findDynamicModuleByKey } from '~~/app/utils/dynamicModuleLookup';
 
 export default defineEventHandler(async (event) => {
     try {
@@ -13,7 +14,7 @@ export default defineEventHandler(async (event) => {
             });
         }
 
-        const module = await DynamicModule.findOne({ _id: moduleId, enterpriseId });
+        const module = await findDynamicModuleByKey(enterpriseId, moduleId);
 
 
         if (!module) {

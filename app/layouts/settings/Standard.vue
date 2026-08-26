@@ -366,7 +366,7 @@ onMounted(() => {
 <template>
   <div class="standards-layout">
     <!-- Левая панель - список стандартов -->
-    <MoloSection style="width: 420px">
+    <UIMoloSection style="width: 420px">
       <template #header>
         <div class="sidebar-header">
           <span>Стандарты отображения</span>
@@ -376,9 +376,9 @@ onMounted(() => {
         <div class="create-section">
           <h4>Создать стандарт</h4>
           <div class="create-buttons">
-            <MoloButton class="action small" @click="create('table')">📊 Таблица</MoloButton>
-            <MoloButton class="action small" @click="create('card')">🃏 Карточки</MoloButton>
-            <MoloButton class="action small" @click="create('list')">📋 Список</MoloButton>
+            <UIMoloButton class="action small" @click="create('table')">📊 Таблица</UIMoloButton>
+            <UIMoloButton class="action small" @click="create('card')">🃏 Карточки</UIMoloButton>
+            <UIMoloButton class="action small" @click="create('list')">📋 Список</UIMoloButton>
           </div>
         </div>
         <div class="standards-list">
@@ -387,7 +387,7 @@ onMounted(() => {
             <span class="count-badge">{{ standards.length }}</span>
           </div>
           <div v-if="loadingStandards" class="loading-state">
-            <MoloLoaders btnLoader />
+            <UIMoloLoaders btnLoader />
             <small>Загрузка...</small>
           </div>
           <div v-else-if="standards.length === 0" class="empty-state">
@@ -408,33 +408,33 @@ onMounted(() => {
               </div>
             </div>
             <div class="std-actions">
-              <MoloButton class="action small" title="Редактировать" @click.stop="edit(std)">✎</MoloButton>
-              <MoloButton v-if="!std.isDefault" class="action small" title="По умолчанию"
-                          :disabled="settingDefault" @click.stop="setAsDefault(std)">⭐</MoloButton>
-              <MoloButton class="close small" title="Удалить" @click.stop="openDeleteModal(std)">×</MoloButton>
+              <UIMoloButton class="action small" title="Редактировать" @click.stop="edit(std)">✎</UIMoloButton>
+              <UIMoloButton v-if="!std.isDefault" class="action small" title="По умолчанию"
+                          :disabled="settingDefault" @click.stop="setAsDefault(std)">⭐</UIMoloButton>
+              <UIMoloButton class="close small" title="Удалить" @click.stop="openDeleteModal(std)">×</UIMoloButton>
             </div>
           </div>
         </div>
       </template>
-    </MoloSection>
+    </UIMoloSection>
 
     <!-- Правая панель - редактор -->
     <div v-if="showEditor" class="standards-editor">
-      <MoloSection>
+      <UIMoloSection>
         <template #header>
           <span>{{ editingId ? 'Редактирование стандарта' : 'Новый стандарт' }}</span>
           <div class="editor-actions">
-            <MoloButton class="close small" @click="cancelEdit">Отмена</MoloButton>
-            <MoloButton class="confirm small" @click="save" :disabled="loadingSave">
-              <MoloLoaders btnLoader v-if="loadingSave" />
+            <UIMoloButton class="close small" @click="cancelEdit">Отмена</UIMoloButton>
+            <UIMoloButton class="confirm small" @click="save" :disabled="loadingSave">
+              <UIMoloLoaders btnLoader v-if="loadingSave" />
               <span v-else>Сохранить</span>
-            </MoloButton>
+            </UIMoloButton>
           </div>
         </template>
         <template #main>
           <div class="form-grid">
-            <MoloInput v-model="form.name" tLabel="Название" lRequired/>
-            <MoloInput v-model="form.description" tLabel="Описание"/>
+            <UIMoloInput v-model="form.name" tLabel="Название" lRequired/>
+            <UIMoloInput v-model="form.description" tLabel="Описание"/>
             <label class="checkbox-label">
               <input type="checkbox" v-model="form.isDefault">
               <span>Сделать стандартом по умолчанию</span>
@@ -443,15 +443,15 @@ onMounted(() => {
 
           <!-- КОНСТРУКТОР ТАБЛИЦ -->
           <div v-if="standardType === 'table'" class="constructor-wrapper">
-            <MoloTable v-model="tableRows"/>
+            <LayoutMoloTable v-model="tableRows"/>
           </div>
 
           <!-- Настройки для карточек -->
           <div v-if="standardType === 'card'" class="card-settings">
             <h4>Настройка карточек</h4>
-            <MoloInput v-model="cardSettings.titleField" tLabel="Поле для заголовка"/>
-            <MoloInput v-model="cardSettings.subtitleField" tLabel="Поле для подзаголовка"/>
-            <MoloInput v-model.number="cardSettings.columns" tLabel="Колонок в ряду" type="number" min="1" max="6"/>
+            <UIMoloInput v-model="cardSettings.titleField" tLabel="Поле для заголовка"/>
+            <UIMoloInput v-model="cardSettings.subtitleField" tLabel="Поле для подзаголовка"/>
+            <UIMoloInput v-model.number="cardSettings.columns" tLabel="Колонок в ряду" type="number" min="1" max="6"/>
             <label class="checkbox-label">
               <input type="checkbox" v-model="cardSettings.showFooter"> Показывать футер
             </label>
@@ -463,8 +463,8 @@ onMounted(() => {
           <!-- Настройки для списка -->
           <div v-if="standardType === 'list'" class="list-settings">
             <h4>Настройка списка</h4>
-            <MoloInput v-model="listSettings.titleField" tLabel="Поле для заголовка"/>
-            <MoloInput v-model="listSettings.subtitleField" tLabel="Поле для подзаголовка"/>
+            <UIMoloInput v-model="listSettings.titleField" tLabel="Поле для заголовка"/>
+            <UIMoloInput v-model="listSettings.subtitleField" tLabel="Поле для подзаголовка"/>
             <label class="checkbox-label">
               <input type="checkbox" v-model="listSettings.showIcon"> Показывать иконку
             </label>
@@ -473,10 +473,10 @@ onMounted(() => {
             </label>
           </div>
         </template>
-      </MoloSection>
+      </UIMoloSection>
     </div>
 
-    <MoloModal
+    <UIMoloModal
         v-model="deleteStandardModalOpen"
         title="Удаление стандарта"
         confirm-text="Удалить"
@@ -488,7 +488,7 @@ onMounted(() => {
         <p>Вы действительно хотите удалить "{{ standardToDelete?.name }}"?</p>
         <p style="color: #ef4444; font-size: 13px;">Это действие необратимо.</p>
       </template>
-    </MoloModal>
+    </UIMoloModal>
   </div>
 </template>
 

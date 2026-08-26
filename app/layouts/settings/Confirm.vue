@@ -111,7 +111,7 @@ const handleCancel = () => emit('close')
     </p>
 
     <div v-for="field in windowData?.fields || []" :key="field.key" class="field">
-      <MoloInput
+      <UIMoloInput
           v-if="field.type === 'text'"
           v-model="form[field.key]"
           :tLabel="field.label"
@@ -119,7 +119,7 @@ const handleCancel = () => emit('close')
           :lRequired="field.required"
       />
 
-      <MoloSelect
+      <UIMoloSelect
           v-if="field.type === 'select'"
           v-model="form[field.key]"
           :parent="getFieldOptions(field)"
@@ -132,10 +132,10 @@ const handleCancel = () => emit('close')
   <hr />
 
   <div class="confirm-actions">
-    <MoloButton class="action-btn" @click="handleCancel">Отмена</MoloButton>
-    <MoloButton class="confirm" @click="handleConfirm" :disabled="isLoading">
+    <UIMoloButton class="action-btn" @click="handleCancel">Отмена</UIMoloButton>
+    <UIMoloButton class="confirm" @click="handleConfirm" :disabled="isLoading">
       {{ isLoading ? 'Выполнение...' : 'Подтвердить' }}
-    </MoloButton>
+    </UIMoloButton>
   </div>
 </template>
 

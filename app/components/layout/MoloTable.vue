@@ -466,12 +466,12 @@ onUnmounted(() => {
       <section class="actions-bar">
         <span>Ячейки</span>
         <section class="actions">
-          <MoloButton class="transparent" @click="mergeSelectedCells">
+          <UIMoloButton class="transparent" @click="mergeSelectedCells">
             <img class="img-edit" src="/excel/merge_cells.png" width="20" height="20"/>
-          </MoloButton>
-          <MoloButton class="transparent" v-if="activeCell" @click="unmergeCurrentCell">
+          </UIMoloButton>
+          <UIMoloButton class="transparent" v-if="activeCell" @click="unmergeCurrentCell">
             <img class="img-edit" src="/excel/unmerge_cells.png" width="20" height="20"/>
-          </MoloButton>
+          </UIMoloButton>
         </section>
       </section>
 
@@ -480,32 +480,32 @@ onUnmounted(() => {
       <section class="actions-bar">
         <span>Текст</span>
         <section class="actions">
-          <MoloButton class="transparent fit" @click="setTextAlign('left')"
+          <UIMoloButton class="transparent fit" @click="setTextAlign('left')"
                       :class="{ confirm: currentTextAlign === 'left' }">
             <img class="img-edit" src="/excel/align_left.png"/>
-          </MoloButton>
-          <MoloButton class="transparent" @click="setTextAlign('center')"
+          </UIMoloButton>
+          <UIMoloButton class="transparent" @click="setTextAlign('center')"
                       :class="{ confirm: currentTextAlign === 'center' }">
             <img class="img-edit" src="/excel/align_center.png"/>
-          </MoloButton>
-          <MoloButton class="transparent" @click="setTextAlign('right')"
+          </UIMoloButton>
+          <UIMoloButton class="transparent" @click="setTextAlign('right')"
                       :class="{ confirm: currentTextAlign === 'right' }">
             <img class="img-edit" src="/excel/align_right.png"/>
-          </MoloButton>
+          </UIMoloButton>
         </section>
         <section class="actions">
-          <MoloButton class="transparent" @click="setVerticalAlign('top')"
+          <UIMoloButton class="transparent" @click="setVerticalAlign('top')"
                       :class="{ confirm: currentVerticalAlign === 'top' }">
             <img class="img-edit" src="/excel/align_top.png"/>
-          </MoloButton>
-          <MoloButton class="transparent" @click="setVerticalAlign('middle')"
+          </UIMoloButton>
+          <UIMoloButton class="transparent" @click="setVerticalAlign('middle')"
                       :class="{ confirm: currentVerticalAlign === 'middle' }">
             <img class="img-edit" src="/excel/align_middle.png"/>
-          </MoloButton>
-          <MoloButton class="transparent" @click="setVerticalAlign('bottom')"
+          </UIMoloButton>
+          <UIMoloButton class="transparent" @click="setVerticalAlign('bottom')"
                       :class="{ confirm: currentVerticalAlign === 'bottom' }">
             <img class="img-edit" src="/excel/align_bottom.png"/>
-          </MoloButton>
+          </UIMoloButton>
         </section>
       </section>
 
@@ -514,26 +514,26 @@ onUnmounted(() => {
       <section class="actions-bar">
         <span>Границы</span>
         <section class="actions">
-          <MoloButton class="transparent" @click="applyBorderToSelected('borderLeft')">
+          <UIMoloButton class="transparent" @click="applyBorderToSelected('borderLeft')">
             <img class="img-edit" src="/excel/border_left.png" width="20" height="20"/>
-          </MoloButton>
-          <MoloButton class="transparent" @click="applyBorderToSelected('borderTop')">
+          </UIMoloButton>
+          <UIMoloButton class="transparent" @click="applyBorderToSelected('borderTop')">
             <img class="img-edit" src="/excel/border_top.png" width="20" height="20"/>
-          </MoloButton>
-          <MoloButton class="transparent" @click="applyAllBorders">
+          </UIMoloButton>
+          <UIMoloButton class="transparent" @click="applyAllBorders">
             <img class="img-edit" src="/excel/border_all.png" width="20" height="20"/>
-          </MoloButton>
+          </UIMoloButton>
         </section>
         <section class="actions">
-          <MoloButton class="transparent" @click="applyBorderToSelected('borderBottom')">
+          <UIMoloButton class="transparent" @click="applyBorderToSelected('borderBottom')">
             <img class="img-edit" src="/excel/border_bottom.png" width="20" height="20"/>
-          </MoloButton>
-          <MoloButton class="transparent" @click="applyBorderToSelected('borderRight')">
+          </UIMoloButton>
+          <UIMoloButton class="transparent" @click="applyBorderToSelected('borderRight')">
             <img class="img-edit" src="/excel/border_right.png" width="20" height="20"/>
-          </MoloButton>
-          <MoloButton class="transparent" @click="removeAllBordersFromSelected">
+          </UIMoloButton>
+          <UIMoloButton class="transparent" @click="removeAllBordersFromSelected">
             <img class="img-edit" src="/excel/border_none.png" width="20" height="20"/>
-          </MoloButton>
+          </UIMoloButton>
         </section>
       </section>
 
@@ -542,10 +542,10 @@ onUnmounted(() => {
       <section class="actions-bar">
         <span>Работа с текстом</span>
         <section class="actions">
-          <MoloButton class="action small" @click="toggleBold" :class="{ confirm: currentFontWeight }">
-            <strong>B</strong></MoloButton>
-          <MoloButton class="action small" @click="toggleItalic" :class="{ confirm: currentFontStyle }"><em>I</em>
-          </MoloButton>
+          <UIMoloButton class="action small" @click="toggleBold" :class="{ confirm: currentFontWeight }">
+            <strong>B</strong></UIMoloButton>
+          <UIMoloButton class="action small" @click="toggleItalic" :class="{ confirm: currentFontStyle }"><em>I</em>
+          </UIMoloButton>
           <input class="font-input" type="number" :value="currentFontSize"
                  @change="setFontSize(parseInt(($event.target as HTMLInputElement).value))"/>
         </section>
@@ -568,12 +568,12 @@ onUnmounted(() => {
       <section class="actions-bar">
         <span>Импорт / Экспорт</span>
         <section class="actions">
-          <MoloButton class="action small fit" @click="exportToExcel">
+          <UIMoloButton class="action small fit" @click="exportToExcel">
             <img class="btn-image" src="/excel.png" alt=""/>
-          </MoloButton>
-          <MoloButton class="action small fit" @click="onImportClick">
+          </UIMoloButton>
+          <UIMoloButton class="action small fit" @click="onImportClick">
             📂
-          </MoloButton>
+          </UIMoloButton>
           <input ref="fileInput" type="file" accept=".xlsx,.xls" @change="onImportFile" style="display: none"/>
         </section>
       </section>
@@ -581,16 +581,16 @@ onUnmounted(() => {
       <section class="actions-bar scale" style="margin-left: auto">
         <span>Масштаб</span>
         <section class="actions">
-          <MoloButton class="action small" @click="zoomOut" title="Уменьшить (Ctrl + колесо)">
+          <UIMoloButton class="action small" @click="zoomOut" title="Уменьшить (Ctrl + колесо)">
             <span style="font-size:16px;">−</span>
-          </MoloButton>
+          </UIMoloButton>
           <span class="zoom-value">{{ Math.round(zoomLevel * 100) }}%</span>
-          <MoloButton class="action small" @click="zoomIn" title="Увеличить (Ctrl + колесо)">
+          <UIMoloButton class="action small" @click="zoomIn" title="Увеличить (Ctrl + колесо)">
             <span style="font-size:16px;">+</span>
-          </MoloButton>
-          <MoloButton class="action small" @click="resetZoom" title="Сбросить масштаб">
+          </UIMoloButton>
+          <UIMoloButton class="action small" @click="resetZoom" title="Сбросить масштаб">
             <span style="font-size:12px;">↺</span>
-          </MoloButton>
+          </UIMoloButton>
         </section>
       </section>
     </div>

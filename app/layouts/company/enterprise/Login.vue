@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import {ref} from 'vue'
-import {useWindowManager} from '~/composables/useWindowManager'
-import {useNotifications} from '~/composables/useNotifications'
-import {useLogger} from '~/composables/useLogger'
+import { ref } from 'vue'
+import { useWindowManager } from '~/composables/useWindowManager'
+import { useNotifications } from '~/composables/useNotifications'
+import { useLogger } from '~/composables/useLogger'
+import { useEnterprise } from '~/composables/useEnterprise'
 
 const props = defineProps<{
   groupId?: string
@@ -10,9 +11,12 @@ const props = defineProps<{
   windowId?: string
 }>()
 
-const {openWindow, closeWindow} = useWindowManager()
-const {addNotification} = useNotifications('Вход в предприятие')
-const {addLog} = useLogger('Вход в предприятие')
+const { openWindow, closeWindow } = useWindowManager()
+const { addNotification } = useNotifications('Вход в предприятие')
+const { addLog } = useLogger('Вход в предприятие')
+
+// Используем композабл
+const enterprise = useEnterprise()
 
 // Состояния
 const loading = ref(false)
@@ -38,11 +42,11 @@ const handleLogin = async () => {
       }
     })
 
-    // Сохраняем данные о предприятии
-    localStorage.setItem('currentEnterprise', JSON.stringify(response.enterprise))
-    localStorage.setItem('enterprise_token', response.token)
-
-    window.dispatchEvent(new Event('enterprise-login'))
+    // Используем композабл для сохранения
+    enterprise.login({
+      enterprise: response.enterprise,
+      token: response.token
+    })
 
     addNotification('info', 'Успешный вход в предприятие!')
 
@@ -50,32 +54,23 @@ const handleLogin = async () => {
       closeWindow(props.windowId)
     }
 
-    // ПОТОМ ОТКРЫВАЕМ НОВОЕ (с небольшой задержкой)
+    // Открываем новое окно
     setTimeout(() => {
-      openWindow(
-          'company',
-          'control',
-          'enterprise',
-          { width: 800, height: 600 }
-      )
+      openWindow('control')
     }, 50)
   } catch (error: any) {
     addLog('error', `Ошибка входа - ${error.data?.message}`)
     addNotification('error', 'Ошибка входа')
   } finally {
     loading.value = false
-    addLog('success', 'Успешный вход в прдеприятие')
+    addLog('success', 'Успешный вход в предприятие')
   }
 }
 
 async function deleteToken() {
   deleting.value = true
   try {
-    localStorage.removeItem('currentEnterprise')
-    localStorage.removeItem('enterprise_token')
-
-    // Диспатчим событие для обновления меню
-    window.dispatchEvent(new Event('enterprise-logout'))
+    enterprise.logout()
     addNotification('info', 'Токены удалены')
   } finally {
     deleting.value = false
@@ -83,33 +78,32 @@ async function deleteToken() {
 }
 </script>
 
-
 <template>
   <div class="log">
-    <MoloSection>
+    <UIMoloSection>
       <template #header>
         <span>Введите данные</span>
         <section class="btns">
-          <MoloButton
+          <UIMoloButton
               class="small"
               @click="deleteToken"
               :disabled="deleting"
           >
             <span v-if="!deleting">Удалить токены</span>
-            <MoloLoaders wndLoader v-else/>
-          </MoloButton>
-          <MoloButton
+            <UIMoloLoaders wndLoader v-else/>
+          </UIMoloButton>
+          <UIMoloButton
               class="small confirm"
               :disabled="loading"
               :loading="loading"
               @click="handleLogin"
           >
             <span v-if="!loading">Войти</span>
-          </MoloButton>
+          </UIMoloButton>
         </section>
       </template>
       <template #main>
-        <MoloInput
+        <UIMoloInput
             lRequired
             type="text"
             tLabel="ИНН предприятия"
@@ -118,7 +112,7 @@ async function deleteToken() {
             maxLength="12"
             iRequired
         />
-        <MoloInput
+        <UIMoloInput
             lRequired
             tLabel="Код доступа"
             type="password"
@@ -127,7 +121,7 @@ async function deleteToken() {
             iRequired
         />
       </template>
-    </MoloSection>
+    </UIMoloSection>
   </div>
 </template>
 

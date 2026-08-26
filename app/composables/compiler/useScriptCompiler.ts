@@ -28,14 +28,43 @@ const createSandboxContext = (moduleName?: string) => {
         (window as any).__currentModuleName = moduleName
     }
 
+    const { addLog } = useLogger(moduleName || 'Скрипт');
+
+
     const context: any = {
         console: {
-            log: (...args: any[]) => console.log(`[${moduleName || 'MODULE'}]`, ...args),
-            error: (...args: any[]) => console.error(`[${moduleName || 'MODULE'}]`, ...args),
-            warn: (...args: any[]) => console.warn(`[${moduleName || 'MODULE'}]`, ...args),
-            info: (...args: any[]) => console.info(`[${moduleName || 'MODULE'}]`, ...args),
-            debug: (...args: any[]) => console.debug(`[${moduleName || 'MODULE'}]`, ...args),
-            table: (data: any) => console.table(data),
+            log: (...args: any[]) => {
+                const msg = args.map(a => typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)).join(' ');
+                // 🔥 Добавляем в MoloLogger
+                addLog('info', msg);
+                // Дублируем в браузерную консоль
+                console.log(`[${moduleName || 'MODULE'}]`, ...args);
+            },
+            error: (...args: any[]) => {
+                const msg = args.map(a => typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)).join(' ');
+                addLog('error', msg);
+                console.error(`[${moduleName || 'MODULE'}]`, ...args);
+            },
+            warn: (...args: any[]) => {
+                const msg = args.map(a => typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)).join(' ');
+                addLog('warning', msg);
+                console.warn(`[${moduleName || 'MODULE'}]`, ...args);
+            },
+            info: (...args: any[]) => {
+                const msg = args.map(a => typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)).join(' ');
+                addLog('info', msg);
+                console.info(`[${moduleName || 'MODULE'}]`, ...args);
+            },
+            debug: (...args: any[]) => {
+                const msg = args.map(a => typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)).join(' ');
+                addLog('info', msg);
+                console.debug(`[${moduleName || 'MODULE'}]`, ...args);
+            },
+            table: (data: any) => {
+                const tableStr = JSON.stringify(data, null, 2);
+                addLog('info', `TABLE:\n${tableStr}`);
+                console.table(data);
+            },
             time: (label: string) => console.time(label),
             timeEnd: (label: string) => console.timeEnd(label),
         },

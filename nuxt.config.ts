@@ -24,5 +24,6 @@ export default defineNuxtConfig({
     },
   },
 
-  modules: ['@pinia/nuxt'],
+  modules: [
+    '@atmoner/nuxt-electron','@pinia/nuxt'],
 })

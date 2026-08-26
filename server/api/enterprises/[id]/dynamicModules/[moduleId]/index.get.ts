@@ -12,21 +12,31 @@
 // Теперь: один запрос -> весь модуль. Map-поля (dependencies/devDependencies/
 // clientHooks) явно конвертируются в обычные объекты, иначе при сериализации
 // в JSON они превращаются в "{}" (у Map нет собственных enumerable-свойств).
+import mongoose from 'mongoose';
 import { DynamicModule } from '~~/server/models/dynamicModules.model';
 
 export default defineEventHandler(async (event) => {
     try {
         const enterpriseId = getRouterParam(event, 'id');
-        const moduleId = getRouterParam(event, 'moduleId');
+        // moduleKey — это то, что реально прилетает из openWindow(key):
+        // может быть и настоящий _id, и человекочитаемый fileName ('checkingAPI').
+        const moduleKey = getRouterParam(event, 'moduleId');
 
-        if (!enterpriseId || !moduleId) {
+        if (!enterpriseId || !moduleKey) {
             throw createError({
                 statusCode: 400,
                 message: 'Missing enterpriseId or moduleId'
             });
         }
 
-        const module = await DynamicModule.findOne({ _id: moduleId, enterpriseId });
+        // Ищем по fileName ИЛИ по _id (если строка вообще похожа на ObjectId —
+        // иначе Mongoose кинет CastError ещё до поиска, вместо честного 404).
+        const orConditions: Record<string, any>[] = [{ fileName: moduleKey }];
+        if (mongoose.Types.ObjectId.isValid(moduleKey)) {
+            orConditions.push({ _id: moduleKey });
+        }
+
+        const module = await DynamicModule.findOne({ enterpriseId, $or: orConditions });
 
         if (!module) {
             throw createError({ statusCode: 404, message: 'Module not found' });

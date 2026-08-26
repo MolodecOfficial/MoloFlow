@@ -1,6 +1,5 @@
 <script lang="ts" setup>
 import {computed, onMounted, onUnmounted, ref, watch} from 'vue'
-import MoloModal from '~/components/MoloModal.vue'
 import {useAppStore} from '~~/stores/appStore'
 
 const props = defineProps<{
@@ -542,9 +541,9 @@ onUnmounted(() => {
   <div class="configurator">
     <div class="configurator-header">
       <div class="header-left">
-        <MoloButton v-if="activeSection !== 'tabs'" class="back-btn" @click="backToTabs">
+        <UIMoloButton v-if="activeSection !== 'tabs'" class="back-btn" @click="backToTabs">
           ← Назад к вкладкам
-        </MoloButton>
+        </UIMoloButton>
         <span>{{
             activeSection === 'tabs' ? 'Конфигуратор предприятия' :
                 activeSection === 'tab-editor' ? (editingTab ? 'Редактирование вкладки' : 'Создание вкладки') :
@@ -552,12 +551,12 @@ onUnmounted(() => {
           }}</span>
       </div>
       <div class="header-actions">
-        <MoloButton v-if="activeSection === 'tabs'" class="confirm" @click="createNewTab">
+        <UIMoloButton v-if="activeSection === 'tabs'" class="confirm" @click="createNewTab">
           Новая вкладка
-        </MoloButton>
-        <MoloButton v-if="activeSection === 'tabs'" class="confirm" @click="openStandardsEditor">
+        </UIMoloButton>
+        <UIMoloButton v-if="activeSection === 'tabs'" class="confirm" @click="openStandardsEditor">
           Вкладка стандартов
-        </MoloButton>
+        </UIMoloButton>
       </div>
     </div>
 
@@ -565,13 +564,13 @@ onUnmounted(() => {
 
     <div class="configurator-content">
       <div v-if="activeSection === 'tabs'" class="section-content tabs-section">
-        <MoloLoaders wndLoader v-if="loading || tabsLoading"/>
+        <UIMoloLoaders wndLoader v-if="loading || tabsLoading"/>
         <div v-else-if="tabs.length === 0" class="empty-state">
           <div class="empty-icon">📁</div>
           <p>Нет созданных вкладок</p>
         </div>
         <div v-else class="tabs-grid">
-          <MoloSection v-for="tab in tabs" :key="tab._id" class="tab-card">
+          <UIMoloSection v-for="tab in tabs" :key="tab._id" class="tab-card">
             <template #header>
               <div class="card-info" @click="selectTab(tab)">
                 <div :style="{ background: tab.color || '#6496ff' }" class="tab-icon">
@@ -590,50 +589,50 @@ onUnmounted(() => {
             <template #main>
               <div class="tab-actions">
                 <section class="actions">
-                  <MoloButton class="action small" title="Редактировать" @click.stop="selectTab(tab)">✎</MoloButton>
-                  <MoloButton class="action small" title="Предпросмотр" @click.stop="previewTab(tab)">👁</MoloButton>
+                  <UIMoloButton class="action small" title="Редактировать" @click.stop="selectTab(tab)">✎</UIMoloButton>
+                  <UIMoloButton class="action small" title="Предпросмотр" @click.stop="previewTab(tab)">👁</UIMoloButton>
                 </section>
-                <MoloButton class="action small close" title="Удалить" @click.stop="deleteTab(tab._id)">×</MoloButton>
+                <UIMoloButton class="action small close" title="Удалить" @click.stop="deleteTab(tab._id)">×</UIMoloButton>
               </div>
             </template>
 
-          </MoloSection>
+          </UIMoloSection>
         </div>
       </div>
 
       <div v-if="activeSection === 'tab-editor' && showTabForm" class="section-content editor-section-content">
         <div class="tab-editor">
-          <MoloSection>
+          <UIMoloSection>
             <template #header>
               <span>Основные настройки</span>
               <div class="editor-actions">
-                <MoloButton @click="backToTabs" class="close small">Отмена</MoloButton>
-                <MoloButton class="confirm small" @click="saveTab" :disabled="loading">
-                  <MoloLoaders btnLoader v-if="loading"/>
+                <UIMoloButton @click="backToTabs" class="close small">Отмена</UIMoloButton>
+                <UIMoloButton class="confirm small" @click="saveTab" :disabled="loading">
+                  <UIMoloLoaders btnLoader v-if="loading"/>
                   <span v-else>{{ editingTab ? 'Обновить' : 'Создать' }} вкладку</span>
-                </MoloButton>
+                </UIMoloButton>
               </div>
             </template>
             <template #main>
               <div class="form-grid">
-                <MoloInput v-model="tabForm.name" tLabel="Название вкладки" lRequired @input="generateSlug"/>
-                <MoloInput v-model="tabForm.slug" tLabel="Ключ (slug)" lRequired/>
-                <MoloInput v-model="tabForm.description" tLabel="Описание"/>
-                <MoloSelect v-model="tabForm.defaultViewType" :parent="viewTypes" children="label"
+                <UIMoloInput v-model="tabForm.name" tLabel="Название вкладки" lRequired @input="generateSlug"/>
+                <UIMoloInput v-model="tabForm.slug" tLabel="Ключ (slug)" lRequired/>
+                <UIMoloInput v-model="tabForm.description" tLabel="Описание"/>
+                <UIMoloSelect v-model="tabForm.defaultViewType" :parent="viewTypes" children="label"
                             tLabel="Тип отображения по умолчанию" valueKey="value"/>
               </div>
             </template>
-          </MoloSection>
+          </UIMoloSection>
 
-          <MoloSection>
+          <UIMoloSection>
             <template #header>
               <div class="editor-header">
                 <span>Группы полей</span>
                 <p class="section-desc">Каждая группа станет отдельной колонкой в таблице</p>
               </div>
-              <MoloButton class="confirm" @click="openGroupModal()">
+              <UIMoloButton class="confirm" @click="openGroupModal()">
                 Добавить группу
-              </MoloButton>
+              </UIMoloButton>
             </template>
             <template #main>
               <div v-if="tabForm.groups.length === 0" class="empty-fields">
@@ -657,15 +656,15 @@ onUnmounted(() => {
                       <span class="field-count">🔢 {{ group.fields?.length || 0 }} полей</span>
                     </div>
                     <div class="group-actions">
-                      <MoloButton class="action small" @click="openGroupModal(gIdx)">✎</MoloButton>
-                      <MoloButton class="action small" @click="confirmDeleteGroup(gIdx)">×</MoloButton>
+                      <UIMoloButton class="action small" @click="openGroupModal(gIdx)">✎</UIMoloButton>
+                      <UIMoloButton class="action small" @click="confirmDeleteGroup(gIdx)">×</UIMoloButton>
                     </div>
                   </div>
 
                   <div class="group-fields">
                     <div class="fields-header">
                       <span>Поля группы</span>
-                      <MoloButton class="confirm small" @click="openFieldModal(gIdx, null)">Добавить поле</MoloButton>
+                      <UIMoloButton class="confirm small" @click="openFieldModal(gIdx, null)">Добавить поле</UIMoloButton>
                     </div>
 
                     <div v-if="!group.fields || group.fields.length === 0" class="empty-fields">
@@ -697,19 +696,19 @@ onUnmounted(() => {
                         </div>
                       </div>
                       <div class="field-actions">
-                        <MoloButton class="small action" @click="openFieldModal(gIdx, fIdx)">✎</MoloButton>
-                        <MoloButton class="small action" @click="confirmDeleteField(gIdx, fIdx)">×</MoloButton>
+                        <UIMoloButton class="small action" @click="openFieldModal(gIdx, fIdx)">✎</UIMoloButton>
+                        <UIMoloButton class="small action" @click="confirmDeleteField(gIdx, fIdx)">×</UIMoloButton>
                       </div>
                     </div>
                   </div>
                 </div>
               </div>
             </template>
-          </MoloSection>
+          </UIMoloSection>
         </div>
       </div>
 
-      <MoloSection v-if="activeSection === 'preview' && selectedTab">
+      <UIMoloSection v-if="activeSection === 'preview' && selectedTab">
         <template #header>
           <span>Предпросмотр: {{ selectedTab.name }}</span>
         </template>
@@ -727,11 +726,11 @@ onUnmounted(() => {
             <p v-if="previewStandard?.settings?.useGroupsAsColumns">📌 Колонки соответствуют группам вкладки</p>
           </div>
         </template>
-      </MoloSection>
+      </UIMoloSection>
     </div>
 
     <!-- Модалки остаются без изменений -->
-    <MoloModal
+    <UIMoloModal
         v-model="deleteTabModalOpen"
         title="Удаление вкладки"
         confirm-text="Удалить"
@@ -743,9 +742,9 @@ onUnmounted(() => {
       <template #body>
         <p style="color: white;">Вы действительно хотите удалить вкладку <strong>{{ tabToDelete?.name }}</strong>?</p>
       </template>
-    </MoloModal>
+    </UIMoloModal>
 
-    <MoloModal
+    <UIMoloModal
         v-model="groupModalOpen"
         :title="editingGroupIndex !== null ? 'Редактирование группы' : 'Новая группа'"
         confirm-text="Сохранить"
@@ -768,31 +767,31 @@ onUnmounted(() => {
               </div>
             </div>
             <div class="group-image-actions">
-              <MoloInput
+              <UIMoloInput
                   type="file"
                   accept="image/*"
                   tLabel="Загрузить фото"
                   size="small"
                   @change="handleGroupImageUpload"
               />
-              <MoloButton
+              <UIMoloButton
                   v-if="groupImagePreview"
                   class="action small"
                   @click="removeGroupImage"
               >
                 Удалить
-              </MoloButton>
+              </UIMoloButton>
             </div>
           </div>
 
-          <MoloInput v-model="groupForm.name" tLabel="Название группы" lRequired/>
-          <MoloInput v-model="groupForm.description" tLabel="Описание"/>
-          <MoloInput v-model="groupForm.link" tLabel="Внешняя ссылка"/>
+          <UIMoloInput v-model="groupForm.name" tLabel="Название группы" lRequired/>
+          <UIMoloInput v-model="groupForm.description" tLabel="Описание"/>
+          <UIMoloInput v-model="groupForm.link" tLabel="Внешняя ссылка"/>
         </div>
       </template>
-    </MoloModal>
+    </UIMoloModal>
 
-    <MoloModal
+    <UIMoloModal
         v-model="deleteGroupModalOpen"
         title="Удаление группы"
         confirm-text="Удалить"
@@ -801,9 +800,9 @@ onUnmounted(() => {
         @confirm="deleteGroupConfirmed"
         modal-text="Вы действительно хотите удалить группу и все её поля и записи? Это действие нельзя отменить"
     >
-    </MoloModal>
+    </UIMoloModal>
 
-    <MoloModal
+    <UIMoloModal
         v-model="fieldModalOpen"
         :title="editingFieldIndex !== null ? 'Редактирование поля' : 'Новое поле'"
         confirm-text="Сохранить"
@@ -815,11 +814,11 @@ onUnmounted(() => {
     >
       <template #body>
         <div class="modal-field-grid">
-          <MoloInput v-model="fieldForm.label" tLabel="Название" lRequired placeholder="Название проекта"/>
-          <MoloInput v-model="fieldForm.key" tLabel="Ключ" lRequired placeholder="project_name"
+          <UIMoloInput v-model="fieldForm.label" tLabel="Название" lRequired placeholder="Название проекта"/>
+          <UIMoloInput v-model="fieldForm.key" tLabel="Ключ" lRequired placeholder="project_name"
                      help-text="Автоматически генерируется из названия, можно редактировать вручную"/>
-          <MoloInput v-model="fieldForm.description" tLabel="Описание"/>
-          <MoloInput v-model="fieldForm.link" tLabel="Ссылка"/>
+          <UIMoloInput v-model="fieldForm.description" tLabel="Описание"/>
+          <UIMoloInput v-model="fieldForm.link" tLabel="Ссылка"/>
         </div>
 
         <div v-if="['select', 'multiselect'].includes(fieldForm.type)" class="options-editor">
@@ -832,10 +831,10 @@ onUnmounted(() => {
             </div>
           </div>
           <div class="add-option">
-            <MoloInput v-model="newOption.label" tLabel="Метка" size="small"/>
-            <MoloInput v-model="newOption.value" tLabel="Значение" size="small"/>
-            <MoloInput v-model="newOption.color" tLabel="Цвет" type="color" size="small"/>
-            <MoloButton class="confirm small" @click="addOption">+</MoloButton>
+            <UIMoloInput v-model="newOption.label" tLabel="Метка" size="small"/>
+            <UIMoloInput v-model="newOption.value" tLabel="Значение" size="small"/>
+            <UIMoloInput v-model="newOption.color" tLabel="Цвет" type="color" size="small"/>
+            <UIMoloButton class="confirm small" @click="addOption">+</UIMoloButton>
           </div>
         </div>
 
@@ -851,9 +850,9 @@ onUnmounted(() => {
           </div>
         </div>
       </template>
-    </MoloModal>
+    </UIMoloModal>
 
-    <MoloModal
+    <UIMoloModal
         v-model="deleteFieldModalOpen"
         title="Удаление поля"
         confirm-text="Удалить"
@@ -862,7 +861,7 @@ onUnmounted(() => {
         @confirm="deleteFieldConfirmed"
         modal-text="Вы уверены, что хотите удалить это поле? Данные, связанные с ним, будут потеряны."
     >
-    </MoloModal>
+    </UIMoloModal>
   </div>
 </template>
 

@@ -1,6 +1,7 @@
 <!-- MoloWindow.vue -->
 <script setup lang="ts">
-import type {WindowItem} from '~/types/window'
+import type {WindowItem, OpenWindowOptions} from '~/types/window'
+import {useWindowManager} from '~/composables/useWindowManager'
 import {useWindowDrag} from '~/composables/useWindowDrag'
 import {useWindowResize} from '~/composables/useWindowResize'
 import {ref, computed, onMounted, onUnmounted} from 'vue'
@@ -28,11 +29,7 @@ const loadUserRole = () => {
 const props = defineProps<{
   window?: WindowItem
   isVisible?: boolean
-  windowId?: string,
-  groupId?: string,
-  subGroupId?: string,
-  isModal?: boolean,
-  windowData?: any
+  isModal?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -41,12 +38,15 @@ const emit = defineEmits<{
   'move': [position: { x: number; y: number }]
   'resize': [size: { width: number; height: number }]
   'maximize': []
-  'open-window': [groupId: string, itemId: string, groupTitle: string, itemTitle: string]
 }>()
 
-provide('openWindow', (groupId: string, itemId: string, groupTitle: string, itemTitle: string) => {
-  emit('open-window', groupId, itemId, groupTitle, itemTitle)
-})
+// Раньше это просто эмитило событие наверх, которое никто не слушал —
+// открыть окно из компонента-контента фактически было нельзя. Теперь
+// дочерние компоненты получают через inject('openWindow') настоящую
+// функцию: useWindowManager() — синглтон на всё приложение, поэтому
+// вызов отсюда и вызов из любого другого места работают одинаково.
+const { openWindow } = useWindowManager()
+provide('openWindow', (key: string, data?: any, options?: OpenWindowOptions) => openWindow(key, data, options))
 
 const containerRef = ref<HTMLElement>()
 const windowRef = ref<HTMLElement>()
@@ -313,9 +313,9 @@ watch(() => props.window?.zIndex, (newZIndex) => {
         :style="windowStyles"
     >
       <div class="window-header" @mousedown="handleDragStart">
-        <div class="window-title">{{ props.window?.fullTitle || props.window?.itemTitle || windowId || 'Окно' }}</div>
+        <div class="window-title">{{ props.window?.title || 'Окно' }}</div>
         <div class="header-logger" v-if="role === 'Управляющий'">
-          <span>{{ groupId }}</span><span>{{ subGroupId }}</span><span>{{ windowId }}</span>
+          <span>{{ props.window?.key }}</span><span>{{ props.window?.id }}</span>
         </div>
         <div class="window-controls">
           <button class="control-btn refresh" @click="refreshContent" @mousedown.stop>
@@ -356,7 +356,6 @@ watch(() => props.window?.zIndex, (newZIndex) => {
           <slot
               :key="refreshKey"
               :refreshKey="refreshKey"
-              :windowData="windowData"
           />
         </div>
       </div>

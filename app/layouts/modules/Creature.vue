@@ -32,13 +32,14 @@ let monacoCtx: any = null
 // =============================================
 // COMPOSABLES
 // =============================================
-const {openWindow, updateWindowData, windows, focusWindow, closeWindow} = useWindowManager()
+const {openWindow, updateWindowData, windows, focusWindow, closeWindow, openPreviewWindow} = useWindowManager()
 const {addNotification} = useNotifications('Создание модуля')
 const {addLog} = useLogger('Создание модуля')
 const userStore = useUserStore()
 const menuStore = useMenuEditorStore()
 const moduleStore = useModuleEditorStore()
 const appStore = useAppStore()
+
 // =============================================
 // STORE REFS (только общие данные)
 // =============================================
@@ -772,61 +773,18 @@ const addModuleToMenu = async () => {
 // =============================================
 // ПРЕДПРОСМОТР
 // =============================================
-const openPreviewInWindow = () => {
-  let currentCode = formData.value.code
-  if (mainEditorInstance) {
-    currentCode = mainEditorInstance.getValue()
-    formData.value.code = currentCode
-  }
-  if (!currentCode?.trim()) {
-    addNotification('warning', 'Нет кода для предпросмотра')
-    return
-  }
 
-  // ── Если окно превью уже открыто — просто обновляем данные и фокусируем ──
-  if (previewWindowId.value) {
-    const existing = windows.value.find(w => w.itemId === previewWindowId.value)
-    if (existing) {
-      updateWindowData('modules', previewWindowId.value, {
-        moduleName: formData.value.name || 'Без названия',
-        code: currentCode,
-        files: moduleFiles.value,
-        dependencies: formData.value.dependencies,
-        devDependencies: formData.value.devDependencies,
-        moduleId: selectedModuleId.value,
-        _updated: Date.now()
-      })
-      focusWindow(existing.id)
-      return
-    }
-    // Окно было закрыто пользователем — сбрасываем ID
-    previewWindowId.value = null
-  }
 
-  // ── Создаём новое окно превью ──
-  openWindow(
-      'modules',
-      'preview',
-      null,
-      {
-        width: 600,
-        height: 500,
-        minWidth: 600,
-        minHeight: 400
-      },
-      false,
-      'modules/preview',
-      null,
-      {
-        moduleName: formData.value.name || 'Без названия',
-        code: currentCode,
-        files: moduleFiles.value,
-        dependencies: formData.value.dependencies,
-        devDependencies: formData.value.devDependencies,
-        moduleId: selectedModuleId.value
-      }
-  )
+const openPreview = () => {
+  previewWindowId.value = openPreviewWindow(formData.value.fileName, {
+    code: formData.value.code,
+    files: moduleFiles.value,
+    dependencies: formData.value.dependencies,
+    devDependencies: formData.value.devDependencies,
+    moduleId: selectedModuleId.value
+  } )
 }
+
 // =============================================
 // ИЗОБРАЖЕНИЯ
 // =============================================
@@ -908,7 +866,7 @@ watch(
     () => formData.value.code,
     code => {
       if (!previewWindowId.value) return
-      updateWindowData('modules', previewWindowId.value, {
+      updateWindowData(previewWindowId.value, {
         moduleName: formData.value.name,
         code: code,
         isEditing: isEditing.value,
@@ -924,7 +882,7 @@ watch(showDocumentation, async () => {
 })
 watch(moduleFiles, (newFiles) => {
   if (!previewWindowId.value) return
-  updateWindowData('modules', previewWindowId.value, {
+  updateWindowData(previewWindowId.value, {
     files: newFiles
   })
 })
@@ -952,7 +910,7 @@ watch(showFileEditor, async (val) => {
 
 watch(() => formData.value.dependencies, (newDeps) => {
   if (!previewWindowId.value) return
-  updateWindowData('modules', previewWindowId.value, {
+  updateWindowData(previewWindowId.value, {
     dependencies: newDeps,
     _updated: Date.now()
   })
@@ -960,7 +918,7 @@ watch(() => formData.value.dependencies, (newDeps) => {
 
 watch(() => formData.value.devDependencies, (newDeps) => {
   if (!previewWindowId.value) return
-  updateWindowData('modules', previewWindowId.value, {
+  updateWindowData(previewWindowId.value, {
     devDependencies: newDeps,
     _updated: Date.now()
   })
@@ -969,7 +927,7 @@ watch(() => formData.value.devDependencies, (newDeps) => {
 // ── При изменении имени модуля — обновляем заголовок превью ──
 watch(() => formData.value.name, (newName) => {
   if (!previewWindowId.value) return
-  updateWindowData('modules', previewWindowId.value, {
+  updateWindowData(previewWindowId.value, {
     moduleName: newName || 'Без названия',
     _updated: Date.now()
   })
@@ -1053,8 +1011,7 @@ onUnmounted(() => {
 
   // Закрываем окно превью вместе с редактором
   if (previewWindowId.value) {
-    const existing = windows.value.find(w => w.itemId === previewWindowId.value)
-    if (existing) closeWindow(existing.id)
+    closeWindow(previewWindowId.value)
     previewWindowId.value = null
   }
 })
@@ -1065,31 +1022,31 @@ onUnmounted(() => {
       <div class="header-left">
         <h1>{{ isEditing ? 'Редактирование модуля' : 'Создание модуля' }}</h1>
         <div class="header-actions">
-          <MoloButton
+          <UIMoloButton
               class="small"
               :class="selectedModuleId ? 'default' : 'confirm'"
               @click="selectModule(null)"
           >
             Новый
-          </MoloButton>
-          <MoloButton
+          </UIMoloButton>
+          <UIMoloButton
               v-if="formData.format === 'vue'"
               class="small confirm"
-              @click="openPreviewInWindow"
+              @click="openPreview"
           >
             Предпросмотр
-          </MoloButton>
-          <MoloButton
+          </UIMoloButton>
+          <UIMoloButton
               class="small"
               :class="showDocumentation ? 'confirm' : 'default'"
               @click="openDocumentation"
           >
             {{ showDocumentation ? 'Скрыть док.' : 'Документация' }}
-          </MoloButton>
+          </UIMoloButton>
         </div>
       </div>
       <div class="header-right">
-        <MoloSelect
+        <UIMoloSelect
             :model-value="selectedModuleId"
             :disabled="!modules || modules.length === 0 ? 'Нет модулей' : 'Выбрать модуль'"
             :parent="modules"
@@ -1104,25 +1061,25 @@ onUnmounted(() => {
     <div class="editor-grid">
       <!-- ОСНОВНЫЕ НАСТРОЙКИ -->
       <div class="main-settings">
-        <MoloSection>
+        <UIMoloSection>
           <template #header>
             <span>Основное</span>
           </template>
           <template #main>
             <div class="form-row">
-              <MoloInput
+              <UIMoloInput
                   v-model="formData.name"
                   lRequired
                   placeholder="Введите название"
                   tLabel="Название"
               />
-              <MoloInput
+              <UIMoloInput
                   v-model="formData.fileName"
                   lRequired
                   placeholder="на_английском"
                   tLabel="Имя файла"
               />
-              <MoloSelect
+              <UIMoloSelect
                   v-model="formData.format"
                   :parent="availableFormats"
                   children="label"
@@ -1132,27 +1089,27 @@ onUnmounted(() => {
               />
             </div>
           </template>
-        </MoloSection>
-        <MoloSection>
+        </UIMoloSection>
+        <UIMoloSection>
           <template #header>
             <span>Мета</span>
           </template>
           <template #main>
             <div class="form-row">
-              <MoloInput
+              <UIMoloInput
                   v-model="formData.description"
                   placeholder="Что делает модуль?"
                   tLabel="Описание"
               />
-              <MoloInput
+              <UIMoloInput
                   v-model="tagsInput"
                   placeholder="ui, таблицы, графики"
                   tLabel="Теги"
               />
             </div>
           </template>
-        </MoloSection>
-        <MoloSection>
+        </UIMoloSection>
+        <UIMoloSection>
           <template #header>
             <span>Дополнительно</span>
             <label class="checkbox-label">
@@ -1162,7 +1119,7 @@ onUnmounted(() => {
           </template>
           <template #main>
             <div class="preview-upload">
-              <MoloInput
+              <UIMoloInput
                   accept="image/*"
                   tLabel="Превью"
                   type="file"
@@ -1170,22 +1127,22 @@ onUnmounted(() => {
               />
               <div v-if="formData.previewImage" class="preview-image">
                 <img :src="formData.previewImage" alt="preview" style="width: 60px"/>
-                <MoloButton class="action-btn close small" @click="removePreview">
+                <UIMoloButton class="action-btn close small" @click="removePreview">
                   ✕
-                </MoloButton>
+                </UIMoloButton>
               </div>
             </div>
           </template>
-        </MoloSection>
+        </UIMoloSection>
       </div>
       <!-- УПРАВЛЕНИЕ МЕНЮ -->
       <div class="menu-settings">
-        <MoloSection>
+        <UIMoloSection>
           <template #header>
             <span>Добавить в меню</span>
           </template>
           <template #main>
-            <MoloSelect
+            <UIMoloSelect
                 v-model="selectedGroupId"
                 :disabled="locations.length === 0 ? 'Нет доступных групп' : 'Выбрать группу'"
                 :parent="locations"
@@ -1194,7 +1151,7 @@ onUnmounted(() => {
                 valueKey="groupId"
                 :key="locations.length"
             />
-            <MoloSelect
+            <UIMoloSelect
                 v-if="availableParents.length"
                 v-model="selectedParentId"
                 :parent="availableParents"
@@ -1203,70 +1160,70 @@ onUnmounted(() => {
                 tLabel="Родительский элемент"
                 valueKey="id"
             />
-            <MoloButton
+            <UIMoloButton
                 :disabled="!selectedGroupId || adding"
                 class="confirm"
                 @click="addModuleToMenu"
             >
               <span v-if="!adding">Добавить в меню</span>
-              <MoloLoaders v-else btnLoader/>
-            </MoloButton>
+              <UIMoloLoaders v-else btnLoader/>
+            </UIMoloButton>
           </template>
-        </MoloSection>
-        <MoloSection>
+        </UIMoloSection>
+        <UIMoloSection>
           <template #header>
             <span>Работа с меню</span>
           </template>
           <template #main>
-            <MoloButton
+            <UIMoloButton
                 class="confirm full small"
                 @click="openCreateLocationModal"
             >
               Добавить место
-            </MoloButton>
-            <MoloButton
+            </UIMoloButton>
+            <UIMoloButton
                 class="action full small"
             >
               Удалить место
-            </MoloButton>
+            </UIMoloButton>
           </template>
-        </MoloSection>
-        <MoloSection>
+        </UIMoloSection>
+        <UIMoloSection>
           <template #header>
             <section style="display: flex; justify-content: space-between; align-items: center; width: 100%">
               <span>Сохранение</span>
               <div class="editor-actions">
-                <MoloButton class="small close" @click="emit('close')">
+                <UIMoloButton class="small close" @click="emit('close')">
                   Отмена
-                </MoloButton>
-                <MoloButton :loading="loading" :disabled="loading" class="small confirm" @click="saveModule">
+                </UIMoloButton>
+                <UIMoloButton :loading="loading" :disabled="loading" class="small confirm" @click="saveModule">
                   <span v-if="!loading">
                     {{ isEditing ? 'Обновить' : 'Создать' }}
                   </span>
-                </MoloButton>
+                </UIMoloButton>
               </div>
             </section>
           </template>
           <template #main>
             <span>Не забывайте сохранять изменения <3</span>
           </template>
-        </MoloSection>
+        </UIMoloSection>
       </div>
     </div>
     <hr/>
     <!-- КОД МОДУЛЯ -->
-    <MoloSection>
+    <UIMoloSection>
       <template #header>
         <span>Код модуля</span>
-        <MoloButton
+        <UIMoloButton
             v-if="selectedModuleId && enterpriseInfo?._id"
             :disabled="clearingCache"
             class="confirm small"
             @click="clearModuleCache"
         >
-          <MoloLoaders v-if="clearingCache" btnLoader/>
+          <UIMoloLoaders v-if="clearingCache" btnLoader/>
           <span v-else>Очистить кеш</span>
-        </MoloButton>
+        </UIMoloButton>
       </template>
       <template #main>
         <div class="code-container">
@@ -1275,19 +1232,19 @@ onUnmounted(() => {
           </ClientOnly>
         </div>
       </template>
-    </MoloSection>
+    </UIMoloSection>
     <hr/>
     <!-- ФАЙЛЫ МОДУЛЯ -->
-    <MoloSection>
+    <UIMoloSection>
       <template #header>
         <span>Файлы модуля</span>
-        <MoloButton class="confirm small" @click="openFileEditor()">
+        <UIMoloButton class="confirm small" @click="openFileEditor()">
           Добавить файл
-        </MoloButton>
+        </UIMoloButton>
       </template>
       <template #main>
         <div v-if="loadingFiles" class="loader-wrapper">
-          <MoloLoaders wndLoader/>
+          <UIMoloLoaders wndLoader/>
         </div>
         <div class="file-list">
           <div v-for="file in clientFiles" :key="file.path" class="file-item">
@@ -1316,20 +1273,20 @@ onUnmounted(() => {
               </span>
             </div>
             <div class="file-actions">
-              <MoloButton
+              <UIMoloButton
                   class="action-btn-small edit"
                   title="Редактировать"
                   @click="openFileEditor(file)"
               >
                 ↩
-              </MoloButton>
-              <MoloButton
+              </UIMoloButton>
+              <UIMoloButton
                   class="action-btn-small delete"
                   title="Удалить"
                   @click="deleteFile(file.path)"
               >
                 ×
-              </MoloButton>
+              </UIMoloButton>
             </div>
           </div>
           <div
@@ -1340,9 +1297,9 @@ onUnmounted(() => {
           </div>
         </div>
       </template>
-    </MoloSection>
+    </UIMoloSection>
     <!-- МОДАЛКА РЕДАКТОРА ФАЙЛОВ -->
-    <MoloModal
+    <UIMoloModal
         v-model="showFileEditor"
         :title="editingFilePath ? 'Редактирование файла' : 'Новый файл'"
         :confirm-text="editingFilePath ? 'Обновить' : 'Создать'"
@@ -1355,19 +1312,19 @@ onUnmounted(() => {
       <template #body>
         <div style="display: flex; flex-direction: column; gap: 16px;">
           <div class="form-row">
-            <MoloInput
+            <UIMoloInput
                 v-model="fileForm.name"
                 lRequired
                 placeholder="Button"
                 tLabel="Имя файла (без расширения)"
             />
-            <MoloInput
+            <UIMoloInput
                 v-model="fileForm.path"
                 placeholder="components/Button"
                 tLabel="Путь (опционально)"
                 help-text="Оставьте пустым для автоматического пути"
             />
-            <MoloSelect
+            <UIMoloSelect
                 v-model="fileForm.format"
                 :parent="fileFormats"
                 children="label"
@@ -1382,26 +1339,26 @@ onUnmounted(() => {
           </div>
         </div>
       </template>
-    </MoloModal>
+    </UIMoloModal>
     <hr/>
     <!-- ЗАВИСИМОСТИ -->
     <div class="dependencies">
-      <MoloSection>
+      <UIMoloSection>
         <template #header>
           <span>Зависимости</span>
           <div class="dep-tabs">
-            <MoloButton
+            <UIMoloButton
                 :class="activeDepTab === 'dependencies' ? 'confirm small' : 'default small'"
                 @click="activeDepTab = 'dependencies'"
             >
               dependencies
-            </MoloButton>
-            <MoloButton
+            </UIMoloButton>
+            <UIMoloButton
                 :class="activeDepTab === 'devDependencies' ? 'confirm small' : 'default small'"
                 @click="activeDepTab = 'devDependencies'"
             >
               devDependencies
-            </MoloButton>
+            </UIMoloButton>
           </div>
         </template>
         <template #main>
@@ -1430,32 +1387,32 @@ onUnmounted(() => {
             </div>
           </div>
         </template>
-      </MoloSection>
-      <MoloSection>
+      </UIMoloSection>
+      <UIMoloSection>
         <template #header>
           <span>Добавить зависимость</span>
-          <MoloButton :disabled="!newDepName || loadingDEP" class="confirm small" @click="addDependency">
+          <UIMoloButton :disabled="!newDepName || loadingDEP" class="confirm small" @click="addDependency">
             <span v-if="!loadingDEP">Добавить</span>
-            <MoloLoaders v-else btnLoader/>
-          </MoloButton>
+            <UIMoloLoaders v-else btnLoader/>
+          </UIMoloButton>
         </template>
         <template #main>
-          <MoloInput
+          <UIMoloInput
               v-model="newDepName"
               placeholder="package-name"
               tLabel="Пакет"
           />
-          <MoloInput
+          <UIMoloInput
               v-model="newDepVersion"
               placeholder="latest"
               tLabel="Версия"
           />
         </template>
-      </MoloSection>
+      </UIMoloSection>
     </div>
   </div>
   <!-- МОДАЛКА СОЗДАНИЯ МЕСТА В МЕНЮ -->
-  <MoloModal
+  <UIMoloModal
       v-model="menuLocationModalOpen"
       title="Создание места в меню"
       confirm-text="Создать"
@@ -1469,13 +1426,13 @@ onUnmounted(() => {
     <template #body>
       <div style="display: flex; flex-direction: column; gap: 16px;">
         <section class="form-row">
-          <MoloInput
+          <UIMoloInput
               v-model="modalLocationForm.title"
               tLabel="Название места"
               lRequired
               placeholder="Например: Информация"
           />
-          <MoloInput
+          <UIMoloInput
               v-model="modalLocationForm.placeName"
               tLabel="Название ключа (название файла)"
               lRequired
@@ -1497,7 +1454,7 @@ onUnmounted(() => {
             valueKey="id"
             help-text="Выберите, внутри какого места создать новое"
         />
-        <MoloInput
+        <UIMoloInput
             v-model.number="modalLocationForm.order"
             tLabel="Порядок сортировки"
             type="number"
@@ -1506,7 +1463,7 @@ onUnmounted(() => {
         />
       </div>
     </template>
-  </MoloModal>
+  </UIMoloModal>
 </template>
 <style scoped>
 .module-editor {

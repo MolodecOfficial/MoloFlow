@@ -1,4 +1,3 @@
-// stores/menuEditorStore.ts
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { useMenuApi } from '~~/app/composables/useMenuApi'

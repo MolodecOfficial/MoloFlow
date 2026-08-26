@@ -82,17 +82,17 @@ onMounted(() => {
       <div class="auth-icon">🔒</div>
       <h3>Вы не авторизованы</h3>
       <p>Для работы с вкладками необходимо войти в предприятие</p>
-      <MoloButton class="confirm" @click="notAuth">Войти</MoloButton>
+      <UIMoloButton class="confirm" @click="notAuth">Войти</UIMoloButton>
     </div>
 
-    <MoloSection v-else-if="enterpriseInfo">
+    <UIMoloSection v-else-if="enterpriseInfo">
       <template #header>
         <span style="font-weight: bold; font-size: 22px">
           {{ enterpriseInfo.ownershipForm }} {{ enterpriseInfo.enterpriseName }}
         </span>
-        <MoloButton class="confirm" @click="openConfigurator">
+        <UIMoloButton class="confirm" @click="openConfigurator">
           Конфигуратор
-        </MoloButton>
+        </UIMoloButton>
       </template>
       <template #main>
         <div class="details">
@@ -106,18 +106,18 @@ onMounted(() => {
           </section>
         </div>
       </template>
-    </MoloSection>
+    </UIMoloSection>
     <hr>
-    <MoloSection v-if="enterpriseInfo">
+    <UIMoloSection v-if="enterpriseInfo">
       <template #header>
         <section class="tabs-length">
           <span>Вкладки</span>
           <span class="counter">{{ tabs.length }}</span>
         </section>
-        <MoloButton class="confirm small" @click="openConfigurator">Создать</MoloButton>
+        <UIMoloButton class="confirm small" @click="openConfigurator">Создать</UIMoloButton>
       </template>
       <template #main>
-        <MoloLoaders wndLoader v-if="loading"/>
+        <UIMoloLoaders wndLoader v-if="loading"/>
         <div v-else-if="tabs.length === 0" class="empty">
           <p>Нет вкладок</p>
         </div>
@@ -142,7 +142,7 @@ onMounted(() => {
           </button>
         </div>
       </template>
-    </MoloSection>
+    </UIMoloSection>
   </div>
 </template>
 
