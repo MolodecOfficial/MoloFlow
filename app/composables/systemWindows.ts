@@ -49,7 +49,7 @@ export const SYSTEM_WINDOWS: Record<string, SystemWindowDefinition> = {
         title: 'Условия использования',
         size: { width: 700, height: 600 },
     },
-    'modules-browser': {
+    'browser': {
         component: () => import('~/layouts/modules/Browser.vue'),
         title: 'Модули',
         size: { width: 1000, height: 650 },

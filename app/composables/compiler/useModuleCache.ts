@@ -29,6 +29,12 @@ interface CompiledCacheEntry {
     signature: string
     compiledAt: number
     inFlight: Promise<CompiledResult> | null
+    // Сигнатура кода, который сейчас компилируется в inFlight (если есть).
+    // Без этого поля второй вызов compileModule не может отличить
+    // "уже идёт компиляция ИМЕННО этого кода" (можно переиспользовать
+    // промис) от "идёт компиляция СТАРОЙ версии кода" (нужно запускать
+    // новую компиляцию, а не ждать чужой устаревший результат).
+    inFlightSignature: string | null
 }
 
 export interface CompiledResult {
@@ -49,6 +55,15 @@ const compiledCache = new Map<string, CompiledCacheEntry>()
 // Нужно, чтобы не удалять <style> одного окна из-за unmount другого.
 const activeInstanceCount = new Map<string, number>()
 
+// Сигнатура кода, который сейчас АКТУАЛЕН для конкретного moduleId —
+// то есть то, что реально сейчас в редакторе/props и должно быть
+// отражено в превью. Обновляется в начале каждого compileModule().
+// Нужна, чтобы отбросить результат компиляции, которая стартовала
+// раньше, но досчиталась ПОЗЖЕ, чем пользователь успел отредактировать
+// код ещё раз — иначе такой запоздавший результат может затереть
+// в кэше и на экране уже более свежую компиляцию.
+const desiredSignatures = new Map<string, string>()
+
 /**
  * Быстрый некриптографический хэш — нужен только чтобы понять,
  * "тот же самый код/файлы/зависимости или нет", а не для безопасности.
@@ -67,8 +82,14 @@ export function makeModuleSignature(
     dependencies: Record<string, string> = {},
     version?: number | string
 ): string {
+    // ВАЖНО: раньше здесь хэшировалась только ДЛИНА содержимого файла
+    // (f.code?.length), а не само содержимое. Из-за этого правка файла,
+    // не менявшая его длину (например, замена слова на слово той же
+    // длины), давала ТУ ЖЕ сигнатуру, что и раньше — компиляция считалась
+    // "актуальной" и просто не запускалась заново, а превью молча
+    // показывало старую версию файла. Теперь хэшируем полное содержимое.
     const filesPart = files
-        .map((f: any) => `${f.path || f.name}:${f.code?.length || 0}`)
+        .map((f: any) => `${f.path || f.name}:${hashString(f.code || '')}`)
         .join('|')
     const depsPart = Object.entries(dependencies || {})
         .map(([k, v]) => `${k}@${v}`)
@@ -120,7 +141,10 @@ export function useModuleCache() {
             return !!entry?.component && entry.signature === signature
         },
 
-        setCompiledInFlight(moduleId: string, promise: Promise<CompiledResult>) {
+        // signature — сигнатура кода, который реально компилируется в
+        // этом promise. Позволяет отличить "эта in-flight компиляция —
+        // то, что мне нужно" от "это уже устаревшая компиляция".
+        setCompiledInFlight(moduleId: string, promise: Promise<CompiledResult>, signature: string) {
             const existing = compiledCache.get(moduleId)
             compiledCache.set(moduleId, {
                 component: existing?.component || null,
@@ -128,7 +152,8 @@ export function useModuleCache() {
                 css: existing?.css || '',
                 signature: existing?.signature || '',
                 compiledAt: existing?.compiledAt || 0,
-                inFlight: promise
+                inFlight: promise,
+                inFlightSignature: signature
             })
         },
 
@@ -136,8 +161,23 @@ export function useModuleCache() {
             compiledCache.set(moduleId, {
                 ...result,
                 compiledAt: Date.now(),
-                inFlight: null
+                inFlight: null,
+                inFlightSignature: null
             })
+        },
+
+        // ---------- АКТУАЛЬНАЯ ("ЖЕЛАЕМАЯ") СИГНАТУРА ----------
+
+        setDesiredSignature(moduleId: string, signature: string) {
+            desiredSignatures.set(moduleId, signature)
+        },
+
+        // Если для moduleId ещё ничего не запрашивали (например, чистый
+        // фоновый прогрев без открытого редактора) — считаем результат
+        // актуальным по умолчанию, чтобы не ломать обычный прогрев.
+        isDesiredSignature(moduleId: string, signature: string): boolean {
+            const desired = desiredSignatures.get(moduleId)
+            return desired === undefined || desired === signature
         },
 
         // ---------- ИНВАЛИДАЦИЯ ----------
@@ -145,11 +185,13 @@ export function useModuleCache() {
         invalidate(moduleId: string) {
             rawCache.delete(moduleId)
             compiledCache.delete(moduleId)
+            desiredSignatures.delete(moduleId)
         },
 
         invalidateAll() {
             rawCache.clear()
             compiledCache.clear()
+            desiredSignatures.clear()
         },
 
         // ---------- РЕФКАУНТ АКТИВНЫХ ОКОН (для стилей) ----------

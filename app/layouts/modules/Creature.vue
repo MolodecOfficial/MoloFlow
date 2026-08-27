@@ -29,6 +29,14 @@ let mainEditorInstance: any = null
 let fileEditorInstance: any = null
 let monacoInstance: any = null
 let monacoCtx: any = null
+const monacoEditorRef = ref(null)
+
+const {
+  updateFiles: updateMonacoFiles
+} = useMonacoFiles()
+
+const editorFiles = computed(() => [])
+
 // =============================================
 // COMPOSABLES
 // =============================================
@@ -125,7 +133,6 @@ const modalLocationForm = ref({
   parentId: null as string | null
 })
 // Ref для контейнеров Monaco
-const mainMonacoContainer = ref<HTMLElement | null>(null)
 const fileMonacoContainer = ref<HTMLElement | null>(null)
 // =============================================
 // COMPUTED
@@ -424,8 +431,19 @@ const selectModule = async (id: string | null) => {
 // =============================================
 const syncEditorFiles = () => {
   if (!monacoCtx) return
-  const files = buildEditorFiles(formData.value, moduleFiles.value)
+
+  const files = buildEditorFiles(
+      formData.value,
+      moduleFiles.value
+  )
+
+  // Monaco filesystem
   monacoCtx.fs.loadFiles(files)
+
+  // Наш индекс компонентов/composables
+  updateMonacoFiles(files)
+
+  // VFS
   monacoCtx.vfs.loadModuleFiles({
     code: formData.value.code,
     fileName: formData.value.fileName,
@@ -433,6 +451,7 @@ const syncEditorFiles = () => {
     files: moduleFiles.value
   })
 }
+
 // =============================================
 // СОХРАНЕНИЕ МОДУЛЯ
 // =============================================
@@ -469,6 +488,7 @@ const saveModule = async () => {
         selectedModuleId.value || undefined
     )
     await moduleStore.loadModules(enterpriseInfo.value._id, true)
+    addLog('success', 'Модуль успешно сохранён!')
     if (!isEditing.value) {
       selectedModuleId.value = response.module._id
       addNotification('info', 'Модуль создан')
@@ -802,8 +822,7 @@ const removePreview = () => {
 }
 const openDocumentation = () => {
   openWindow(
-      'settings',
-      'Documentation',
+      'documentation',
       null,
       {
         width: 1400,
@@ -818,26 +837,6 @@ const openDocumentation = () => {
 // =============================================
 const getEnterpriseId = (): string | null => {
   return appStore.getEnterpriseId()
-}
-// Инициализация файлового редактора
-const initFileEditor = async () => {
-  if (!fileMonacoContainer.value) return
-  await nextTick()
-  const {ctx} = initMonaco(fileMonacoContainer.value!, {
-    language: getMonacoLanguage(fileForm.value.format)
-  })
-  fileEditorInstance = ctx.editor
-  monacoInstance = ctx.monaco
-  const code = fileForm.value.code || getFilePlaceholder(fileForm.value.format)
-  fileEditorInstance.setValue(code)
-  watch(fileEditorLanguage, (newLang) => {
-    if (fileEditorInstance && monacoInstance) {
-      const model = fileEditorInstance.getModel()
-      if (model) {
-        monacoInstance.editor.setModelLanguage(model, newLang)
-      }
-    }
-  })
 }
 // =============================================
 // WATCHERS
@@ -897,9 +896,6 @@ watch(editorLanguage, (newLang) => {
 watch(showFileEditor, async (val) => {
   if (val) {
     await nextTick()
-    setTimeout(() => {
-      initFileEditor()
-    }, 100)
   } else {
     if (fileEditorInstance) {
       fileEditorInstance.dispose()
@@ -985,30 +981,9 @@ onMounted(async () => {
     formData.value.code = getPlaceholder()
   }
   initialDataLoaded.value = true
-  // Инициализация Monaco
-  if (mainMonacoContainer.value) {
-    const files = buildEditorFiles(formData.value, moduleFiles.value)
-    const {ctx} = initMonaco(mainMonacoContainer.value!, {
-      language: getMonacoLanguage(formData.value.format),
-      moduleId: selectedModuleId.value || undefined,
-      enterpriseId: enterpriseId,
-      files
-    })
-    mainEditorInstance = ctx.editor
-    monacoInstance = ctx.monaco
-    monacoCtx = ctx
-    if (formData.value.code) {
-      mainEditorInstance.setValue(formData.value.code)
-    }
-  }
+
 })
 onUnmounted(() => {
-  if (debounceTimer) clearTimeout(debounceTimer)
-  if (mainEditorInstance) { mainEditorInstance.dispose(); mainEditorInstance = null }
-  if (fileEditorInstance) { fileEditorInstance.dispose(); fileEditorInstance = null }
-  monacoInstance = null
-  monacoCtx = null
-
   // Закрываем окно превью вместе с редактором
   if (previewWindowId.value) {
     closeWindow(previewWindowId.value)
@@ -1227,9 +1202,16 @@ onUnmounted(() => {
       </template>
       <template #main>
         <div class="code-container">
-          <ClientOnly>
-            <div ref="mainMonacoContainer" class="code-container"></div>
-          </ClientOnly>
+          <UIMoloMonaco
+              ref="monacoEditorRef"
+              :initial-code="formData.code"
+              :language="editorLanguage"
+              :files="editorFiles"
+              :module-id="selectedModuleId"
+              :enterprise-id="enterpriseInfo?._id"
+              :on-save="saveModule"
+              @update:code="(code) => formData.code = code"
+          />
         </div>
       </template>
     </UIMoloSection>
@@ -1439,14 +1421,14 @@ onUnmounted(() => {
               placeholder="Например: info"
           />
         </section>
-        <MoloSelect
+        <UIMoloSelect
             v-model="modalLocationForm.type"
             :parent="locationTypes"
             children="label"
             tLabel="Тип места"
             valueKey="value"
         />
-        <MoloSelect
+        <UIMoloSelect
             v-model="modalLocationForm.parentId"
             :parent="parentLocationOptions"
             children="title"
@@ -1577,8 +1559,7 @@ onUnmounted(() => {
   align-items: center;
   font-family: monospace;
   font-size: 13px;
-  padding: 5px 0;
-  border-bottom: 1px solid var(--half_opacity_border);
+  padding: 2px 0;
 }
 .file-item:last-child {
   border-bottom: none;

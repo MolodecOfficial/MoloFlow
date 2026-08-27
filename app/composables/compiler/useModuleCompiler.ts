@@ -601,17 +601,24 @@ export async function precompileModule(
     if (cache.isCompiledFresh(moduleId, signature)) return
 
     const existing = cache.getCompiled(moduleId)
-    if (existing?.inFlight) {
+    // Переиспользуем чужой in-flight промис ТОЛЬКО если он компилирует ту же
+    // сигнатуру — иначе это устаревшая компиляция (например, предыдущая
+    // версия сохранённого кода), и ждать её незачем.
+    if (existing?.inFlight && existing.inFlightSignature === signature) {
         await existing.inFlight.catch(() => {})
         return
     }
 
     const promise = runCompilation(code, filesList, dependencies, moduleId, signature)
-    cache.setCompiledInFlight(moduleId, promise)
+    cache.setCompiledInFlight(moduleId, promise, signature)
 
     try {
         const result = await promise
-        cache.setCompiledResult(moduleId, result)
+        // Пока фоновая компиляция считалась, живой редактор мог уже
+        // запросить другую (более свежую) версию — не затираем её результат.
+        if (cache.isDesiredSignature(moduleId, signature)) {
+            cache.setCompiledResult(moduleId, result)
+        }
     } catch (e) {
         console.warn(`[ModuleCompiler] Фоновая компиляция модуля ${moduleId} не удалась:`, e)
         // не кэшируем ошибку — окно при открытии просто попробует ещё раз
@@ -663,6 +670,13 @@ export const useModuleCompiler = () => {
         const id = moduleId || 'anon'
         const signature = makeModuleSignature(code, filesList, dependencies, version)
 
+        // Фиксируем, что именно ЭТУ версию кода мы сейчас хотим видеть в
+        // превью. Если, пока мы ждём компиляцию, прилетит более новое
+        // редактирование — оно перезапишет это значение, и наш (к тому
+        // моменту устаревший) результат будет отброшен, а не покажется
+        // пользователю и не затрёт кэш поверх более свежего результата.
+        cache.setDesiredSignature(id, signature)
+
         // Переключение окна на другой модуль внутри того же composable —
         // отпускаем "слот" предыдущего модуля прежде чем занять новый
         if (lastModuleId.value && lastModuleId.value !== id) {
@@ -701,16 +715,39 @@ export const useModuleCompiler = () => {
             })
 
             // ---- 2. Компиляция уже идёт (например, фоновый прогрев ещё не закончил) ----
-            // Ждём тот же промис вместо того, чтобы запускать вторую компиляцию.
+            // Ждём тот же промис ТОЛЬКО если он компилирует именно эту сигнатуру.
+            //
+            // Раньше здесь проверялось просто "есть ли вообще что-то в
+            // inFlight", без сверки сигнатур. Из-за этого: пользователь
+            // редактирует код -> запускается компиляция (она не мгновенная,
+            // vue3-sfc-loader реально компилирует SFC в браузере) -> пока она
+            // идёт, пользователь делает следующую правку -> НОВЫЙ вызов
+            // compileModule видел "inFlight есть" и просто дожидался СТАРОГО
+            // промиса, применяя результат компиляции старого кода как ответ
+            // на новое редактирование. Если компиляция стабильно дольше паузы
+            // между правками (что для SFC-компиляции в браузере — норма),
+            // это происходило на КАЖДОМ следующем изменении подряд, и превью
+            // застревало на первой удачно досчитавшейся версии — пока
+            // cache.invalidate() при сохранении не сбрасывал inFlight и не
+            // разрывал цепочку.
             const existing = cache.getCompiled(id)
-            const compilePromise = existing?.inFlight
-                ?? (() => {
+            const compilePromise = (existing?.inFlight && existing.inFlightSignature === signature)
+                ? existing.inFlight
+                : (() => {
                     const p = runCompilation(code, filesList, dependencies, id, signature)
-                    cache.setCompiledInFlight(id, p)
+                    cache.setCompiledInFlight(id, p, signature)
                     return p
                 })()
 
             const result = await Promise.race([compilePromise, timeoutPromise]) as CompiledResult
+
+            // Пока мы ждали (особенно если реально ждали ЧУЖОЙ промис выше),
+            // могло прилететь ещё более новое редактирование. Если так —
+            // наш результат уже неактуален: не показываем его в превью и не
+            // затираем в кэше то, что успела записать более свежая компиляция.
+            if (!cache.isDesiredSignature(id, signature)) {
+                return
+            }
 
             cache.setCompiledResult(id, result)
 
@@ -721,6 +758,13 @@ export const useModuleCompiler = () => {
             compileErrorDetails.value = null
 
         } catch (e: any) {
+            // Ошибка от уже неактуального (устаревшего) запроса — не показываем,
+            // иначе можно перекрыть валидный результат более свежей компиляции
+            // ошибкой, относящейся к уже отредактированному коду.
+            if (!cache.isDesiredSignature(id, signature)) {
+                return
+            }
+
             console.error('[ModuleCompiler] Error:', e)
 
             const parsed = parseCompilationError(e, code)
@@ -732,7 +776,12 @@ export const useModuleCompiler = () => {
             // просто не вызывался в этой ветке, так что следующая попытка
             // (после того как автор поправит код) начнётся с чистого листа
         } finally {
-            compiling.value = false
+            // Не гасим индикатор загрузки, если наш запрос уже устарел —
+            // это значит более новый вызов сейчас активно компилирует и сам
+            // управляет своим compiling/finally.
+            if (cache.isDesiredSignature(id, signature)) {
+                compiling.value = false
+            }
             if (timeoutId) clearTimeout(timeoutId)
         }
     }

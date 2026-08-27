@@ -1,7 +1,5 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { useLogger } from '~/composables/useLogger'
-import { useNotifications } from '~/composables/useNotifications'
 
 // ============================================================
 // 1. Состояния для демонстрации компонентов
@@ -108,15 +106,15 @@ const addCustomNotice = () => {
 // 3. Навигация по секциям
 // ============================================================
 const sections = [
-  { id: 'input', title: 'MoloInput', icon: '📝' },
-  { id: 'select', title: 'MoloSelect', icon: '🔽' },
-  { id: 'button', title: 'MoloButton', icon: '🔘' },
-  { id: 'modal', title: 'MoloModal', icon: '📦' },
-  { id: 'section', title: 'MoloSection', icon: '📐' },
-  { id: 'logger', title: 'MoloLogger', icon: '📋' },
-  { id: 'notice', title: 'MoloNotice', icon: '🔔' },
-  { id: 'loaders', title: 'MoloLoaders', icon: '⏳' },
-  { id: 'hooks', title: 'Хуки', icon: '🧩' },
+  { id: 'input', title: 'MoloInput', icon: '/UI/input.png' },
+  { id: 'select', title: 'MoloSelect', icon: '/UI/select.png' },
+  { id: 'button', title: 'MoloButton', icon: '/UI/button.png' },
+  { id: 'modal', title: 'MoloModal', icon: '/UI/modal.png' },
+  { id: 'section', title: 'MoloSection', icon: '/UI/section.png' },
+  { id: 'logger', title: 'MoloLogger', icon: '/UI/logger.png' },
+  { id: 'notice', title: 'MoloNotice', icon: '/UI/notice.png' },
+  { id: 'loaders', title: 'MoloLoaders', icon: '/UI/loaders.png' },
+  { id: 'hooks', title: 'Хуки', icon: '/UI/hooks.png' },
 ]
 
 const activeSection = ref('input')
@@ -126,6 +124,11 @@ const scrollToSection = (id: string) => {
   const el = document.getElementById(`section-${id}`)
   if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
+
+// Функция для проверки, является ли иконка путём к картинке
+const isImageIcon = (icon: string) => {
+  return icon.startsWith('/') || icon.startsWith('http') || icon.includes('.png') || icon.includes('.svg')
+}
 </script>
 
 <template>
@@ -134,7 +137,7 @@ const scrollToSection = (id: string) => {
     <aside class="doc-sidebar">
       <div class="sidebar-header">
         <div class="logo-wrapper">
-          <span class="logo-icon">📚</span>
+          <img src="/module_UI.png" style="width: 50px" />
           <span class="logo-text">Molo UI</span>
         </div>
         <span class="version-badge">v2.0</span>
@@ -148,7 +151,14 @@ const scrollToSection = (id: string) => {
             :class="{ active: activeSection === section.id }"
             @click="scrollToSection(section.id)"
         >
-          <span class="nav-icon">{{ section.icon }}</span>
+          <span class="nav-icon">
+            <img
+                v-if="isImageIcon(section.icon)"
+                :src="section.icon"
+                style="width: 24px; height: 24px; object-fit: contain;"
+            />
+            <span v-else>{{ section.icon }}</span>
+          </span>
           <span class="nav-title">{{ section.title }}</span>
         </div>
       </nav>
@@ -157,6 +167,7 @@ const scrollToSection = (id: string) => {
         <span>💡 Полная документация</span>
       </div>
     </aside>
+
 
     <!-- ===== Основной контент ===== -->
     <main class="doc-main">
@@ -195,7 +206,7 @@ const scrollToSection = (id: string) => {
         <section id="section-input" class="doc-section">
           <div class="section-header">
             <div class="section-title-wrapper">
-              <span class="section-icon">📝</span>
+              <img src="/UI/input.png" style="width: 60px"/>
               <h2>MoloInput</h2>
               <span class="section-badge">Компонент ввода</span>
             </div>
@@ -278,27 +289,27 @@ const scrollToSection = (id: string) => {
                       :key="mode.value"
                       class="mode-btn"
                       :class="{ active: inputMode === mode.value }"
-                      @click="inputMode = mode.value as any"
+                      @click="inputMode = mode.value"
                   >
                     {{ mode.label }}
                   </button>
                 </div>
 
                 <div class="demo-inputs">
-                  <MoloInput
+                  <UIMoloInput
                       v-if="inputMode === 'default'"
                       v-model="inputValue"
                       tLabel="Обычный ввод"
                       placeholder="Введите текст..."
                   />
-                  <MoloInput
+                  <UIMoloInput
                       v-if="inputMode === 'address'"
                       v-model="addressValue"
                       tLabel="Ввод адреса"
                       placeholder="Начните вводить адрес..."
                       :address="true"
                   />
-                  <MoloInput
+                  <UIMoloInput
                       v-if="inputMode === 'phone'"
                       v-model="phoneValue"
                       tLabel="Ввод телефона"
@@ -320,7 +331,7 @@ const scrollToSection = (id: string) => {
         <section id="section-select" class="doc-section">
           <div class="section-header">
             <div class="section-title-wrapper">
-              <span class="section-icon">🔽</span>
+              <img src="/UI/select.png" style="width: 60px"/>
               <h2>MoloSelect</h2>
               <span class="section-badge">Компонент выбора</span>
             </div>
@@ -395,7 +406,7 @@ const scrollToSection = (id: string) => {
                 <div class="demo-grid">
                   <div>
                     <h4>📋 Простой список</h4>
-                    <MoloSelect
+                    <UIMoloSelect
                         v-model="selectedUser"
                         :parent="selectOptions"
                         children="name"
@@ -408,7 +419,7 @@ const scrollToSection = (id: string) => {
                   </div>
                   <div>
                     <h4>📂 Вложенные списки</h4>
-                    <MoloSelect
+                    <UIMoloSelect
                         v-model="selectedCategory"
                         :parent="categories"
                         children="category"
@@ -416,7 +427,7 @@ const scrollToSection = (id: string) => {
                         tLabel="Категория"
                         placeholder="Выберите категорию"
                     />
-                    <MoloSelect
+                    <UIMoloSelect
                         v-if="selectedCategory"
                         v-model="selectedItem"
                         :parent="categories.find(c => c.id === Number(selectedCategory))?.items || []"
@@ -441,7 +452,7 @@ const scrollToSection = (id: string) => {
         <section id="section-button" class="doc-section">
           <div class="section-header">
             <div class="section-title-wrapper">
-              <span class="section-icon">🔘</span>
+              <img src="/UI/button.png" style="width: 60px"/>
               <h2>MoloButton</h2>
               <span class="section-badge">Компонент кнопки</span>
             </div>
@@ -489,15 +500,15 @@ const scrollToSection = (id: string) => {
               </div>
               <div class="demo-content">
                 <div class="button-grid">
-                  <MoloButton>Обычная</MoloButton>
-                  <MoloButton variant="confirm">Подтвердить</MoloButton>
-                  <MoloButton variant="close">Удалить</MoloButton>
-                  <MoloButton variant="small">Маленькая</MoloButton>
-                  <MoloButton variant="full">На всю ширину</MoloButton>
-                  <MoloButton variant="transparent">Прозрачная</MoloButton>
-                  <MoloButton variant="action">Действие</MoloButton>
-                  <MoloButton :loading="true">Загрузка</MoloButton>
-                  <MoloButton disabled>Отключена</MoloButton>
+                  <UIMoloButton>Обычная</UIMoloButton>
+                  <UIMoloButton variant="confirm">Подтвердить</UIMoloButton>
+                  <UIMoloButton variant="close">Удалить</UIMoloButton>
+                  <UIMoloButton variant="small">Маленькая</UIMoloButton>
+                  <UIMoloButton variant="full">На всю ширину</UIMoloButton>
+                  <UIMoloButton variant="transparent">Прозрачная</UIMoloButton>
+                  <UIMoloButton variant="action">Действие</UIMoloButton>
+                  <UIMoloButton :loading="true">Загрузка</UIMoloButton>
+                  <UIMoloButton disabled>Отключена</UIMoloButton>
                 </div>
               </div>
             </div>
@@ -510,7 +521,7 @@ const scrollToSection = (id: string) => {
         <section id="section-modal" class="doc-section">
           <div class="section-header">
             <div class="section-title-wrapper">
-              <span class="section-icon">📦</span>
+              <img src="/UI/modal.png" style="width: 60px"/>
               <h2>MoloModal</h2>
               <span class="section-badge">Модальное окно</span>
             </div>
@@ -582,14 +593,14 @@ const scrollToSection = (id: string) => {
                 <h3>Интерактивная демонстрация</h3>
               </div>
               <div class="demo-content">
-                <MoloButton variant="confirm" @click="showModal = true">
+                <UIMoloButton variant="confirm" @click="showModal = true">
                   Открыть модальное окно
-                </MoloButton>
+                </UIMoloButton>
                 <div v-if="modalResult" class="modal-result">
                   {{ modalResult }}
                 </div>
 
-                <MoloModal
+                <UIMoloModal
                     v-model="showModal"
                     title="Подтверждение действия"
                     modalText="Вы уверены, что хотите выполнить это действие?"
@@ -610,7 +621,7 @@ const scrollToSection = (id: string) => {
         <section id="section-section" class="doc-section">
           <div class="section-header">
             <div class="section-title-wrapper">
-              <span class="section-icon">📐</span>
+              <img src="/UI/section.png" style="width: 60px"/>
               <h2>MoloSection</h2>
               <span class="section-badge">Контейнер секции</span>
             </div>
@@ -627,16 +638,16 @@ const scrollToSection = (id: string) => {
                 <h3>Пример использования</h3>
               </div>
               <div class="demo-content">
-                <MoloSection>
+                <UIMoloSection>
                   <template #header>
                     <span style="font-weight:600;">Личные данные</span>
-                    <MoloButton variant="small">Редактировать</MoloButton>
+                    <UIMoloButton variant="small">Редактировать</UIMoloButton>
                   </template>
                   <template #main>
-                    <MoloInput tLabel="Имя" placeholder="Введите имя" />
-                    <MoloInput tLabel="Email" placeholder="Введите email" />
+                    <UIMoloInput tLabel="Имя" placeholder="Введите имя" />
+                    <UIMoloInput tLabel="Email" placeholder="Введите email" />
                   </template>
-                </MoloSection>
+                </UIMoloSection>
               </div>
             </div>
           </div>
@@ -648,7 +659,7 @@ const scrollToSection = (id: string) => {
         <section id="section-logger" class="doc-section">
           <div class="section-header">
             <div class="section-title-wrapper">
-              <span class="section-icon">📋</span>
+              <img src="/UI/logger.png" style="width: 60px"/>
               <h2>MoloLogger</h2>
               <span class="section-badge">Компонент логирования</span>
             </div>
@@ -667,19 +678,19 @@ const scrollToSection = (id: string) => {
               </div>
               <div class="demo-content">
                 <div class="logger-controls">
-                  <MoloInput v-model="logMessage" tLabel="Текст лога" placeholder="Введите сообщение..." />
+                  <UIMoloInput v-model="logMessage" tLabel="Текст лога" placeholder="Введите сообщение..." />
                   <div style="display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap;">
-                    <MoloSelect
+                    <UIMoloSelect
                         v-model="logType"
                         :parent="['info', 'warning', 'error', 'success']"
                         tLabel="Тип"
                     />
-                    <MoloButton variant="confirm" @click="addCustomLog">Добавить лог</MoloButton>
-                    <MoloButton variant="close" @click="clearLogs">Очистить</MoloButton>
+                    <UIMoloButton variant="confirm" @click="addCustomLog">Добавить лог</UIMoloButton>
+                    <UIMoloButton variant="close" @click="clearLogs">Очистить</UIMoloButton>
                   </div>
                 </div>
-                <div style="margin-top:16px; height:250px; overflow:hidden; border-radius:8px; border:1px solid var(--half_opacity_border);">
-                  <MoloLogger />
+                <div style="margin-top:16px; overflow:hidden; border-radius:8px;">
+                  <LayoutMoloLogger />
                 </div>
               </div>
             </div>
@@ -692,7 +703,7 @@ const scrollToSection = (id: string) => {
         <section id="section-notice" class="doc-section">
           <div class="section-header">
             <div class="section-title-wrapper">
-              <span class="section-icon">🔔</span>
+              <img src="/UI/notice.png" style="width: 60px"/>
               <h2>MoloNotice</h2>
               <span class="section-badge">Компонент уведомления</span>
             </div>
@@ -711,22 +722,22 @@ const scrollToSection = (id: string) => {
               </div>
               <div class="demo-content">
                 <div class="notice-controls">
-                  <MoloInput v-model="noticeTitle" tLabel="Заголовок (опционально)" placeholder="Введите заголовок" />
-                  <MoloInput v-model="noticeText" tLabel="Текст уведомления" placeholder="Введите текст..." />
+                  <UIMoloInput v-model="noticeTitle" tLabel="Заголовок (опционально)" placeholder="Введите заголовок" />
+                  <UIMoloInput v-model="noticeText" tLabel="Текст уведомления" placeholder="Введите текст..." />
                   <div style="display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap;">
-                    <MoloSelect
+                    <UIMoloSelect
                         v-model="noticeType"
                         :parent="['info', 'warning', 'error']"
                         tLabel="Тип"
                     />
-                    <MoloButton variant="confirm" @click="addCustomNotice">Показать</MoloButton>
-                    <MoloButton variant="close" @click="clearNotifications">Очистить все</MoloButton>
+                    <UIMoloButton variant="confirm" @click="addCustomNotice">Показать</UIMoloButton>
+                    <UIMoloButton variant="close" @click="clearNotifications">Очистить все</UIMoloButton>
                   </div>
                 </div>
                 <div style="margin-top:16px; position:relative; min-height:100px; border-radius:8px; border:1px dashed var(--half_opacity_border); padding:10px;">
                   <p v-if="notifications.length === 0" style="color: #8b949e; text-align:center;">Нет уведомлений</p>
                   <div v-for="n in notifications" :key="n.id" style="margin-bottom:8px;">
-                    <MoloNotice
+                    <LayoutMoloNotice
                         :notice_type="n.type"
                         :notice_title="n.title"
                         :notice_text="n.text"
@@ -745,7 +756,7 @@ const scrollToSection = (id: string) => {
         <section id="section-loaders" class="doc-section">
           <div class="section-header">
             <div class="section-title-wrapper">
-              <span class="section-icon">⏳</span>
+              <img src="/UI/loaders.png" style="width: 60px"/>
               <h2>MoloLoaders</h2>
               <span class="section-badge">Индикаторы загрузки</span>
             </div>
@@ -763,15 +774,15 @@ const scrollToSection = (id: string) => {
               </div>
               <div class="demo-content">
                 <div style="display:flex; gap:20px; align-items:center; flex-wrap:wrap;">
-                  <MoloButton @click="showLoader = !showLoader">
+                  <UIMoloButton @click="showLoader = !showLoader">
                     {{ showLoader ? 'Скрыть' : 'Показать' }} загрузку
-                  </MoloButton>
+                  </UIMoloButton>
                   <div v-if="showLoader" style="padding:20px; background: rgba(0,0,0,0.3); border-radius:8px;">
-                    <MoloLoaders :wndLoader="true" />
+                    <UIMoloLoaders :wndLoader="true" />
                   </div>
                   <div style="display:flex; align-items:center; gap:10px;">
                     <span>Спиннер для кнопки:</span>
-                    <MoloLoaders :btnLoader="true" />
+                    <UIMoloLoaders :btnLoader="true" style="background: white; padding: 20px"/>
                   </div>
                 </div>
               </div>
@@ -785,7 +796,7 @@ const scrollToSection = (id: string) => {
         <section id="section-hooks" class="doc-section">
           <div class="section-header">
             <div class="section-title-wrapper">
-              <span class="section-icon">🧩</span>
+              <img src="/UI/hooks.png" style="width: 60px"/>
               <h2>Хуки</h2>
               <span class="section-badge">useLogger & useNotifications</span>
             </div>
@@ -964,6 +975,7 @@ const scrollToSection = (id: string) => {
 .logo-wrapper {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 10px;
 }
 .logo-icon { font-size: 24px; }

@@ -1,4 +1,3 @@
-// composables/monaco/filesystem.ts
 export type FileNode = {
     path: string
     content: string

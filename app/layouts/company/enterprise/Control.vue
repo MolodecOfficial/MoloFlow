@@ -14,7 +14,7 @@ const tabs = computed(() => store.tabs)
 const loading = computed(() => store.tabsLoading)
 
 function notAuth() {
-  openWindow('company', 'login', 'enterprise', {
+  openWindow('login', null,  {
     width: 400,
     height: 450,
     minWidth: 350,
@@ -27,48 +27,14 @@ function openConfigurator() {
     addNotification('error', 'Не удалось определить предприятие')
     return
   }
-
   openWindow(
-      'company',
-      'configurator',
-      'enterprise',
-      {
-        width: 900,
-        height: 500,
-        minWidth: 900,
-        minHeight: 500
-      },
-      false,
-      'enterprise/configurator',
-      null,
-      {},
-      'Конфигуратор'
-  )
-}
-
-function openTabData(tab: any) {
-  if (!store.getEnterpriseId()) return
-
-  store.preloadTabData(tab._id)
-
-  openWindow(
-      'company',
-      `Tab-data`,
-      'enterprise',
-      {width: 800, height: 600, minWidth: 600, minHeight: 400},
-      false,
-      null,
-      null,
-      {tabId: tab._id, tabName: tab.name},
-      `Данные: ${tab.name}`
+      'configurator'
   )
 }
 
 onMounted(() => {
   store.loadEnterpriseFromStorage()
   if (store.getEnterpriseId()) {
-    store.loadTabs()
-    store.preloadAllTabsData()
   } else {
     addLog('warning', 'Не авторизован в предприятии')
   }
@@ -120,26 +86,6 @@ onMounted(() => {
         <UIMoloLoaders wndLoader v-if="loading"/>
         <div v-else-if="tabs.length === 0" class="empty">
           <p>Нет вкладок</p>
-        </div>
-
-        <div v-else class="tabs-list">
-          <button
-              v-for="tab in tabs"
-              :key="tab._id"
-              class="tab-row"
-              @click="openTabData(tab)"
-          >
-            <section class="tab-icon" :style="{ backgroundColor: tab.color || '#6496ff' }">
-              <span class="material-icons">{{ tab.name.charAt(0) }}</span>
-            </section>
-            <div class="tab-info">
-              <div class="tab-name">{{ tab.name }}</div>
-              <div class="tab-meta">
-                <span> {{ tab.description }} </span>
-              </div>
-            </div>
-            <div class="arrow">→</div>
-          </button>
         </div>
       </template>
     </UIMoloSection>

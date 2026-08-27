@@ -207,7 +207,7 @@ const handleClick = (event: MouseEvent) => {
 }
 
 .molo-btn.small {
-  padding: 4px 12px;
+  padding: 4px 10px;
 }
 
 .molo-btn.full {

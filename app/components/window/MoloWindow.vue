@@ -315,7 +315,7 @@ watch(() => props.window?.zIndex, (newZIndex) => {
       <div class="window-header" @mousedown="handleDragStart">
         <div class="window-title">{{ props.window?.title || 'Окно' }}</div>
         <div class="header-logger" v-if="role === 'Управляющий'">
-          <span>{{ props.window?.key }}</span><span>{{ props.window?.id }}</span>
+          <span>{{ props.window?.key }}</span>
         </div>
         <div class="window-controls">
           <button class="control-btn refresh" @click="refreshContent" @mousedown.stop>

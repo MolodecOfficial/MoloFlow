@@ -2,7 +2,6 @@
 import { ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 
 const props = defineProps<{
-  label?: string
   tLabel?: string
   lRequired?: boolean
   type?: string
