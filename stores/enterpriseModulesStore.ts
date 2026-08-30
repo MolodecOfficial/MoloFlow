@@ -39,6 +39,12 @@ export const useEnterpriseModulesStore = defineStore('enterpriseModules', () => 
                 modules.value = response.modules || []
                 loadedEnterpriseId.value = enterpriseId
                 loaded.value = true
+
+                if (import.meta.client) {
+                    const { useModulePrefetch } = await import('~~/app/composables/compiler/useModulePrefetch')
+                    useModulePrefetch().prefetchModules(modules.value, enterpriseId)
+                }
+
             } catch (error) {
                 console.error('[enterpriseModulesStore] load error:', error)
                 modules.value = []

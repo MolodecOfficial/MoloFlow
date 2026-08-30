@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { defineAsyncComponent, computed } from 'vue'
-import { getSystemWindow } from '~/composables/systemWindows'
+import { getSystemWindow } from '~/composables/window/systemWindows'
 import DynamicModuleLoader from '~/layouts/modules/DynamicModuleLoader.vue'
 import Preview from '~/layouts/modules/Preview.vue'
 

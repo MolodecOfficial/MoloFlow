@@ -4,7 +4,7 @@ import { setGlobalComposables, useModuleCompiler } from '~/composables/compiler/
 import { useModuleService } from '~/composables/compiler/useModuleService'
 import { useLogger } from '~/composables/useLogger'
 import { useNotifications } from '~/composables/useNotifications'
-import { useWindowManager } from '~/composables/useWindowManager'
+import { useWindowManager } from '~/composables/window/useWindowManager'
 import { useAppStore } from '~~/stores/appStore'
 const props = defineProps<{
   moduleData?: any
@@ -42,8 +42,8 @@ const getEnterpriseId = (): string | null => {
   return null
 }
 const getModuleId = (): string | null => {
-  return props.moduleId
-      || props.moduleData?._id
+  return props.moduleData?._id
+      || props.moduleId
       || props.moduleData?.moduleId
       || props.moduleData?.id
       || null
@@ -51,17 +51,14 @@ const getModuleId = (): string | null => {
 async function loadModule() {
   error.value = null
   let fullData = props.moduleData
-  // Идём в сеть ТОЛЬКО если код реально отсутствует.
-  // Если код пришёл через props (из стора или из Creature.vue) — пропускаем сетевой запрос.
-  // Это устраняет лишний round-trip при открытии модуля через меню, если данные уже загружены.
+
   const hasCode = fullData?.code && String(fullData.code).trim().length > 0
-  if (!hasCode && getModuleId()) {
+
+  const resolvedId = getModuleId()
+
+  if (!hasCode && resolvedId) {
     const enterpriseId = getEnterpriseId()
-    const moduleId = getModuleId()
-    if (!enterpriseId || !moduleId) {
-      // ФИКС БАГА №2: раньше при отсутствующем enterpriseId/moduleId код
-      // просто проваливался дальше и падал на "Нет данных модуля" без
-      // внятного объяснения. Теперь явно сообщаем причину.
+    if (!enterpriseId) {
       error.value = 'Не удалось определить предприятие или модуль для загрузки'
       emit('error', error.value)
       return
@@ -69,14 +66,7 @@ async function loadModule() {
     isLoadingModule.value = true
     try {
       addLog('info', 'Загружаю код модуля с сервера...')
-      // ФИКС БАГА №2 (сохранён): вызываем единый эндпоинт, отдающий модуль
-      // ПОЛНОСТЬЮ (мета + code + files + dependencies) за один запрос.
-      //
-      // НОВОЕ: fetchFullModuleData теперь кэширующий — если этот moduleId
-      // уже грузился (в этом окне, в другом окне того же модуля, или его
-      // прогрел фон через useModulePrefetch) — тут не будет ни одного
-      // сетевого запроса, данные вернутся из памяти мгновенно.
-      fullData = await fetchFullModuleData(moduleId, enterpriseId)
+      fullData = await fetchFullModuleData(resolvedId, enterpriseId)
     } catch (e) {
       console.error('[DynamicModuleLoader] Ошибка загрузки модуля:', e)
       error.value = 'Не удалось загрузить модуль с сервера'
@@ -102,7 +92,7 @@ async function loadModule() {
   // проверяет кэш скомпилированных компонентов. Если модуль не менялся
   // с прошлого открытия (или был прогрет фоном) — компиляция (Babel +
   // vue3-sfc-loader) не запускается вообще, компонент отдаётся мгновенно.
-  await compileModule(code, files, deps, props.moduleId || fullData._id, fullData.version)
+  await compileModule(code, files, deps, fullData._id || resolvedId, fullData.version)
 }
 watch(
     () => [props.moduleData?._id, props.moduleId],

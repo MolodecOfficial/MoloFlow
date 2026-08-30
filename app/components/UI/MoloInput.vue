@@ -182,13 +182,13 @@ watch(() => props.modelValue, (newVal) => {
 <template>
   <!-- Режим телефона -->
   <div v-if="phone" class="form-group">
-    <label :for="id || label">
+    <label :for="id || 'phone-input'">
       {{ tLabel }}
       <span class="required" v-if="lRequired">*</span>
     </label>
     <input
         :type="'tel'"
-        :id="id || label"
+        :id="id || 'phone-input'"
         :value="phoneValue"
         @input="onPhoneInput"
         @focus="onPhoneFocus"
@@ -202,14 +202,14 @@ watch(() => props.modelValue, (newVal) => {
   <!-- Режим поиска адреса -->
   <div v-else-if="address" class="address-search-container">
     <div class="form-group">
-      <label :for="id || label">
+      <label :for="id || 'phone-input'">
         {{ tLabel }}
         <span class="required" v-if="lRequired">*</span>
       </label>
       <div class="search-wrapper">
         <input
             :type="type || 'text'"
-            :id="id || label"
+            :id="id || 'phone-input'"
             :value="addressSearch"
             @input="(e) => { addressSearch = (e.target as HTMLInputElement).value; $emit('update:modelValue', addressSearch); $emit('input', e); onAddressSearch(); }"
             @focus="onAddressSearch"
@@ -236,13 +236,13 @@ watch(() => props.modelValue, (newVal) => {
 
   <!-- Обычный режим (включая date) -->
   <div v-else class="form-group">
-    <label :for="id || label">
+    <label :for="id || 'phone-input'">
       {{ tLabel }}
       <span class="required" v-if="lRequired">*</span>
     </label>
     <input
         :type="type || 'text'"
-        :id="id || label"
+        :id="id || 'phone-input'"
         :value="addressSearch"
         @input="(e) => { const val = (e.target as HTMLInputElement).value; addressSearch = val; $emit('update:modelValue', type === 'number' ? (val === '' ? null : Number(val)) : val); $emit('input', e); }"
         @focus="$emit('focus', $event)"

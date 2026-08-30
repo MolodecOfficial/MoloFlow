@@ -626,6 +626,11 @@ export async function precompileModule(
     }
 }
 
+export async function warmupComponentRegistry() {
+    return loadAllComponents()
+}
+
+
 // ======================================================
 // ОСНОВНОЙ COMPOSABLE — используется конкретным окном
 // ======================================================

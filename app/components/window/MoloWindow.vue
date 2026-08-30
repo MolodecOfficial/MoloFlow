@@ -1,11 +1,10 @@
 <!-- MoloWindow.vue -->
 <script setup lang="ts">
 import type {WindowItem, OpenWindowOptions} from '~/types/window'
-import {useWindowManager} from '~/composables/useWindowManager'
-import {useWindowDrag} from '~/composables/useWindowDrag'
-import {useWindowResize} from '~/composables/useWindowResize'
+import {useWindowManager} from '~/composables/window/useWindowManager'
+import {useWindowDrag} from '~/composables/window/useWindowDrag'
+import {useWindowResize} from '~/composables/window/useWindowResize'
 import {ref, computed, onMounted, onUnmounted} from 'vue'
-import RestoreIcon from '~~/public/min.svg'
 import {useUserStore} from "~~/stores/userStore"
 import {getAllThemes, getAllButtonStyles, THEME_STORAGE_KEY, BUTTON_STYLE_STORAGE_KEY} from '~~/types/window-themes'
 

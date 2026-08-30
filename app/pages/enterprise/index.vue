@@ -3,7 +3,10 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter, useHead } from '#imports'
 import { useUserStore } from '~~/stores/userStore'
 import { useNotifications } from '~/composables/useNotifications'
-import { useWindowManager } from '~/composables/useWindowManager'
+import { useWindowManager } from '~/composables/window/useWindowManager'
+import { readDrag } from '~/composables/window/useDragPayload'
+import { usePinnedItems } from '~/composables/window/usePinnedItems'
+import { usePersistentState } from '~/composables/window/usePersistentState'
 import { useLogger } from '~/composables/useLogger'
 import logo from '~~/public/logo.ico'
 import { useAppStore } from "~~/stores/appStore"
@@ -15,6 +18,7 @@ const role = ref('')
 const enterpriseName = ref('')
 const isLoading = ref(true)
 const dataPreloadStarted = ref(false)
+
 
 const {
   windows,
@@ -32,6 +36,7 @@ const appStore = useAppStore()
 const menuEditor = useMenuEditorStore()
 const moduleEditor = useModuleEditorStore()
 const router = useRouter()
+const { pin } = usePinnedItems()
 const { notifications, removeNotification } = useNotifications('Главная страница')
 const { addLog } = useLogger('Предприятие')
 
@@ -93,8 +98,26 @@ const loadUserData = () => {
   isLoading.value = false
 }
 
+function onWorkspaceDrop(e: DragEvent) {
+  const payload = readDrag(e)
+  if (!payload) return
+
+  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+  const position = { x: e.clientX - rect.left - 90, y: e.clientY - rect.top - 90 }
+
+  if (payload.type === 'note') {
+    pin('note', { text: payload.text }, position)
+
+    // Заметка "переезжает" со стола заметок на рабочий стол — убираем исходник,
+    // чтобы не плодить дубликат. Ключ ('scratch-notes') совпадает с тем, что
+    // использует usePersistentState в MoloNotesTool.vue, поэтому трогаем то же хранилище.
+    const notes = usePersistentState<any[]>('scratch-notes', [])
+    notes.value = notes.value.filter(n => n.id !== payload.sourceId)
+  }
+}
+
 const openSettings = () => {
-  openWindow('checkingAPI')
+  openWindow('customisation')
 }
 
 // Предзагрузка всех данных предприятия (вкладки, стандарты, записи)
@@ -242,11 +265,19 @@ function deleteUser() {
         </header>
 
         <!-- Основная рабочая зона -->
-        <main class="workspace">
-          <MoloMenu
-              :role="role"
-              @open-window="openWindow"
-          />
+        <main class="workspace"
+              @dragover.prevent
+              @drop="onWorkspaceDrop">
+          <DekstopMoloPinnedLayer />
+
+          <section class="workspace-header">
+            <MoloMenu
+                :role="role"
+                @open-window="openWindow"
+            />
+            <LayoutMoloToolbar/>
+          </section>
+
 
           <WindowWindowsManager
               :windows="windows"
@@ -572,6 +603,11 @@ function deleteUser() {
   min-height: calc(100vh - 160px);
   box-sizing: border-box;
   overflow: hidden;
+}
+
+.workspace-header {
+  display: flex;
+  justify-content: space-between;
 }
 
 /* ========================================

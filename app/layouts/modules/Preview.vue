@@ -3,7 +3,7 @@ import { computed, ref, watch, onErrorCaptured, onMounted, onUnmounted } from 'v
 import { useModuleCompiler, setGlobalComposables } from '~/composables/compiler/useModuleCompiler'
 import { useLogger } from '~/composables/useLogger'
 import { useNotifications } from '~/composables/useNotifications'
-import { useWindowManager } from '~/composables/useWindowManager'
+import { useWindowManager } from '~/composables/window/useWindowManager'
 import { useAppStore } from '~~/stores/appStore'
 
 const props = defineProps<{ windowData?: any }>()

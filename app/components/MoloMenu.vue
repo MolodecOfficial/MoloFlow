@@ -6,7 +6,8 @@ import lock from '~~/public/lock.svg'
 import tsIcon from '~~/public/ts.png'
 import jsIcon from '~~/public/js.png'
 import { useMoloMenuStore } from '~~/stores/moloMenuStore'
-import { useWindowManager } from '~/composables/useWindowManager'
+import { useWindowManager } from '~~/app/composables/window/useWindowManager'
+import { useModulePrefetch } from '~/composables/compiler/useModulePrefetch'
 
 const props = defineProps<{ role: string }>()
 const emit = defineEmits<{
@@ -17,6 +18,7 @@ const menuStore = useMoloMenuStore()
 const { openWindow } = useWindowManager()
 const { addLog } = useLogger('Меню')
 const { menuGroups, staticModuleGroups, dynamicModules, menuLoaded } = storeToRefs(menuStore)
+const { prefetchOne } = useModulePrefetch()
 
 const enterprise = useEnterprise()
 
@@ -535,9 +537,9 @@ onUnmounted(() => {
                         :class="{
                           folder: item.items?.length,
                           script: item.isScript,
-                          executing: item.isScript && executingModules.has(item.moduleId)
-                        }"
+                          executing: item.isScript && executingModules.has(item.moduleId) }"
                         @click="handleCardClick(item)"
+                        @mouseenter="item.isModule && item.moduleId && prefetchOne(item.moduleId, enterprise.enterpriseId.value)"
                     >
                       <span class="card-icon">
                         <template v-if="item.items?.length">📁</template>

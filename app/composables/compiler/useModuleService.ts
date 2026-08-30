@@ -32,7 +32,6 @@ export function useModuleService() {
         if (!force && cache.isRawFresh(moduleId)) {
             const cached = cache.getRaw(moduleId)
             if (cached?.data) {
-                addLog('info', `Модуль ${moduleId} взят из кэша`)
                 return cached.data
             }
         }

@@ -80,6 +80,43 @@ export const SYSTEM_WINDOWS: Record<string, SystemWindowDefinition> = {
         title: 'Стандарты отображения',
         size: { width: 800, height: 600 },
     },
+
+    'dev:json': {
+        component: () => import('~/components/devtools/MoloJSONTool.vue'),
+        title: 'JSON',
+        size: { width: 700, height: 500 },
+    },
+    'dev:regex': {
+        component: () => import('~/components/devtools/MoloRegexTool.vue'),
+        title: 'Regex',
+        size: { width: 700, height: 500 },
+    },
+    'dev:encode': {
+        component: () => import('~/components/devtools/MoloEncodeTool.vue'),
+        title: 'Encode/Decode',
+        size: { width: 650, height: 550 },
+    },
+    'dev:notes': {
+        component: () => import('~/components/devtools/MoloNotesTool.vue'),
+        title: 'Заметки',
+        size: { width: 600, height: 500 },
+    },
+
+    'dev:calculator': {
+        component: () => import('~/components/devtools/MoloCalculatorTool.vue'),
+        title: 'Калькулятор',
+        size: { width: 480, height: 480, minWidth: 420, minHeight: 420 },
+    },
+    'dev:clock': {
+        component: () => import('~/components/devtools/MoloClockTool.vue'),
+        title: 'Часы',
+        size: { width: 560, height: 500 },
+    },
+    'dev:calendar': {
+        component: () => import('~/components/devtools/MoloCalendarTool.vue'),
+        title: 'Календарь',
+        size: { width: 680, height: 520 },
+    },
 }
 
 export function getSystemWindow(key: string): SystemWindowDefinition | null {

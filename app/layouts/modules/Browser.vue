@@ -1,15 +1,15 @@
 <script setup>
-import { ref, onMounted } from 'vue'
-import { storeToRefs } from 'pinia'
-import { useModulesStore } from '~~/stores/moduleStore'
+import {onMounted, ref} from 'vue'
+import {storeToRefs} from 'pinia'
+import {useModulesStore} from '~~/stores/moduleStore'
 import isOfficial from '~~/public/isOfficial.svg'
 import jsIcon from "~~/public/js.png"
 import tsIcon from "~~/public/ts.png"
 import vueIcon from "~~/public/vue.png"
 
-const { openWindow } = useWindowManager()
-const { addNotification } = useNotifications('Браузер')
-const { addLog } = useLogger('Браузер')
+const {openWindow} = useWindowManager()
+const {addNotification} = useNotifications('Браузер')
+const {addLog} = useLogger('Браузер')
 
 const moduleStore = useModulesStore()
 const {
@@ -45,15 +45,15 @@ const handleImageError = (event) => {
 }
 
 const formats = [
-  { label: 'Javascript', value: 'js' },
-  { label: 'TypeScript', value: 'ts' },
-  { label: 'Vue', value: 'vue' }
+  {label: 'Javascript', value: 'js'},
+  {label: 'TypeScript', value: 'ts'},
+  {label: 'Vue', value: 'vue'}
 ]
 
 const sorts = [
-  { label: 'Количество загрузок', value: 'downloads' },
-  { label: 'Рейтинг', value: 'rating' },
-  { label: 'Новинки', value: 'createdAt' }
+  {label: 'Количество загрузок', value: 'downloads'},
+  {label: 'Рейтинг', value: 'rating'},
+  {label: 'Новинки', value: 'createdAt'}
 ]
 
 const showTooltip = (moduleId) => {
@@ -134,7 +134,7 @@ onMounted(() => {
 
     <!-- Основной контент -->
     <div class="modules-content">
-      <UIMoloLoaders wndLoader v-if="loading" />
+      <UIMoloLoaders wndLoader v-if="loading"/>
 
       <div v-else-if="modules.length === 0" class="empty">
         Модулей не найдено
@@ -178,7 +178,7 @@ onMounted(() => {
                     @click="handleImport(mod)"
                     :disabled="isImportingModule(mod._id)"
                 >
-                  <UIMoloLoaders btnLoader v-if="isImportingModule(mod._id)" />
+                  <UIMoloLoaders btnLoader v-if="isImportingModule(mod._id)"/>
                   <span v-else>Импорт</span>
 
                 </UIMoloButton>
@@ -200,7 +200,6 @@ onMounted(() => {
                 <p class="description">{{ mod.description || 'Нет описания' }}</p>
                 <div class="stats">
                   <span>⬇️ {{ mod.stats?.downloads || 0 }}</span>
-                  <span>⭐ {{ mod.stats?.ratings?.average || 0 }} ({{ mod.stats?.ratings?.count || 0 }})</span>
                 </div>
                 <div class="tags">
                   <span v-for="tag in mod.tags" :key="tag" class="tag">{{ tag }}</span>

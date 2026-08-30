@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 import type { WindowItem, WindowPosition, WindowSize, OpenWindowOptions } from '~/types/window'
-import { getSystemWindow } from '~~/app/composables/systemWindows'
+import { getSystemWindow } from './systemWindows'
 
 // Единое хранилище окон на всё приложение.
 const windows = ref<WindowItem[]>([])

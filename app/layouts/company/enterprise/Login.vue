@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { useWindowManager } from '~/composables/useWindowManager'
+import { useWindowManager } from '~/composables/window/useWindowManager'
 import { useNotifications } from '~/composables/useNotifications'
 import { useLogger } from '~/composables/useLogger'
 import { useEnterprise } from '~/composables/useEnterprise'
