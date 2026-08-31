@@ -1,6 +1,7 @@
 <script lang="ts" setup>
 import {computed, onMounted, onUnmounted, ref, watch} from 'vue'
 import {useAppStore} from '~~/stores/appStore'
+import { useWindowManager } from "~~/app/composables/window/useWindowManager";
 
 const props = defineProps<{
   enterpriseId: string

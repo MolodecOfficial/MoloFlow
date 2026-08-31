@@ -6,6 +6,7 @@ import isOfficial from '~~/public/isOfficial.svg'
 import jsIcon from "~~/public/js.png"
 import tsIcon from "~~/public/ts.png"
 import vueIcon from "~~/public/vue.png"
+import { useWindowManager } from "~~/app/composables/window/useWindowManager.ts";
 
 const {openWindow} = useWindowManager()
 const {addNotification} = useNotifications('Браузер')

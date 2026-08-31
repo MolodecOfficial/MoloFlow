@@ -62,34 +62,6 @@ export default defineEventHandler(async (event) => {
                         ]
                     },
                     {
-                        id: 'points',
-                        placeName: 'points',
-                        title: 'Точки',
-                        type: 'item',
-                        requiredRole: ['Управляющий'],
-                        isActive: true,
-                        items: [
-                            {
-                                id: 'ProblemPoints',
-                                placeName: 'ProblemPoints',
-                                title: 'Проблемные точки',
-                                type: 'item',
-                                requiredRole: ['Управляющий'],
-                                isActive: true,
-                                componentName: 'ProblemPoints'
-                            },
-                            {
-                                id: 'ConfigurePoints',
-                                placeName: 'ConfigurePoints',
-                                title: 'Конфигурация точки',
-                                type: 'item',
-                                requiredRole: ['Управляющий'],
-                                isActive: true,
-                                componentName: 'ConfigurePoints'
-                            }
-                        ]
-                    },
-                    {
                         id: 'termsOfUse',
                         placeName: 'termsOfUse',
                         title: 'Условия пользования',

@@ -5,16 +5,27 @@ export interface PinnedItem {
     type: string   // 'note' — в будущем можно добавлять другие типы виджетов
     data: Record<string, any>
     position: { x: number; y: number }
+    size: { width: number; height: number }
 }
 
 // Единый реестр на всё приложение — та же логика хранения, что и у заметок/окон
 // (localStorage, привязан к текущему enterpriseId через usePersistentState).
 const pinnedItems = usePersistentState<PinnedItem[]>('pinned-desktop-items', [])
 
+const DEFAULT_SIZE = { width: 190, height: 190 }
+
 export function usePinnedItems() {
-    function pin(type: string, data: Record<string, any>, position: { x: number; y: number }): string {
+    function pin(
+        type: string,
+        data: Record<string, any>,
+        position: { x: number; y: number },
+        size?: { width: number; height: number }
+    ): string {
         const id = crypto.randomUUID()
-        pinnedItems.value = [...pinnedItems.value, { id, type, data, position }]
+        pinnedItems.value = [
+            ...pinnedItems.value,
+            { id, type, data, position, size: size ?? DEFAULT_SIZE }
+        ]
         return id
     }
 

@@ -63,7 +63,6 @@ const handleLogin = async () => {
     addNotification('error', 'Ошибка входа')
   } finally {
     loading.value = false
-    addLog('success', 'Успешный вход в предприятие')
   }
 }
 

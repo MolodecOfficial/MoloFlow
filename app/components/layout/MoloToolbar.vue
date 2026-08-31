@@ -76,7 +76,7 @@ const openTool = (tool: typeof tools[number]) => {
 
   padding: 6px 8px 6px 7px;
 
-
+  background: var(--half_opacity_bg);
   border: 1px solid var(--half_opacity_border);
   border-radius: 999px;
 

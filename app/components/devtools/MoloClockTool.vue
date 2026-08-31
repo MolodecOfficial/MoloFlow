@@ -1,7 +1,7 @@
 <!-- app/components/devtools/MoloClockTool.vue -->
 <script setup lang="ts">
-import {computed, onMounted, onUnmounted, ref} from 'vue'
-import {usePersistentState} from '~/composables/window/usePersistentState'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { usePersistentState } from '~/composables/window/usePersistentState'
 
 interface City {
   id: string;
@@ -14,9 +14,9 @@ const { addLog } = useLogger('Часы')
 let tickTimer: any = null
 
 const cities = usePersistentState<City[]>('clock-cities', [
-  {id: 'local', label: 'Локально', tz: Intl.DateTimeFormat().resolvedOptions().timeZone},
-  {id: 'msk', label: 'Москва', tz: 'Europe/Moscow'},
-  {id: 'utc', label: 'UTC', tz: 'UTC'},
+  { id: 'local', label: 'Локально', tz: Intl.DateTimeFormat().resolvedOptions().timeZone },
+  { id: 'msk', label: 'Москва', tz: 'Europe/Moscow' },
+  { id: 'utc', label: 'UTC', tz: 'UTC' },
 ])
 
 const newLabel = ref('')
@@ -51,12 +51,12 @@ function dateFor(tz: string) {
 function addCity() {
   if (!newLabel.value.trim() || !newTz.value.trim()) return
   try {
-    new Intl.DateTimeFormat('ru-RU', {timeZone: newTz.value})
+    new Intl.DateTimeFormat('ru-RU', { timeZone: newTz.value })
   } catch {
     addLog('warning', 'Неизвестная таймзона. Пример: Europe/Berlin, Asia/Tokyo')
-    return;
+    return
   }
-  cities.value = [...cities.value, {id: crypto.randomUUID(), label: newLabel.value.trim(), tz: newTz.value.trim()}]
+  cities.value = [...cities.value, { id: crypto.randomUUID(), label: newLabel.value.trim(), tz: newTz.value.trim() }]
   newLabel.value = ''
   newTz.value = ''
 }
@@ -103,15 +103,16 @@ onMounted(() => {
   }, 1000)
 })
 onUnmounted(() => {
-  clearInterval(tickTimer);
+  clearInterval(tickTimer)
   clearInterval(swInterval)
 })
 </script>
 
 <template>
-  <div class="tool">
+  <!-- Добавили контекстный класс-обертку clock-tool-context -->
+  <div class="tool clock-tool-context">
     <div class="cities">
-      <div v-for="city in cities" :key="city.id" class="city-card">
+      <div v-for="city in cities" :key="city.id" class="city-card" v-pinnable>
         <UIMoloButton class="remove small close" @click="removeCity(city.id)">✕</UIMoloButton>
         <div class="city-label">{{ city.label }}</div>
         <div class="city-time">{{ timeFor(city.tz) }}</div>
@@ -135,8 +136,9 @@ onUnmounted(() => {
   </div>
 </template>
 
+<!-- Убран атрибут scoped. Стили изолированы через .clock-tool-context -->
 <style scoped>
-.tool {
+.clock-tool-context.tool {
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -146,13 +148,13 @@ onUnmounted(() => {
   overflow-x: hidden;
 }
 
-.cities {
+.clock-tool-context .cities {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: 10px;
 }
 
-.city-card {
+.clock-tool-context .city-card {
   position: relative;
   background: rgba(91, 141, 239, 0.06);
   border: 1px solid var(--half_opacity_border);
@@ -163,50 +165,51 @@ onUnmounted(() => {
   gap: 2px;
 }
 
-.city-label {
+.clock-tool-context .city-label {
   color: #999;
   font-size: 11px;
   text-transform: uppercase;
 }
 
-.city-time {
+.clock-tool-context .city-time {
   color: #fff;
   font-family: 'JetBrains Mono', monospace;
   font-size: 22px;
   font-weight: 700;
 }
 
-.city-date {
+.clock-tool-context .city-date {
   color: #888;
   font-size: 12px;
 }
 
-.remove {
+.clock-tool-context .remove {
+  width: min-content;
   position: absolute;
   top: -10px;
   right: -10px;
 }
 
-.add-card {
+.clock-tool-context .add-card {
   justify-content: center;
   gap: 6px;
   border-style: dashed;
 }
 
-.mini-input {
+.clock-tool-context .mini-input {
   border-radius: 6px;
   color: #fff;
   font-size: 12px;
 }
 
-.stopwatch {
+.clock-tool-context .stopwatch {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 12px;
 }
 
-.sw-display {
+.clock-tool-context .sw-display {
   font-family: 'JetBrains Mono', monospace;
   font-size: 36px;
   font-weight: 700;
@@ -214,7 +217,7 @@ onUnmounted(() => {
   letter-spacing: 1px;
 }
 
-.sw-actions {
+.clock-tool-context .sw-actions {
   display: flex;
   gap: 10px;
 }

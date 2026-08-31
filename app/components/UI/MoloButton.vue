@@ -29,6 +29,7 @@ const handleClick = (event: MouseEvent) => {
         'close': $attrs.variant === 'close',
         'small': $attrs.variant === 'small',
         'action': $attrs.variant === 'action',
+        'pinned': $attrs.variant === 'pinned',
         'full': $attrs.variant === 'full',
         'fit': $attrs.variant === 'fit',
         'transparent': $attrs.variant === 'transparent'
@@ -216,6 +217,13 @@ const handleClick = (event: MouseEvent) => {
 
 .molo-btn.fit {
   width: fit-content;
+}
+
+.molo-btn.pinned {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  z-index: 22;
 }
 
 .molo-btn.transparent {

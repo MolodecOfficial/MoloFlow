@@ -11,6 +11,7 @@ import {
   BUTTON_STYLE_STORAGE_KEY,
 } from '~~/types/window-themes'
 import StyleEditor from '~~/app/components/MoloStyleEditor.vue'
+import { useWindowManager } from "~~/app/composables/window/useWindowManager";
 
 const selectedTheme = ref<WindowTheme>(windowThemes[0])
 const selectedButtonStyle = ref<WindowButtonStyle>(windowButtonStyles[0])

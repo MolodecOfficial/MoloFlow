@@ -9,6 +9,8 @@ import {storeToRefs} from 'pinia'
 import jsIcon from '~~/public/js.png'
 import tsIcon from '~~/public/ts.png'
 import vueIcon from '~~/public/vue.png'
+import { useWindowManager } from "~~/app/composables/window/useWindowManager";
+
 defineOptions({
   inheritAttrs: false
 })

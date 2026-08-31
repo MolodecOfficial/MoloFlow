@@ -3,17 +3,26 @@
 </script>
 
 <template>
-<section class="form-section">
-  <section class="form-header">
-    <slot name="header"/>
+  <section class="form-container" v-pinnable>
+    <section class="form-section">
+      <section class="form-header">
+        <slot name="header"/>
+      </section>
+      <section class="form-main" >
+        <slot name="main"/>
+      </section>
+    </section>
   </section>
-  <section class="form-main">
-    <slot name="main"/>
-  </section>
-</section>
+
 </template>
 
 <style scoped>
+.form-container {
+  display: flex;
+  flex-direction: column;
+  background: none;
+  border: none;
+}
 .form-section {
   position: relative;
   overflow: hidden;

@@ -27,9 +27,7 @@ const removeNote = (id: string) => {
     <UIMoloButton class="action" @click="addNote">+ Новая заметка</UIMoloButton>
     <div class="notes-grid">
       <div
-          v-for="note in notes" :key="note.id" class="note"
-          draggable="true"
-          @dragstart="onDragStart($event, note)"
+          v-for="note in notes" :key="note.id" class="note" v-pinnable
       >
         <div class="pinned-note-header"/>
         <textarea v-model="note.text" placeholder="Текст..."/>
@@ -88,6 +86,7 @@ const removeNote = (id: string) => {
 
 
 .remove {
+  width: min-content;
   position: absolute;
   top: -12px;
   right: -12px;

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {computed, onMounted} from 'vue'
 import {useAppStore} from '~~/stores/appStore'
+import { useWindowManager } from "~~/app/composables/window/useWindowManager";
 
 const {openWindow} = useWindowManager()
 const {addNotification} = useNotifications('Управление предприятием')

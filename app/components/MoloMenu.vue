@@ -438,19 +438,6 @@ onUnmounted(() => {
       <div v-if="loading" class="loading-inline">
         <UIMoloLoaders wnd-loader/>
       </div>
-
-      <div v-else class="quick-dock">
-        <button
-            v-for="cat in quickCategories"
-            :key="cat.id"
-            class="dock-blip"
-            :style="{ '--blip-color': categoryColor(cat.title) }"
-            :title="cat.title"
-            @click="openPanelWithCategory(cat)"
-        >
-          {{ (cat.title || '?').charAt(0).toUpperCase() }}
-        </button>
-      </div>
     </div>
 
     <Teleport to="body">
