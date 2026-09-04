@@ -799,6 +799,7 @@ const addModuleToMenu = async () => {
 
 const openPreview = () => {
   previewWindowId.value = openPreviewWindow(formData.value.fileName, {
+    moduleName: formData.value.name,
     code: formData.value.code,
     files: moduleFiles.value,
     dependencies: formData.value.dependencies,

@@ -1,6 +1,7 @@
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import type { WindowItem, WindowPosition, WindowSize, OpenWindowOptions } from '~/types/window'
 import { getSystemWindow } from './systemWindows'
+import { usePinnedItems } from './usePinnedItems'
 
 // Единое хранилище окон на всё приложение.
 const windows = ref<WindowItem[]>([])
@@ -11,6 +12,23 @@ const TOPBAR_OFFSET = 90
 const CASCADE_STEP_X = 34
 const CASCADE_STEP_Y = 28
 const STORAGE_PREFIX = 'window_settings_'
+
+const dataCache = new Map<string, string>()
+
+const { findByWindowKey, syncDataByWindowKey } = usePinnedItems()
+
+// Поля, которые существуют только в контексте пина (снапшот HTML, служебный
+// dragId, тип виджета) и не должны утекать в data живого окна, когда мы
+// подмешиваем туда данные связанного пина (при переоткрытии окна или при
+// двойном клике "открыть связанное окно" из MoloPinnedShell).
+const PIN_ONLY_FIELDS = ['html', 'dragId', 'type', 'sourcePath']
+
+function sanitizePinData(pinData?: Record<string, any>) {
+    if (!pinData) return {}
+    const clone = { ...pinData }
+    PIN_ONLY_FIELDS.forEach((f) => delete clone[f])
+    return clone
+}
 
 interface StoredWindowSettings {
     size: { width: number; height: number }
@@ -49,6 +67,7 @@ const getCascadePosition = (width: number, height: number) => {
 }
 
 export function useWindowManager() {
+    const { findByWindowKey, syncDataByWindowKey, pinnedItems, unpin } = usePinnedItems()
     const getEnterpriseId = (): string | null => {
         try {
             const data = localStorage.getItem('currentEnterprise')
@@ -152,9 +171,16 @@ export function useWindowManager() {
      *
      * Одинаковый key при повторном вызове не создаёт новое окно — оно
      * фокусируется, а data обновляется. Нужно всегда новое — options.forceNew.
+     *
+     * Если для key существует закреплённый (pinned) элемент, и в этот
+     * момент НЕТ открытого окна с таким key — данные из пина (без служебных
+     * полей вроде html/dragId) подмешиваются в data вновь создаваемого окна.
+     * Это вторая половина двусторонней синхронизации: пин → окно.
      */
     const openWindow = (key: string, data?: any, options: OpenWindowOptions = {}): string => {
         const isModal = options.modal ?? getSystemWindow(key)?.modal ?? false
+
+        let linkedPinData: Record<string, any> | undefined
 
         if (!isModal && !options.forceNew) {
             const existing = windows.value.find(w => w.key === key && !w.isMinimized)
@@ -163,6 +189,12 @@ export function useWindowManager() {
                 if (options.title) existing.title = options.title
                 focusWindow(existing.id)
                 return existing.id
+            }
+
+            const linkedPin = findByWindowKey(key)
+            if (linkedPin) {
+                console.log('[WindowManager] no open window, merging pin data into new window key=', key)
+                linkedPinData = sanitizePinData(linkedPin.data)
             }
         }
 
@@ -205,6 +237,8 @@ export function useWindowManager() {
             data?.moduleName ||
             key
 
+        const mergedData = { ...(linkedPinData ?? {}), ...(data ?? {}) }
+
         const newWindow: WindowItem = {
             id: `window_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
             key,
@@ -215,8 +249,8 @@ export function useWindowManager() {
             position: initialPosition,
             size: { ...initialSize, isMaximized },
             data: isDatabaseModule
-                ? { ...(data ?? {}), moduleId: key, isLoading: true, error: null }
-                : (data ?? {}),
+                ? { ...mergedData, moduleId: key, isLoading: true, error: null }
+                : mergedData,
         }
 
         windows.value.push(newWindow)
@@ -247,9 +281,25 @@ export function useWindowManager() {
         })
     }
 
+    /**
+     * Закрывает окно. Если у окна был windowKey и на него ссылается пин
+     * с closeWithWindow=true — пин удаляется вместе с окном (второй вариант
+     * поведения, который просил пользователь: "пусть элемент просто
+     * закрывается вместе с окном"). Пины без этого флага просто переходят
+     * в offline-состояние (см. MoloPinnedShell.vue) и продолжают жить.
+     */
     const closeWindow = (id: string) => {
         const index = windows.value.findIndex(w => w.id === id)
-        if (index !== -1) windows.value.splice(index, 1)
+        if (index === -1) return
+
+        const win = windows.value[index]
+        windows.value.splice(index, 1)
+
+        if (win?.key) {
+            pinnedItems.value
+                .filter(p => p.windowKey === win.key && p.closeWithWindow)
+                .forEach(p => unpin(p.id))
+        }
     }
 
     const focusWindow = (id: string) => {
@@ -314,13 +364,29 @@ export function useWindowManager() {
 
     const updateWindowData = (id: string, newData: any) => {
         const win = windows.value.find(w => w.id === id)
-        if (win) win.data = { ...(win.data || {}), ...newData, _updated: Date.now() }
+        if (win) {
+            win.data = { ...(win.data || {}), ...newData, _updated: Date.now() }
+            console.log('[WindowManager] updateWindowData id=', id, 'key=', win.key)
+        }
     }
 
     const updateWindowTitle = (id: string, title: string) => {
         const win = windows.value.find(w => w.id === id)
         if (win) win.title = title
     }
+
+    watch(windows, () => {
+        windows.value.forEach(win => {
+            if (!win.key) return
+            const current = JSON.stringify(win.data)
+            const cached = dataCache.get(win.id)
+            if (cached !== current) {
+                dataCache.set(win.id, current)
+                console.log('[WindowManager] windows watch → sync key=', win.key)
+                syncDataByWindowKey(win.key, win.data || {})
+            }
+        })
+    }, { deep: true })
 
     return {
         windows,

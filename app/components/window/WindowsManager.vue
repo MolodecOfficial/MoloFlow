@@ -32,10 +32,10 @@ const restoreWindowWithAnimation = (id: string) => {
 <template>
   <div class="window-manager">
     <MoloWindow
-        v-for="win in windows.filter(w => !w.isMinimized)"
+        v-for="win in windows"
         :key="win.id"
         :window="win"
-        :is-visible="true"
+        :is-visible="!win.isMinimized"
         :is-modal="win.isModal"
         @close="emit('close', win.id)"
         @minimize="emit('minimize', win.id)"

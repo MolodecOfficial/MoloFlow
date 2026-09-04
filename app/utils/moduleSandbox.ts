@@ -1,4 +1,3 @@
-// server/utils/moduleSandbox.ts
 import vm from 'node:vm'
 import { DynamicModule } from '~~/server/models/dynamicModules.model'
 import { createError } from 'h3'

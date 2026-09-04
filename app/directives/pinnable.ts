@@ -3,6 +3,11 @@ import {
     startDrag,
     discardDragCallback
 } from '~~/app/composables/window/useDragPayload'
+import {
+    registerSourceElement,
+    unregisterSourceElement
+} from '~~/app/composables/window/useLiveSourceRegistry'
+import { usePinnedItems } from '~~/app/composables/window/usePinnedItems'
 
 export interface PinnableOptions {
     type?: string
@@ -14,6 +19,7 @@ export interface PinnableOptions {
 type PinnableEl = HTMLElement & {
     __pinnableOptions?: PinnableOptions
     __lastDragId?: string
+    __liveDragIds?: Set<string> // все dragId, выданные с этого элемента — нужны, чтобы отписаться от реестра при unmount
 }
 
 // Свойства, которые реально формируют "внешний вид" (цвет, шрифты,
@@ -51,8 +57,13 @@ const VISUAL_PROPS = [
 //    источника в момент восстановления пина (например, если вкладка/окно,
 //    из которого что-то закрепили, сейчас не открыта).
 // Внешний вид "запекается" один раз, в момент закрепления, и дальше уже
-// не меняется — ровно то, что нужно для статичного снапшота.
-function inlineVisualStyles(source: Element, target: HTMLElement) {
+// не меняется сам по себе — НО пин теперь умеет попросить свежий снапшот
+// у живого source-элемента заново (см. useLiveSourceRegistry.ts +
+// MoloPinnedShell.vue), пока окно, из которого его вытянули, открыто.
+//
+// Экспортируем функцию наружу — она переиспользуется в MoloPinnedShell.vue
+// для повторного снятия снапшота при live-синхронизации.
+export function inlineVisualStyles(source: Element, target: HTMLElement) {
     const computed = getComputedStyle(source)
     let cssText = ''
     for (const prop of VISUAL_PROPS) {
@@ -70,7 +81,21 @@ function inlineVisualStyles(source: Element, target: HTMLElement) {
     }
 }
 
-function snapshotElement(el: HTMLElement): string {
+export interface SnapshotOptions {
+    // true  — "живой" снапшот: пин связан с открытым окном и умеет
+    //         форвардить клики/ввод на настоящий исходный элемент
+    //         (см. MoloPinnedShell.vue). В этом режиме кнопки и поля
+    //         ввода НЕ вырезаются/дизейблятся — они должны оставаться
+    //         полноценными DOM-узлами, по которым можно кликать/печатать.
+    // false — "мёртвый" снапшот: живого источника не будет никогда
+    //         (пин не привязан к окну), поэтому кнопки вырезаются,
+    //         а поля дизейблятся, чтобы не вводить в заблуждение
+    //         видимостью несуществующей интерактивности.
+    interactive?: boolean
+}
+
+export function snapshotElement(el: HTMLElement, options: SnapshotOptions = {}): string {
+    const { interactive = false } = options
     const clone = el.cloneNode(true) as HTMLElement
 
     // Запекаем визуальные стили ДО любых структурных правок клона —
@@ -135,10 +160,14 @@ function snapshotElement(el: HTMLElement): string {
         }
     })
 
-    // Убираем интерактивные элементы — в застывшем HTML без Vue-инстанса
-    // они всё равно "мёртвые" (клики ничего не делают), но выглядят как
-    // рабочие и вводят в заблуждение.
-    clone.querySelectorAll('button').forEach((btn) => btn.remove())
+    // Убираем интерактивные элементы — но ТОЛЬКО если это заведомо "мёртвый"
+    // снапшот (нет живого источника, с которым можно синхронизироваться).
+    // Для живых пинов (interactive === true) кнопки остаются настоящими
+    // DOM-узлами — по ним можно кликать, и клик форвардится на живой
+    // исходный элемент (см. handleContentClick в MoloPinnedShell.vue).
+    if (!interactive) {
+        clone.querySelectorAll('button').forEach((btn) => btn.remove())
+    }
 
     // ВАЖНО: раньше тут стоял [class*="header"] — слишком широкий селектор.
     // Он ломал ЛЮБОЙ контент, чьё имя класса просто СОДЕРЖИТ подстроку
@@ -151,12 +180,42 @@ function snapshotElement(el: HTMLElement): string {
     // собственная "шапка"/drag-зона внутри пинуемого блока, которая
     // дублирует шапку MoloPinnedShell — просто повесь на неё этот
     // атрибут (data-pinnable-chrome), и она будет вырезана из снапшота.
-    clone.querySelectorAll('[data-pinnable-chrome]').forEach((el) => el.remove())
+    //
+    // Для живых (interactive) снапшотов мы НЕ удаляем эти узлы из DOM,
+    // а только скрываем их через display:none — удаление меняло бы
+    // порядковые индексы детей внутри клона, а именно по этим индексам
+    // MoloPinnedShell.vue сопоставляет узел клона с узлом живого
+    // исходного элемента (getElementPath/resolveElementByPath ниже).
+    // Раз индексы должны 1:1 совпадать с живым DOM — узел лучше спрятать,
+    // чем вырезать.
+    if (interactive) {
+        clone.querySelectorAll('[data-pinnable-chrome]').forEach((chromeEl) => {
+            (chromeEl as HTMLElement).style.display = 'none'
+        })
+    } else {
+        clone.querySelectorAll('[data-pinnable-chrome]').forEach((chromeEl) => chromeEl.remove())
+    }
 
-    // Поля вывода — не редактируемая форма, а застывшая копия.
-    clone.querySelectorAll('textarea, input, select').forEach((field) => {
-        field.setAttribute('disabled', '')
-    })
+    if (interactive) {
+        // Живой снапшот: поля должны оставаться полноценно вводимыми —
+        // печать в них форвардится на живой исходный элемент (см.
+        // handleContentInput/handleContentChange в MoloPinnedShell.vue).
+        clone.querySelectorAll('textarea, input, select').forEach((field) => {
+            field.removeAttribute('disabled')
+        })
+    } else {
+        // Мёртвый снапшот — не редактируемая форма, а застывшая копия.
+        clone.querySelectorAll('textarea, input, select').forEach((field) => {
+            field.setAttribute('disabled', '')
+        })
+    }
+
+    // Маркер корня снапшота. По нему MoloPinnedShell.vue надёжно находит
+    // "тот самый" корневой узел клона в живом DOM пина независимо от того,
+    // во сколько обёрток (v-html и т.п.) его завернул компонент-контейнер
+    // (DekstopMoloPinnedLayer и т.д.) — и именно от него отсчитывает путь
+    // до кликнутого/изменённого элемента.
+    clone.setAttribute('data-pinnable-root', '')
 
     clone.removeAttribute('draggable')
 
@@ -174,18 +233,78 @@ function snapshotElement(el: HTMLElement): string {
     return clone.outerHTML
 }
 
+// --- Сопоставление узлов клона с узлами живого исходника -------------------
+//
+// Клон (снапшот) и живой исходный элемент структурно идентичны 1:1 (см.
+// комментарии выше про то, почему мы скрываем, а не вырезаем chrome-узлы
+// в interactive-режиме). Поэтому путь до узла можно закодировать как
+// последовательность индексов среди element-детей (children, а не
+// childNodes — так путь не ломается от пробельных текстовых узлов).
+//
+// getElementPath считается от корня клона (узел с data-pinnable-root) до
+// кликнутого/изменённого элемента внутри пина; resolveElementByPath потом
+// проходит тот же путь, но уже от живого исходного элемента — и находит
+// соответствующий "настоящий" узел, на который форвардится взаимодействие.
+
+export function getElementPath(root: Element, target: Element): number[] | null {
+    const path: number[] = []
+    let node: Element | null = target
+
+    while (node && node !== root) {
+        const parent: Element | null = node.parentElement
+        if (!parent) return null
+        const index = Array.prototype.indexOf.call(parent.children, node)
+        if (index === -1) return null
+        path.unshift(index)
+        node = parent
+    }
+
+    if (node !== root) return null
+    return path
+}
+
+export function resolveElementByPath(root: Element, path: number[]): Element | null {
+    let node: Element = root
+    for (const index of path) {
+        const next: Element | undefined = node.children[index]
+        if (!next) return null
+        node = next
+    }
+    return node
+}
+// ---------------------------------------------------------------------------
+
 function onDragStart(e: DragEvent) {
     const el = e.currentTarget as PinnableEl
-
+    const windowRoot = el.closest('[data-window-key]')
+    const windowKey = windowRoot?.getAttribute('data-window-key') || undefined
+    console.log('[pinnable] onDragStart windowKey=', windowKey, 'el=', el.className)
     const rect = el.getBoundingClientRect()
     const opts = el.__pinnableOptions || {}
+
+    // Путь от корня окна (узел с data-window-key) до самого этого элемента.
+    // Сохраняется в data пина и используется позже tryAutoReconnect'ом —
+    // когда окно закрывают и открывают заново, внутри рождается НОВЫЙ DOM-
+    // узел, который никогда не перетаскивался и поэтому никогда не получил
+    // бы свой dragId сам по себе. По этому пути мы находим "тот самый"
+    // элемент в новом окне и регистрируем его под СТАРЫМ dragId пина —
+    // без этого повторное открытие окна навсегда обрывало бы синхронизацию.
+    const sourcePath = windowRoot ? getElementPath(windowRoot, el) : null
+
     const dragId = startDrag(
         e,
         {
             type: opts.type ?? 'widget',
-            html: snapshotElement(el),
+            // Пин, привязанный к windowKey, потенциально сможет
+            // синхронизироваться с живым источником (пока окно открыто) —
+            // поэтому сразу снимаем interactive-снапшот, с рабочими
+            // кнопками и полями. Пины без windowKey живыми не бывают
+            // никогда, поэтому остаются "мёртвыми" как раньше.
+            html: snapshotElement(el, { interactive: !!windowKey }),
             width: opts.width ?? Math.round(rect.width),
             height: opts.height ?? Math.round(rect.height),
+            windowKey,
+            sourcePath: sourcePath ?? undefined,
         },
         opts.onPinned
     )
@@ -193,6 +312,15 @@ function onDragStart(e: DragEvent) {
     if (dragId) {
         el.__lastDragId = dragId
         el.classList.add('is-pinning')
+
+        // Регистрируем сам элемент как "живой источник" под этим dragId.
+        // Пока этот элемент остаётся в DOM (т.е. его окно открыто), пин
+        // сможет по этому dragId (он приезжает в data.dragId вместе с
+        // остальным payload'ом) в любой момент снять свежий снапшот и
+        // обновить своё отображение — это и даёт "динамичность" пину.
+        registerSourceElement(dragId, el)
+        el.__liveDragIds = el.__liveDragIds || new Set<string>()
+        el.__liveDragIds.add(dragId)
     }
 }
 
@@ -206,6 +334,54 @@ function onDragEnd(e: DragEvent) {
     el.__lastDragId = undefined
 }
 
+function pathsEqual(a: number[], b: number[]): boolean {
+    return a.length === b.length && a.every((value, i) => value === b[i])
+}
+
+// Автопереподключение: когда какой-то ДРУГОЙ экземпляр этого же элемента
+// (например, после закрытия и повторного открытия окна) монтируется заново,
+// он сам по себе не знает, что раньше уже был источником для одного или
+// нескольких пинов — ведь регистрация в реестре раньше происходила только
+// в момент dragstart, а этот новый узел никто не перетаскивал.
+//
+// Решение: у каждого пина, привязанного к windowKey, в data сохранён путь
+// (sourcePath) от корня окна до исходного элемента (см. onDragStart выше).
+// Как только внутри окна с тем же windowKey монтируется pinnable-элемент
+// с ТЕМ ЖЕ путём — считаем, что это "тот самый" источник, и регистрируем
+// его под уже существующим dragId пина. Дальше всё работает как обычно:
+// MoloPinnedShell.vue подписан на onSourceRegistered и сразу подхватит
+// свежий источник, даже если его собственный watch(isWindowOpen) успел
+// сработать раньше, чем этот элемент вообще смонтировался.
+function tryAutoReconnect(el: PinnableEl) {
+    const windowRoot = el.closest('[data-window-key]')
+    const windowKey = windowRoot?.getAttribute('data-window-key')
+    if (!windowRoot || !windowKey) return
+
+    const path = getElementPath(windowRoot, el)
+    if (!path) return
+
+    const { pinnedItems } = usePinnedItems()
+
+    pinnedItems.value.forEach((item) => {
+        const dragId = item.data?.dragId
+        const sourcePath = item.data?.sourcePath
+
+        if (
+            item.windowKey !== windowKey ||
+            !dragId ||
+            !Array.isArray(sourcePath) ||
+            !pathsEqual(sourcePath, path)
+        ) {
+            return
+        }
+
+        console.log('[pinnable] auto-reconnect dragId=', dragId, 'windowKey=', windowKey)
+        registerSourceElement(dragId, el)
+        el.__liveDragIds = el.__liveDragIds || new Set<string>()
+        el.__liveDragIds.add(dragId)
+    })
+}
+
 export const vPinnable: Directive<
     PinnableEl,
     PinnableOptions | undefined
@@ -217,6 +393,8 @@ export const vPinnable: Directive<
 
         el.addEventListener('dragstart', onDragStart)
         el.addEventListener('dragend', onDragEnd)
+
+        tryAutoReconnect(el)
     },
 
     updated(el, binding) {
@@ -226,5 +404,11 @@ export const vPinnable: Directive<
     unmounted(el) {
         el.removeEventListener('dragstart', onDragStart)
         el.removeEventListener('dragend', onDragEnd)
+
+        // Элемент уходит из DOM (например, закрыли окно) — вычищаем все
+        // его записи из реестра живых источников, чтобы связанные пины
+        // корректно перешли в offline-состояние.
+        el.__liveDragIds?.forEach((id) => unregisterSourceElement(id))
+        el.__liveDragIds = undefined
     },
 }

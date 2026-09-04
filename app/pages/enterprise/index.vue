@@ -103,6 +103,8 @@ function onWorkspaceDrop(e: DragEvent) {
 
   if (!payload?.type) return
 
+  console.log('[index] onWorkspaceDrop payload.windowKey=', payload.windowKey, 'type=', payload.type)
+
   const workspace = e.currentTarget as HTMLElement
   const rect = workspace.getBoundingClientRect()
 
@@ -122,12 +124,9 @@ function onWorkspaceDrop(e: DragEvent) {
         width: payload.width,
         height: payload.height,
       },
-      payload.sourceId
+      payload.windowKey
   )
 
-  // Раньше callback onPinned (переданный через v-pinnable) никогда не
-  // вызывался при успешном дропе — только discard'ился на dragend.
-  // Из-за этого любая логика "убрать оригинал после закрепления" молчала.
   consumePinnedCallback(payload.dragId)
 }
 

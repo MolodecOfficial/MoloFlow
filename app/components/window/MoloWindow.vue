@@ -4,9 +4,10 @@ import type {WindowItem, OpenWindowOptions} from '~/types/window'
 import {useWindowManager} from '~/composables/window/useWindowManager'
 import {useWindowDrag} from '~/composables/window/useWindowDrag'
 import {useWindowResize} from '~/composables/window/useWindowResize'
-import {ref, computed, onMounted, onUnmounted} from 'vue'
+import {ref, computed, onMounted, onUnmounted, watch} from 'vue'
 import {useUserStore} from "~~/stores/userStore"
 import {getAllThemes, getAllButtonStyles, THEME_STORAGE_KEY, BUTTON_STYLE_STORAGE_KEY} from '~~/types/window-themes'
+import {usePinnedItems} from '~/composables/window/usePinnedItems'
 
 const userStore = useUserStore()
 const role = ref('')
@@ -39,11 +40,6 @@ const emit = defineEmits<{
   'maximize': []
 }>()
 
-// Раньше это просто эмитило событие наверх, которое никто не слушал —
-// открыть окно из компонента-контента фактически было нельзя. Теперь
-// дочерние компоненты получают через inject('openWindow') настоящую
-// функцию: useWindowManager() — синглтон на всё приложение, поэтому
-// вызов отсюда и вызов из любого другого места работают одинаково.
 const { openWindow } = useWindowManager()
 provide('openWindow', (key: string, data?: any, options?: OpenWindowOptions) => openWindow(key, data, options))
 
@@ -287,13 +283,16 @@ watch(() => props.window?.zIndex, (newZIndex) => {
     containerRef.value.style.zIndex = String(newZIndex)
   }
 }, { immediate: true })
+
+
 </script>
 
 <template>
   <div
-      v-if="isVisible"
+      v-show="isVisible"
       ref="containerRef"
       class="window-container"
+      :data-window-key="props.window?.key"
       :class="{
             'maximized': isMaximized,
             'minimizing': isMinimizing,
@@ -505,7 +504,7 @@ watch(() => props.window?.zIndex, (newZIndex) => {
 
 .window-content {
   flex: 1;
-  overflow: hidden; /* ← Добавить или изменить на: */
+  overflow: hidden;
   overflow-y: auto;
   position: relative;
   min-height: 0;
@@ -562,7 +561,6 @@ watch(() => props.window?.zIndex, (newZIndex) => {
   line-height: 1;
 }
 
-/* Базовое наведение для всех кнопок */
 .control-btn:hover {
   background: var(--button-button-hover-bg, rgba(255, 255, 255, 0.1));
   color: var(--button-button-hover-text-color, var(--button-button-text-color));
