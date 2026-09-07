@@ -51,7 +51,7 @@
   border-radius: inherit;
 
   padding: 1px;
-  
+
   -webkit-mask-composite: xor;
   mask-composite: exclude;
 
@@ -83,14 +83,10 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-
+  gap: 10px;
   flex-shrink: 0;
-
   padding: 15px;
-
   border-bottom: 1px solid rgba(255,255,255,.08);
-
-
   color: #c7c7c7;
 }
 
@@ -100,5 +96,16 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+@media (max-width: 600px) {
+  .form-header {
+    padding: 12px;
+    flex-wrap: wrap;
+  }
+
+  .form-main {
+    padding: 8px;
+  }
 }
 </style>

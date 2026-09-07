@@ -328,4 +328,32 @@ const handleClick = (event: MouseEvent) => {
 .molo-btn * {
   pointer-events: none;
 }
+
+/* ========================================
+   АДАПТИВНОСТЬ / ТАЧ-УСТРОЙСТВА
+======================================== */
+@media (hover: none) and (pointer: coarse) {
+  .molo-btn {
+    min-height: 44px;
+    padding: 10px 18px;
+  }
+
+  .molo-btn.small {
+    min-height: 38px;
+    padding: 8px 12px;
+  }
+
+  /* На тач-устройствах нет hover — убираем "залипающие" hover-эффекты,
+     оставляем только состояние :active для отклика на нажатие */
+  .molo-btn:hover {
+    transform: none;
+    animation: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .molo-btn {
+    font-size: 14px;
+  }
+}
 </style>

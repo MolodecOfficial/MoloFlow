@@ -125,4 +125,24 @@ label {
   border-radius: 5px;
   color: white;
 }
+
+/* ========================================
+   АДАПТИВНОСТЬ / ТАЧ-УСТРОЙСТВА
+======================================== */
+@media (max-width: 600px) {
+  .select {
+    font-size: 16px; /* предотвращает авто-зум на iOS Safari */
+    padding: 11px 34px 11px 12px;
+  }
+
+  label {
+    font-size: 0.85rem;
+  }
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .select {
+    min-height: 44px;
+  }
+}
 </style>

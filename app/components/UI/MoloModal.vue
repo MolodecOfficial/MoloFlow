@@ -237,4 +237,56 @@ const handleOverlayClick = () => {
 .modal-fade-leave-to .modal-container {
   transform: scale(0.95) translateY(10px);
 }
+
+/* ========================================
+   АДАПТИВНОСТЬ
+======================================== */
+@media (max-width: 600px) {
+  .modal-overlay {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .modal-container {
+    width: 100% !important;
+    max-width: 100vw;
+    max-height: 92vh;
+    border-radius: 16px 16px 0 0;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .modal-header {
+    padding: 14px 16px;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .modal-header h3 {
+    font-size: 16px;
+  }
+
+  .modal-actions {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .modal-actions :deep(.molo-btn) {
+    flex: 1;
+  }
+
+  .modal-body {
+    padding: 16px;
+  }
+
+  .help-overlay {
+    width: 100% !important;
+    max-width: 100vw;
+    padding: 14px;
+  }
+
+  .modal-fade-enter-from .modal-container,
+  .modal-fade-leave-to .modal-container {
+    transform: translateY(30px);
+  }
+}
 </style>

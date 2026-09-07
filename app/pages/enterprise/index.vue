@@ -696,5 +696,49 @@ function deleteUser() {
     overflow: hidden;
     text-overflow: ellipsis;
   }
+
+  .user-avatar {
+    width: 38px;
+    height: 38px;
+    flex-shrink: 0;
+  }
+
+  .content {
+    min-height: 100dvh;
+  }
+}
+
+/* Отступы под "чёлку"/системные жесты на телефонах */
+@supports (padding: max(0px)) {
+  .topbar {
+    padding-top: max(24px, env(safe-area-inset-top));
+    padding-left: max(28px, env(safe-area-inset-left));
+    padding-right: max(28px, env(safe-area-inset-right));
+  }
+
+  @media (max-width: 768px) {
+    .topbar {
+      padding-top: max(18px, env(safe-area-inset-top));
+      padding-left: max(18px, env(safe-area-inset-left));
+      padding-right: max(18px, env(safe-area-inset-right));
+    }
+  }
+
+  .notifications-wrapper {
+    bottom: max(16px, env(safe-area-inset-bottom));
+  }
+
+  .logger-wrapper {
+    bottom: max(20px, env(safe-area-inset-bottom));
+  }
+}
+
+@media (max-width: 360px) {
+  .enterprise-title {
+    font-size: 1.2rem;
+  }
+  .user-section {
+    gap: 10px;
+  }
 }
 </style>

@@ -1208,6 +1208,15 @@ onUnmounted(() => {
   }
 }
 
+/* ========================================
+   АДАПТИВНОСТЬ МЕНЮ
+======================================== */
+@media (max-width: 900px) {
+  .items-grid {
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  }
+}
+
 @media (max-width: 720px) {
   .deck-overlay {
     padding: 4vh 10px 10px;
@@ -1223,6 +1232,8 @@ onUnmounted(() => {
     display: flex;
     gap: 4px;
     overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
     border-right: none;
     border-bottom: 1px solid var(--panel-border);
     padding: 8px;
@@ -1230,12 +1241,85 @@ onUnmounted(() => {
   .rail-item {
     flex-shrink: 0;
     width: auto;
+    min-height: 44px;
   }
   .rail-label {
     max-width: 100px;
   }
   .launcher-kbd {
     display: none;
+  }
+  .quick-dock {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+}
+
+@media (max-width: 600px) {
+  .deck-overlay {
+    padding: 0;
+    align-items: stretch;
+  }
+  .deck-panel {
+    max-height: 100vh;
+    height: 100vh;
+    height: 100dvh;
+    width: 100vw;
+    border-radius: 0;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .deck-header {
+    padding-top: max(12px, env(safe-area-inset-top));
+  }
+  .prompt-input {
+    font-size: 16px; /* предотвращает авто-зум на iOS Safari */
+  }
+  .items-grid {
+    grid-template-columns: repeat(auto-fill, minmax(122px, 1fr));
+    gap: 8px;
+  }
+  .item-card {
+    padding: 10px;
+    min-height: 44px;
+  }
+  .card-title {
+    font-size: 12.5px;
+  }
+  .launcher-text {
+    display: none;
+  }
+  .launcher-btn {
+    padding: 8px 10px;
+    min-height: 44px;
+  }
+  .search-row {
+    min-height: 44px;
+  }
+  .breadcrumb {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 400px) {
+  .items-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .rail-label {
+    max-width: 72px;
+  }
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .item-card,
+  .search-row,
+  .rail-item,
+  .dock-blip,
+  .launcher-btn,
+  .restart-btn,
+  .close-with-window-toggle,
+  .link-indicator {
+    min-height: 40px;
   }
 }
 </style>

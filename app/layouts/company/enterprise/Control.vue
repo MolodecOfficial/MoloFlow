@@ -238,4 +238,46 @@ onMounted(() => {
   color: #6e6e7e;
 }
 
+/* ========================================
+   АДАПТИВНОСТЬ
+======================================== */
+@media (max-width: 640px) {
+  .control-page {
+    padding: 12px;
+    gap: 14px;
+  }
+
+  .details {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .main-details {
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .tabs-length {
+    flex-wrap: wrap;
+  }
+
+  .auth-placeholder {
+    padding: 40px 16px;
+  }
+}
+
+@media (max-width: 480px) {
+  .control-page :deep(.form-header) {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .control-page :deep(.form-header span) {
+    font-size: 18px !important;
+  }
+
+  .control-page :deep(.molo-btn) {
+    width: 100%;
+  }
+}
 </style>

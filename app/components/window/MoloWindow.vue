@@ -590,15 +590,77 @@ watch(() => props.window?.zIndex, (newZIndex) => {
   border: 1px solid #888888;
 }
 
-@media (max-width: 768px) {
+/* ========================================
+   АДАПТИВНОСТЬ ОКОН
+======================================== */
+@media (max-width: 900px) {
   .window-container {
-    width: calc(100vw - 40px) !important;
-    max-width: calc(100vw - 40px);
-    left: 20px !important;
-    right: 20px;
+    width: calc(100vw - 32px) !important;
+    max-width: calc(100vw - 32px);
+    left: 16px !important;
   }
 
   .resize-n, .resize-w, .resize-nw, .resize-ne, .resize-sw {
+    display: none;
+  }
+
+  .resize-e, .resize-s, .resize-se {
+    width: 22px;
+    height: 22px;
+  }
+}
+
+/* На телефонах окна теряют смысл как "плавающие" — превращаем их
+   в полноэкранные экраны, header становится компактной мобильной
+   шапкой с крупными кнопками управления под палец. */
+@media (max-width: 640px) {
+  .window-container,
+  .window-container.maximized {
+    position: fixed !important;
+    left: 0 !important;
+    top: 0 !important;
+    right: 0;
+    bottom: 0;
+    width: 100vw !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    max-width: 100vw;
+    min-width: 0 !important;
+    min-height: 0 !important;
+  }
+
+  .window,
+  .window.maximized {
+    border-radius: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  .window-header {
+    padding: max(8px, env(safe-area-inset-top)) 8px 8px;
+    cursor: default;
+    gap: 8px;
+  }
+
+  .window-title {
+    font-size: 15px;
+  }
+
+  .header-logger {
+    display: none;
+  }
+
+  .control-btn {
+    width: 38px;
+    height: 38px;
+    font-size: 18px;
+  }
+
+  .window-content {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .resize-handle {
     display: none;
   }
 }

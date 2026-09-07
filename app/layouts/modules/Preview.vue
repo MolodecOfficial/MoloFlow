@@ -334,4 +334,27 @@ const formattedError = computed(() => {
   0%, 100% { opacity: 0.4; transform: scale(1); }
   50% { opacity: 1; transform: scale(1.2); }
 }
+
+@media (max-width: 600px) {
+  .preview-header {
+    padding: 8px 10px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .error-state {
+    margin: 8px;
+    padding: 12px;
+  }
+  .error-location {
+    margin-left: 0;
+  }
+  .error-message {
+    font-size: 12px;
+    padding: 10px 12px;
+  }
+  .toggle-error-btn,
+  .copy-error-btn {
+    min-height: 36px;
+  }
+}
 </style>

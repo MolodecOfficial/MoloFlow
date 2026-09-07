@@ -133,4 +133,20 @@ async function deleteToken() {
   display: flex;
   gap: 10px;
 }
+
+@media (max-width: 480px) {
+  .log {
+    padding: 12px;
+  }
+
+  .btns {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .btns :deep(.molo-btn) {
+    flex: 1;
+    min-width: 120px;
+  }
+}
 </style>

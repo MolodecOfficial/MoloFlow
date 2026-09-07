@@ -1,5 +1,4 @@
 <script lang="ts" setup>
-import { useAppStore } from '~~/stores/appStore'
 
 const props = defineProps<{
   enterpriseId?: string // больше не используется, оставлен для обратной совместимости
@@ -9,7 +8,6 @@ const emit = defineEmits(['saved', 'cancel'])
 
 const { addNotification } = useNotifications('Стандарты')
 const { addLog } = useLogger('Стандарты')
-const store = useAppStore()
 
 const loadingSave = ref(false)
 const loadingStandards = ref(false)

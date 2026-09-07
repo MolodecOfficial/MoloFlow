@@ -28,7 +28,6 @@ const emit = defineEmits(['close', 'saved'])
 // Храним ссылки на редакторы
 // =============================================
 let mainEditorInstance: any = null
-let fileEditorInstance: any = null
 let monacoInstance: any = null
 let monacoCtx: any = null
 const monacoEditorRef = ref(null)
@@ -134,8 +133,7 @@ const modalLocationForm = ref({
   requiredRole: ['Управляющий'] as string[],
   parentId: null as string | null
 })
-// Ref для контейнеров Monaco
-const fileMonacoContainer = ref<HTMLElement | null>(null)
+// Ref для контейнеров Monaco - больше не нужен, используем UIMoloMonaco
 // =============================================
 // COMPUTED
 // =============================================
@@ -532,9 +530,7 @@ const saveFile = async () => {
   addLog('info', 'Сохраняю файл...')
   try {
     loadingUPD.value = true
-    if (fileEditorInstance) {
-      fileForm.value.code = fileEditorInstance.getValue()
-    }
+    // Код уже обновлен через UIMoloMonaco, берем из fileForm
     const {useModuleApi} = await import('~/composables/useModuleApi')
     const moduleApi = useModuleApi()
     const filePath = normalizePath(
@@ -896,16 +892,6 @@ watch(editorLanguage, (newLang) => {
     }
   }
 }, {immediate: true})
-watch(showFileEditor, async (val) => {
-  if (val) {
-    await nextTick()
-  } else {
-    if (fileEditorInstance) {
-      fileEditorInstance.dispose()
-      fileEditorInstance = null
-    }
-  }
-})
 
 watch(() => formData.value.dependencies, (newDeps) => {
   if (!previewWindowId.value) return
@@ -932,19 +918,11 @@ watch(() => formData.value.name, (newName) => {
   })
 })
 
-
 // =============================================
 // LIFECYCLE
 // =============================================
 onMounted(async () => {
   const enterpriseId = getEnterpriseId()
-  // Раньше тут был жёсткий `if (!enterpriseId) return` без какого-либо
-  // повторного запроса — если окно открывалось до того, как в localStorage
-  // появлялось currentEnterprise (например, сразу после логина), список
-  // модулей оставался пустым НАВСЕГДА до перезагрузки страницы.
-  // Теперь при отсутствии enterpriseId подписываемся на событие
-  // 'enterprise-login' (его уже диспатчит остальное приложение,
-  // см. MoloMenu.vue) и догружаем список модулей, как только оно придёт.
   if (!enterpriseId) {
     const retryOnLogin = () => {
       const id = getEnterpriseId()
@@ -958,15 +936,11 @@ onMounted(async () => {
     return
   }
   enterpriseInfo.value = JSON.parse(localStorage.getItem('currentEnterprise') || 'null')
-  // Загружаем списки
   await Promise.all([
     moduleStore.loadModules(enterpriseId),
     menuStore.loadLocations(),
     menuStore.loadTree()
   ])
-  // Если есть initialModuleId — загружаем его ПОЛНОСТЬЮ (см. фикс бага №1:
-  // раньше здесь брали объект из облегчённого списка modules.value и теряли
-  // code/isPublic/description/tags/dependencies/...)
   if (props.initialModuleId) {
     selectedModuleId.value = props.initialModuleId
     const full = await loadFullModuleData(props.initialModuleId)
@@ -984,10 +958,8 @@ onMounted(async () => {
     formData.value.code = getPlaceholder()
   }
   initialDataLoaded.value = true
-
 })
 onUnmounted(() => {
-  // Закрываем окно превью вместе с редактором
   if (previewWindowId.value) {
     closeWindow(previewWindowId.value)
     previewWindowId.value = null
@@ -1318,9 +1290,13 @@ onUnmounted(() => {
             />
           </div>
           <div class="file-editor-container">
-            <ClientOnly>
-              <div ref="fileMonacoContainer" class="file-monaco-editor"></div>
-            </ClientOnly>
+            <UIMoloMonaco
+                :initial-code="fileForm.code"
+                :language="fileEditorLanguage"
+                :module-id="selectedModuleId"
+                :enterprise-id="enterpriseInfo?._id"
+                @update:code="(code) => fileForm.code = code"
+            />
           </div>
         </div>
       </template>
@@ -1519,10 +1495,6 @@ onUnmounted(() => {
   border: 1px solid #3c3c3c;
   border-radius: 4px;
 }
-.file-monaco-editor {
-  height: 100%;
-  width: 100%;
-}
 .form-row {
   display: flex;
   gap: 10px;
@@ -1610,15 +1582,12 @@ onUnmounted(() => {
   padding: 2px 8px;
   font-size: 14px;
   background: none;
-  border: 1px solid #3c3c3c;
   border-radius: 4px;
   cursor: pointer;
   color: #ccc;
   transition: all 0.2s;
 }
-.action-btn-small:hover {
-  background: #333;
-}
+
 .action-btn-small.edit:hover {
   border-color: #3a6ea5;
   color: #3a6ea5;
@@ -1694,6 +1663,7 @@ onUnmounted(() => {
   display: flex;
   flex-direction: row;
   gap: 20px;
+  justify-content: space-between;
 }
 .loader-wrapper {
   display: flex;
@@ -1732,6 +1702,63 @@ hr {
   }
   .editor-grid {
     grid-template-columns: 1fr;
+  }
+  .dep-list-header,
+  .dep-item {
+    grid-template-columns: 1fr 80px 50px;
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .module-editor {
+    padding: 10px;
+  }
+  .header-left h1 {
+    font-size: 17px;
+  }
+  .header-actions {
+    gap: 6px;
+  }
+  .header-actions :deep(.molo-btn) {
+    flex: 1;
+    min-width: 90px;
+  }
+  .header-right {
+    width: 100%;
+  }
+  .module-select {
+    width: 100%;
+  }
+  .file-editor-container {
+    height: 240px;
+  }
+  .dep-list-header,
+  .dep-item {
+    grid-template-columns: 1fr 60px;
+  }
+  .dep-list-header span:last-child,
+  .dep-item .dep-actions {
+    display: none;
+  }
+  .file-item {
+    flex-wrap: wrap;
+  }
+  .action-btn-small {
+    min-width: 36px;
+    min-height: 36px;
+  }
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .file-item,
+  .dep-item {
+    min-height: 44px;
+  }
+  .action-btn-small,
+  .checkbox-label input {
+    min-width: 20px;
+    min-height: 20px;
   }
 }
 </style>

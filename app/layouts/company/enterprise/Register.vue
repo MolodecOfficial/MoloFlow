@@ -360,4 +360,25 @@ hr {
     grid-column: span 1;
   }
 }
+
+@media (max-width: 480px) {
+  .enterprise-creature {
+    padding: 12px;
+    gap: 8px;
+  }
+
+  .enterprise-form {
+    gap: 1rem;
+  }
+
+  .checkbox-group input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+  }
+
+  .checkbox-group label {
+    font-size: 14px;
+  }
+}
 </style>

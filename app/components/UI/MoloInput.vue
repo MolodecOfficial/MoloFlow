@@ -363,4 +363,39 @@ input:read-only:focus {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
 }
+
+/* ========================================
+   АДАПТИВНОСТЬ / ТАЧ-УСТРОЙСТВА
+======================================== */
+@media (max-width: 600px) {
+  input {
+    font-size: 16px; /* предотвращает авто-зум на iOS Safari при фокусе */
+    padding: 11px 12px;
+  }
+
+  label {
+    font-size: 0.85rem;
+  }
+
+  .dropdown {
+    max-height: 45vh;
+  }
+
+  .dropdown-item {
+    padding: 12px;
+    font-size: 14px;
+  }
+}
+
+@media (hover: none) and (pointer: coarse) {
+  input {
+    min-height: 44px;
+  }
+
+  .dropdown-item {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+  }
+}
 </style>

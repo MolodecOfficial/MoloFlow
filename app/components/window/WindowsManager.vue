@@ -137,4 +137,31 @@ const restoreWindowWithAnimation = (id: string) => {
   background: rgba(56, 114, 239, 0.2);
   border-color: var(--borber-color_main);
 }
+
+/* ========================================
+   АДАПТИВНОСТЬ
+======================================== */
+@media (max-width: 640px) {
+  .minimized-windows {
+    left: 8px;
+    right: 8px;
+    bottom: max(8px, env(safe-area-inset-bottom));
+    transform: none;
+    width: auto;
+    box-sizing: border-box;
+  }
+
+  .minimized-list {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    justify-content: flex-start;
+  }
+
+  .minimized-tab {
+    flex-shrink: 0;
+    min-height: 40px;
+    padding: 8px 14px;
+  }
+}
 </style>

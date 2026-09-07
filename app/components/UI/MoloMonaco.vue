@@ -322,5 +322,11 @@ defineExpose({
   .button-icon {
     font-size: 20px;
   }
+
+  .monaco-menu-button {
+    width: 40px;
+    height: 40px;
+    justify-content: center;
+  }
 }
 </style>
