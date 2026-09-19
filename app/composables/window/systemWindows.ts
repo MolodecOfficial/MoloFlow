@@ -44,6 +44,11 @@ export const SYSTEM_WINDOWS: Record<string, SystemWindowDefinition> = {
         title: 'Управление',
         size: { width: 900, height: 650 },
     },
+    'workspace': {
+        component: () => import('~/layouts/company/enterprise/Workspace.vue'),
+        title: 'Пространство',
+        size: {width: 1200, height: 700 },
+    },
     'terms-of-use': {
         component: () => import('~/layouts/company/TermsOfUse.vue'),
         title: 'Условия использования',

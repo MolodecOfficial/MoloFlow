@@ -19,6 +19,17 @@ export default defineNuxtConfig({
   },
 
   vite: {
+    optimizeDeps: {
+      exclude: [
+        '@tiptap/extension-text-style',
+        '@tiptap/extension-text-align',
+        '@tiptap/extension-image',
+        '@tiptap/extension-table',
+        '@tiptap/extension-font-family',
+        '@tiptap/extension-color',
+        '@tiptap/extension-highlight',
+      ]
+    },
     json: {
       stringify: true
     },

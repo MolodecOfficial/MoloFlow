@@ -155,7 +155,7 @@ const handleOverlayClick = () => {
 }
 
 .modal-container {
-  background: var(--half_opacity_bg);
+  background: #1e1e1e;
   border: 1px solid var(--half_opacity_border, #2a2a3a);
   backdrop-filter: blur(4px);
   border-radius: 10px;

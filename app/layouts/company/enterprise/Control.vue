@@ -23,13 +23,20 @@ function notAuth() {
   })
 }
 
-function openConfigurator() {
+function openWorkspace() {
   if (!store.getEnterpriseId()) {
     addNotification('error', 'Не удалось определить предприятие')
     return
   }
   openWindow(
-      'configurator'
+      'workspace',
+      null,
+      {
+        width: 1200,
+        height: 800,
+        minWidth: 700,
+        minHeight: 480
+      }
   )
 }
 
@@ -57,8 +64,8 @@ onMounted(() => {
         <span style="font-weight: bold; font-size: 22px">
           {{ enterpriseInfo.ownershipForm }} {{ enterpriseInfo.enterpriseName }}
         </span>
-        <UIMoloButton class="confirm" @click="openConfigurator">
-          Конфигуратор
+        <UIMoloButton class="confirm" @click="openWorkspace">
+          Пространство
         </UIMoloButton>
       </template>
       <template #main>
@@ -127,80 +134,6 @@ onMounted(() => {
   border-radius: 20px;
   color: #8e8e9e;
 }
-
-.tabs-list {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-
-.tab-row {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  background: transparent;
-  border: none;
-  padding: 8px;
-  cursor: pointer;
-  width: 100%;
-  text-align: left;
-  transition: background 0.15s;
-}
-
-.tab-row:last-child {
-  border-bottom: none;
-}
-.tab-icon {
-  width: 40px;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 10px;
-  flex-shrink: 0;
-}
-
-.tab-icon .material-icons {
-  font-size: 20px;
-  color: white;
-}
-
-.tab-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.tab-name {
-  font-size: 15px;
-  font-weight: 500;
-  color: white;
-  margin-bottom: 6px;
-}
-
-.tab-meta {
-  display: flex;
-  gap: 12px;
-  font-size: 11px;
-  color: #6e6e7e;
-}
-
-.tab-meta span {
-  background: #1e1e24;
-  padding: 2px 8px;
-  border-radius: 12px;
-}
-
-.arrow {
-  color: #4a4a54;
-  font-size: 16px;
-  transition: transform 0.15s;
-}
-
-.tab-row:hover .arrow {
-  transform: translateX(4px);
-  color: #6496ff;
-}
-
 
 .auth-placeholder {
   display: flex;
