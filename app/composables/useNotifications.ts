@@ -30,7 +30,7 @@ export function useNotifications(source?: string) {
 
         // Добавляем источник к заголовку
         if (moduleSource) {
-            finalTitle = `[${moduleSource}] ${finalTitle}`
+            finalTitle = `${finalTitle}`
         }
 
         // Создаём уведомление

@@ -1,42 +1,28 @@
-import mongoose from "mongoose";
+import mongoose, { Schema, Document } from 'mongoose'
 
-const userSchema = new mongoose.Schema({
-    name: {
-        type: String,
-        required: [true, 'Имя - Обязательное Поле!'],
-    },
-    password: {
-        type: String,
-        required: [true, 'Пароль - обязательное поле!'],
-    },
-    role: {
-        type: String,
-        enum: ['Пользователь', 'Бухгалтер', 'Комплектовщик', 'Сотрудник', 'Управляющий', 'Программист'],
-        default: 'Пользователь',
-    },
-    phone: {
-        type: String,
-        required: [true, 'Номер телефона - обязательное поле'],
-        validate: {
-            validator: function(v: string) {
-                return /^\d+$/.test(v);
-            },
-            message: 'Телефон должен содержать только цифры'
-        }
-    },
-    twoFactorSecret: {
-        type: String,
-        default: null
-    },
-    twoFactorEnabled: {
-        type: Boolean,
-        default: false
-    }
+export interface IUser extends Document {
+    name: string
+    password: string
+    role: string
+    phone: string
+    twoFactorSecret?: string
+    twoFactorEnabled?: boolean
+    createdAt: Date
+    updatedAt: Date
+}
+
+const UserSchema = new Schema<IUser>({
+    name: { type: String, required: true },
+    password: { type: String, required: true },
+    role: { type: String, default: 'Пользователь' },
+    phone: { type: String, required: true },
+    twoFactorSecret: { type: String },
+    twoFactorEnabled: { type: Boolean, default: false }
 }, {
-    timestamps: true
-});
+    timestamps: true,
+    collection: 'users'
+})
 
+export const User = mongoose.models.User || mongoose.model('User', UserSchema);
 
-export const User = mongoose.models.User || mongoose.model('User', userSchema);
-
-export default mongoose.model('User', userSchema);
+export default mongoose.model('User', UserSchema);

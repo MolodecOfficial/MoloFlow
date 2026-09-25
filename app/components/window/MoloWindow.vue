@@ -1,30 +1,19 @@
 <!-- MoloWindow.vue -->
 <script setup lang="ts">
-import type {WindowItem, OpenWindowOptions} from '~/types/window'
-import {useWindowManager} from '~/composables/window/useWindowManager'
-import {useWindowDrag} from '~/composables/window/useWindowDrag'
-import {useWindowResize} from '~/composables/window/useWindowResize'
-import {ref, computed, onMounted, onUnmounted, watch} from 'vue'
-import {useUserStore} from "~~/stores/userStore"
-import {getAllThemes, getAllButtonStyles, THEME_STORAGE_KEY, BUTTON_STYLE_STORAGE_KEY} from '~~/types/window-themes'
-import {usePinnedItems} from '~/composables/window/usePinnedItems'
+import type { WindowItem, OpenWindowOptions } from '~/types/window'
+import { useWindowManager } from '~/composables/window/useWindowManager'
+import { useWindowDrag } from '~/composables/window/useWindowDrag'
+import { useWindowResize } from '~/composables/window/useWindowResize'
+import { ref, computed, onMounted, onUnmounted, watch, provide } from 'vue'
+import { useAppStore } from '~~/stores/appStore'
+import { getAllThemes, getAllButtonStyles, THEME_STORAGE_KEY, BUTTON_STYLE_STORAGE_KEY } from '~~/types/window-themes'
 
-const userStore = useUserStore()
-const role = ref('')
+const appStore = useAppStore()
 
-const loadUserRole = () => {
-  let userRole = ''
-  if (userStore.userRole) {
-    userRole = userStore.userRole
-  } else {
-    const storageUser = localStorage.getItem('user')
-    if (storageUser) {
-      const user = JSON.parse(storageUser)
-      userRole = user.role || 'Пользователь'
-    }
-  }
-  role.value = userRole
-}
+// Роль вычисляется динамически из единого store приложения
+const role = computed(() => {
+  return appStore.currentMemberRole || appStore.currentUser?.role || 'Пользователь'
+})
 
 const props = defineProps<{
   window?: WindowItem
@@ -52,7 +41,7 @@ const isClosing = ref(false)
 const currentTheme = ref()
 const currentButtonStyle = ref()
 
-const isMaximized = computed(() => props.window.size.isMaximized === true)
+const isMaximized = computed(() => props.window?.size?.isMaximized === true)
 
 const refreshKey = ref(0)
 
@@ -82,20 +71,19 @@ const toggleMaximize = () => {
 provide('currentWindowId', props.window?.id)
 
 const windowPosition = ref({
-  x: props.window.position.x,
-  y: props.window.position.y
+  x: props.window?.position?.x ?? 80,
+  y: props.window?.position?.y ?? 90
 })
 
 const windowSize = ref({
-  width: props.window.size.width,
-  height: props.window.size.height,
-  minWidth: props.window.size.minWidth || 300,
-  minHeight: props.window.size.minHeight || 200
+  width: props.window?.size?.width ?? 800,
+  height: props.window?.size?.height ?? 600,
+  minWidth: props.window?.size?.minWidth || 300,
+  minHeight: props.window?.size?.minHeight || 200
 })
 
 const {
   isDragging,
-  currentPosition: dragPosition,
   handleDragStart,
   handleDrag,
   handleDragEnd
@@ -110,7 +98,6 @@ const {
 
 const {
   isResizing,
-  resizeEdge,
   handleResizeStart,
   handleResize,
   handleResizeEnd
@@ -177,16 +164,16 @@ const getResizeCursor = (edge: string) => {
 
 const loadTheme = () => {
   const saved = localStorage.getItem(THEME_STORAGE_KEY)
+  const allThemes = getAllThemes()
   if (saved) {
-    const allThemes = getAllThemes()
     const theme = allThemes.find(t => t.id === saved)
     if (theme) {
       currentTheme.value = theme
       applyTheme(theme)
+      return
     }
   }
-  if (!currentTheme.value) {
-    const allThemes = getAllThemes()
+  if (!currentTheme.value && allThemes.length) {
     currentTheme.value = allThemes[0]
     applyTheme(allThemes[0])
   }
@@ -194,30 +181,30 @@ const loadTheme = () => {
 
 const loadButtonStyle = () => {
   const saved = localStorage.getItem(BUTTON_STYLE_STORAGE_KEY)
+  const allStyles = getAllButtonStyles()
   if (saved) {
-    const allStyles = getAllButtonStyles()
     const style = allStyles.find(s => s.id === saved)
     if (style) {
       currentButtonStyle.value = style
       applyButtonStyle(style)
+      return
     }
   }
-  if (!currentButtonStyle.value) {
-    const allStyles = getAllButtonStyles()
+  if (!currentButtonStyle.value && allStyles.length) {
     currentButtonStyle.value = allStyles[0]
     applyButtonStyle(allStyles[0])
   }
 }
 
 const applyTheme = (theme: any) => {
-  if (!theme) return
+  if (!theme?.styles) return
   Object.entries(theme.styles).forEach(([key, value]) => {
     document.documentElement.style.setProperty(`--window-${key}`, value as string)
   })
 }
 
 const applyButtonStyle = (style: any) => {
-  if (!style) return
+  if (!style?.styles) return
   Object.entries(style.styles).forEach(([key, value]) => {
     document.documentElement.style.setProperty(`--button-${key}`, value as string)
   })
@@ -227,6 +214,7 @@ const handleThemeChange = (e: CustomEvent) => {
   currentTheme.value = e.detail
   applyTheme(e.detail)
 }
+
 const handleButtonStyleChange = (e: CustomEvent) => {
   currentButtonStyle.value = e.detail
   applyButtonStyle(e.detail)
@@ -266,7 +254,11 @@ onMounted(() => {
   window.addEventListener('button-style-changed', handleButtonStyleChange as EventListener)
   document.addEventListener('mousemove', handleMouseMove)
   document.addEventListener('mouseup', handleMouseUp)
-  loadUserRole()
+
+  if (!appStore.currentUser) {
+    appStore.loadEnterpriseFromStorage()
+  }
+
   loadTheme()
   loadButtonStyle()
 })
@@ -283,8 +275,6 @@ watch(() => props.window?.zIndex, (newZIndex) => {
     containerRef.value.style.zIndex = String(newZIndex)
   }
 }, { immediate: true })
-
-
 </script>
 
 <template>
@@ -294,29 +284,32 @@ watch(() => props.window?.zIndex, (newZIndex) => {
       class="window-container"
       :data-window-key="props.window?.key"
       :class="{
-            'maximized': isMaximized,
-            'minimizing': isMinimizing,
-            'closing': isClosing
-        }"
+      'maximized': isMaximized,
+      'minimizing': isMinimizing,
+      'closing': isClosing
+    }"
       :style="containerStyle"
   >
     <div
         ref="windowRef"
         class="window"
         :class="{
-                dragging: isDragging,
-                resizing: isResizing,
-                'maximized': isMaximized
-            }"
+        dragging: isDragging,
+        resizing: isResizing,
+        'maximized': isMaximized
+      }"
         :style="windowStyles"
     >
       <div class="window-header" @mousedown="handleDragStart">
         <div class="window-title">{{ props.window?.title || 'Окно' }}</div>
-        <div class="header-logger" v-if="role === 'Управляющий'">
+
+        <!-- Служебный ключ для Управляющего и Администратора -->
+        <div class="header-logger" v-if="role === 'Управляющий' || role === 'Администратор'">
           <span>{{ props.window?.key }}</span>
         </div>
+
         <div class="window-controls">
-          <button class="control-btn refresh" @click="refreshContent" @mousedown.stop>
+          <button class="control-btn refresh" @click="refreshContent" @mousedown.stop title="Обновить">
             ↻
           </button>
           <button
@@ -335,7 +328,6 @@ watch(() => props.window?.zIndex, (newZIndex) => {
               :title="isMaximized ? 'Восстановить' : 'На весь экран'"
               v-if="!isModal"
           >
-
             <span class="control-icon">⛶</span>
           </button>
           <button
@@ -358,15 +350,16 @@ watch(() => props.window?.zIndex, (newZIndex) => {
         </div>
       </div>
 
-      <div
-          v-if="!isMaximized"
-          v-for="edge in ['n', 's', 'w', 'e', 'nw', 'ne', 'sw', 'se']"
-          :key="edge"
-          class="resize-handle"
-          :class="`resize-${edge}`"
-          @mousedown="(e) => handleResizeStart(e, edge)"
-          :style="{ cursor: getResizeCursor(edge) }"
-      />
+      <template v-if="!isMaximized">
+        <div
+            v-for="edge in ['n', 's', 'w', 'e', 'nw', 'ne', 'sw', 'se']"
+            :key="edge"
+            class="resize-handle"
+            :class="`resize-${edge}`"
+            @mousedown="(e) => handleResizeStart(e, edge)"
+            :style="{ cursor: getResizeCursor(edge) }"
+        />
+      </template>
     </div>
   </div>
 </template>
@@ -420,7 +413,6 @@ watch(() => props.window?.zIndex, (newZIndex) => {
   position: relative;
   width: 100%;
   height: 100%;
-  transition: border-radius 0.2s ease;
   backdrop-filter:
       blur(20px)
       saturate(100%)
@@ -610,9 +602,6 @@ watch(() => props.window?.zIndex, (newZIndex) => {
   }
 }
 
-/* На телефонах окна теряют смысл как "плавающие" — превращаем их
-   в полноэкранные экраны, header становится компактной мобильной
-   шапкой с крупными кнопками управления под палец. */
 @media (max-width: 640px) {
   .window-container,
   .window-container.maximized {

@@ -13,6 +13,7 @@ const props = defineProps<{
   readonly?: any
   address?: boolean
   phone?: boolean
+  compact?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -181,8 +182,8 @@ watch(() => props.modelValue, (newVal) => {
 
 <template>
   <!-- Режим телефона -->
-  <div v-if="phone" class="form-group">
-    <label :for="id || 'phone-input'">
+  <div v-if="phone" class="form-group" :class="{ compact }">
+    <label v-if="tLabel" :for="id || 'phone-input'">
       {{ tLabel }}
       <span class="required" v-if="lRequired">*</span>
     </label>
@@ -201,8 +202,8 @@ watch(() => props.modelValue, (newVal) => {
 
   <!-- Режим поиска адреса -->
   <div v-else-if="address" class="address-search-container">
-    <div class="form-group">
-      <label :for="id || 'phone-input'">
+    <div class="form-group" :class="{ compact }">
+      <label v-if="tLabel" :for="id || 'phone-input'">
         {{ tLabel }}
         <span class="required" v-if="lRequired">*</span>
       </label>
@@ -234,9 +235,9 @@ watch(() => props.modelValue, (newVal) => {
     </div>
   </div>
 
-  <!-- Обычный режим (включая date) -->
-  <div v-else class="form-group">
-    <label :for="id || 'phone-input'">
+  <!-- Обычный режим (включая date/number) -->
+  <div v-else class="form-group" :class="{ compact }">
+    <label v-if="tLabel" :for="id || 'phone-input'">
       {{ tLabel }}
       <span class="required" v-if="lRequired">*</span>
     </label>
@@ -244,7 +245,7 @@ watch(() => props.modelValue, (newVal) => {
         :type="type || 'text'"
         :id="id || 'phone-input'"
         :value="addressSearch"
-        @input="(e) => { const val = (e.target as HTMLInputElement).value; addressSearch = val; $emit('update:modelValue', type === 'number' ? (val === '' ? null : Number(val)) : val); $emit('input', e); }"
+        @input="(e) => { const val = (e.target as HTMLInputElement).value; addressSearch = val; $emit('update:modelValue', type === 'number' ? (val === '' ? 0 : Number(val)) : val); $emit('input', e); }"
         @focus="$emit('focus', $event)"
         :required="iRequired"
         :placeholder="placeholder"
@@ -257,15 +258,16 @@ watch(() => props.modelValue, (newVal) => {
 <style scoped>
 .form-group {
   display: flex;
+  justify-content: center;
   flex-direction: column;
   gap: 0.4rem;
   width: 100%;
 }
 
 label {
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   font-weight: 500;
-  color: rgba(255, 255, 255, 0.9);
+  color: rgba(255, 255, 255, 0.8);
 }
 
 .required {
@@ -276,13 +278,29 @@ input {
   background-color: var(--half_opacity_bg);
   border: 1px solid var(--half_opacity_border);
   border-radius: 5px;
-  padding: 10px 12px;
+  padding: 8px 12px;
   color: white;
   font-size: 0.95rem;
   transition: border-color 0.2s, box-shadow 0.2s;
   outline: none;
   width: 100%;
   box-sizing: border-box;
+}
+
+/* Компактный режим для плотных форм и таблиц */
+.form-group.compact {
+  gap: 0.2rem;
+}
+
+.form-group.compact label {
+  font-size: 11px;
+  color: #8c8c9e;
+}
+
+.form-group.compact input {
+  padding: 5px 8px;
+  font-size: 12px;
+  border-radius: 4px;
 }
 
 input[type="date"] {
@@ -364,38 +382,13 @@ input:read-only:focus {
   100% { transform: rotate(360deg); }
 }
 
-/* ========================================
-   АДАПТИВНОСТЬ / ТАЧ-УСТРОЙСТВА
-======================================== */
 @media (max-width: 600px) {
   input {
-    font-size: 16px; /* предотвращает авто-зум на iOS Safari при фокусе */
+    font-size: 16px;
     padding: 11px 12px;
   }
-
   label {
     font-size: 0.85rem;
-  }
-
-  .dropdown {
-    max-height: 45vh;
-  }
-
-  .dropdown-item {
-    padding: 12px;
-    font-size: 14px;
-  }
-}
-
-@media (hover: none) and (pointer: coarse) {
-  input {
-    min-height: 44px;
-  }
-
-  .dropdown-item {
-    min-height: 44px;
-    display: flex;
-    align-items: center;
   }
 }
 </style>

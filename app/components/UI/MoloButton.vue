@@ -17,7 +17,13 @@ const emit = defineEmits<{
 
 const handleClick = (event: MouseEvent) => {
   if (props.disabled || props.loading) return
+  event.stopPropagation()
   emit('click', event)
+}
+
+// Предотвращаем запуск драга родителя (v-pinnable) при клике на кнопку
+const handleMouseDown = (event: MouseEvent) => {
+  event.stopPropagation()
 }
 </script>
 
@@ -35,6 +41,8 @@ const handleClick = (event: MouseEvent) => {
         'transparent': $attrs.variant === 'transparent'
       }"
       :disabled="disabled || loading"
+      draggable="false"
+      @mousedown="handleMouseDown"
       @click="handleClick"
   >
     <!-- Спиннер при загрузке -->
@@ -46,7 +54,6 @@ const handleClick = (event: MouseEvent) => {
     <slot>{{ loading ? 'Загрузка...' : 'Кнопка' }}</slot>
   </button>
 </template>
-
 <style scoped>
 .molo-btn {
   position: relative;
@@ -77,6 +84,7 @@ const handleClick = (event: MouseEvent) => {
   border-color .25s ease,
   background .25s ease;
 }
+
 
 .molo-btn::before {
   backdrop-filter:
@@ -310,10 +318,9 @@ const handleClick = (event: MouseEvent) => {
 
 
 .molo-btn__spinner {
-  display: inline-block;
-  width: 16px;
-  height: 16px;
+  display: inline-flex;
   border-radius: 50%;
+  color: red;
 }
 
 @keyframes spin {

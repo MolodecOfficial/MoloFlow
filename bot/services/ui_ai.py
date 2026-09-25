@@ -1,9 +1,10 @@
 import json
 import re
-
 import config
+
 from services.ai import _client, _trim_source, MAX_CHARS
 from services.project_styles import get_css_for_prompt
+from google.genai import types
 
 SYSTEM_PROMPT_TEMPLATE = """Ты — фронтенд-инженер. По коду файла ты собираешь ЖИВОЙ HTML-макет,
 имитирующий, как компонент выглядит и ведёт себя в браузере — для видео-демо
@@ -136,12 +137,6 @@ def _validate(meta: dict, html: str, project_css: str) -> dict:
 
 
 def generate_ui_storyboard(rel_path: str, content: str) -> dict:
-    """Просит модель собрать живой HTML-макет компонента (с учётом реальных
-    стилей проекта) и возвращает провалидированный dict для
-    services.browser_animator.render_ui_video.
-
-    Бросает ValueError, если модель вернула что-то, что не удалось разобрать.
-    """
     content = _trim_source(content)
     if len(content) > MAX_CHARS:
         content = content[:MAX_CHARS] + "\n...(файл обрезан)"
@@ -151,14 +146,14 @@ def generate_ui_storyboard(rel_path: str, content: str) -> dict:
         project_css=project_css or "/* стили проекта не настроены/не найдены */"
     )
 
-    completion = _client.chat.completions.create(
-        model=config.GROQ_MODEL,
-        temperature=0.3,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"Файл: {rel_path}\n\n```\n{content}\n```"},
-        ],
+    response = _client.models.generate_content(
+        model=config.GEMINI_MODEL,
+        contents=f"Файл: {rel_path}\n\n```\n{content}\n```",
+        config=types.GenerateContentConfig(
+            system_instruction=system_prompt,
+            temperature=0.3,
+        ),
     )
-    raw = completion.choices[0].message.content
+    raw = response.text or ""
     meta, html = _parse_response(raw)
     return _validate(meta, html, project_css)

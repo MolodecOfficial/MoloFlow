@@ -1,57 +1,36 @@
-import { Menu } from '~~/server/models/menu.model';
+// server/api/menu/location.get.ts
+import { defineEventHandler, getQuery, createError } from 'h3'
+import { Types } from 'mongoose'
+import { Menu } from '~~/server/models/menu.model'
+import { checkEnterpriseAccess } from '~~/server/utils/enterpriseAuth'
 
 export default defineEventHandler(async (event) => {
-    try {
-        const groups = await Menu.find({ isActive: true, type: 'menu' }).lean();
+    const query = getQuery(event)
+    const enterpriseId = String(query.enterpriseId || '').trim()
 
-        const availableLocations = [];
-
-        for (const group of groups) {
-            if (!group || !group.id || !group.title) continue;
-
-            const locations = [];
-
-            // Корень группы
-            locations.push({
-                id: null,
-                title: `В корень группы "${group.title}"`,
-                groupId: group.id,
-                parentPath: []
-            });
-
-            // Рекурсивный сбор всех элементов, которые могут быть родителями (имеют items)
-            const collectParentCandidates = (items: any[], path: string[] = []) => {
-                if (!items) return;
-                for (const item of items) {
-                    if (item.items && Array.isArray(item.items) && item.items.length > 0) {
-                        locations.push({
-                            id: item.id,
-                            title: item.title,
-                            groupId: group.id,
-                            parentPath: [...path, item.title]
-                        });
-                    }
-                    if (item.items?.length) {
-                        collectParentCandidates(item.items, [...path, item.title]);
-                    }
-                }
-            };
-
-            if (group.items && Array.isArray(group.items)) {
-                collectParentCandidates(group.items);
-            }
-
-            availableLocations.push({
-                groupId: group.id,
-                groupTitle: group.title,
-                locations: locations
-            });
-        }
-
-        return availableLocations;
-
-    } catch (error: any) {
-        console.error('Ошибка в /api/menu/location:', error);
-        return [];
+    if (!enterpriseId || !Types.ObjectId.isValid(enterpriseId)) {
+        throw createError({ statusCode: 400, statusMessage: 'Некорректный enterpriseId' })
     }
-});
+
+    // Проверяем доступ к предприятию (поддерживает headers, query.userId и токены)
+    await checkEnterpriseAccess(event, enterpriseId, ['Администратор', 'Управляющий', 'Программист', 'Сотрудник'])
+
+    const groups = await Menu.find({ isActive: { $ne: false } })
+        .select('_id id title placeName type order items')
+        .sort({ order: 1 })
+        .lean()
+        .exec()
+
+    const locations = groups.map((g: any) => ({
+        groupId: g._id || g.id,
+        groupTitle: g.title,
+        locations: (g.items || []).map((item: any) => ({
+            id: item.id || item._id,
+            title: item.title,
+            placeName: item.placeName,
+            type: item.type
+        }))
+    }))
+
+    return { locations }
+})

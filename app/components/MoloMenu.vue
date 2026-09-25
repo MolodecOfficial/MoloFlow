@@ -5,24 +5,32 @@ import { useEnterprise } from '~~/app/composables/useEnterprise'
 import lock from '~~/public/lock.svg'
 import tsIcon from '~~/public/ts.png'
 import jsIcon from '~~/public/js.png'
-import { useMoloMenuStore } from '~~/stores/moloMenuStore'
+import { useAppStore } from '~~/stores/appStore'
+import { useMenuStore } from '~~/stores/menuStore'
+import { useModulesStore } from '~~/stores/modulesStore'
 import { useWindowManager } from '~~/app/composables/window/useWindowManager'
 import { useModulePrefetch } from '~/composables/compiler/useModulePrefetch'
 
-const props = defineProps<{ role: string }>()
+const props = defineProps<{ role?: string }>()
 const emit = defineEmits<{
   'lock-hover': [value: boolean]
 }>()
 
-const menuStore = useMoloMenuStore()
+const menuStore = useMenuStore()
+const modulesStore = useModulesStore()
+const appStore = useAppStore()
+
 const { openWindow } = useWindowManager()
 const { addLog } = useLogger('Меню')
-const { menuGroups, staticModuleGroups, dynamicModules, menuLoaded } = storeToRefs(menuStore)
+
+// Извлекаем актуальные реактивные поля из правильных сторов
+const { menuGroups, menuLoaded } = storeToRefs(menuStore)
+const { enterpriseModules } = storeToRefs(modulesStore)
 const { prefetchOne } = useModulePrefetch()
 
 const enterprise = useEnterprise()
 
-const loading = ref(!menuLoaded.value)
+const loading = ref(false)
 const executingModules = ref<Set<string>>(new Set())
 const isLoaded = ref(false)
 const showLock = ref(false)
@@ -36,13 +44,13 @@ const searchQuery = ref('')
 const searchInputRef = ref<HTMLInputElement | null>(null)
 
 const createDynamicItems = () => {
-  return dynamicModules.value
-      .filter((m: any) => m && m._id)
+  return (enterpriseModules.value || [])
+      .filter((m: any) => m && (m._id || m.fileName))
       .map((m: any) => ({
         id: m.fileName || `module_${m._id}`,
         placeName: m.fileName || `module_${m._id}`,
-        title: m.name || 'Без названия',
-        format: m.format,
+        title: m.name || m.title || 'Без названия',
+        format: m.format || 'vue',
         isActive: true,
         isModule: true,
         moduleId: m._id,
@@ -58,20 +66,23 @@ const createDynamicItems = () => {
       }))
 }
 
-const modulesGroups = computed(() => {
-  if (!enterprise.isLoggedIn.value) return []
-  const staticModules = staticModuleGroups.value
-  const dynamic = createDynamicItems()
-  return dynamic.length
-      ? [...staticModules, { title: 'Мои модули', items: dynamic }]
-      : staticModules
-})
-
+// Защита от undefined при деструктуризации и объединении
 const allGroups = computed(() => {
-  const merged = [...menuGroups.value, ...modulesGroups.value]
-  return merged.map((g: any, idx: number) => ({
+  const groups = Array.isArray(menuGroups.value) ? [...menuGroups.value] : []
+  const dynamicItems = createDynamicItems()
+
+  if (dynamicItems.length > 0) {
+    groups.push({
+      id: 'custom_dynamic_modules',
+      title: 'Мои модули',
+      items: dynamicItems
+    })
+  }
+
+  return groups.map((g: any, idx: number) => ({
     ...g,
-    id: g.id || g.groupId || `group_${idx}`
+    id: g.id || g.groupId || g._id || `group_${idx}`,
+    items: g.items || []
   }))
 })
 
@@ -81,56 +92,22 @@ const orbClasses = computed(() => ({
 }))
 
 const loadAll = async (force = false) => {
-  const enterpriseId = enterprise.enterpriseId.value
+  loading.value = true
+  const enterpriseId = appStore.getEnterpriseId()
+  const role = appStore.currentMemberRole || props.role || 'Администратор'
 
-  if (enterpriseId) {
-    addLog("info", 'Загружаю меню для предприятия...');
-  }
-
-  await Promise.all([
-    menuStore.loadMenu(props.role, force),
-    enterpriseId ? menuStore.loadDynamicModules(enterpriseId, force) : Promise.resolve()
-  ])
-
-  if (dynamicModules.value.length === 0 && enterpriseId) {
-    addLog('error', 'Ошибка загрузки меню: Динамические модули не загружены')
-    return
-  }
-
-  for (const module of dynamicModules.value) {
-    if (module && (module.format === 'js' || module.format === 'ts') && module.isActive !== false) {
-      addLog('info', `Автозапуск модуля-скрипта: ${module.name}`)
-      try {
-        const response = await $fetch(`/api/execute/${module._id}`, {
-          method: 'POST',
-          body: {
-            data: {
-              moduleName: module.name,
-              enterpriseId: enterpriseId,
-              isAutoStart: true
-            }
-          }
-        })
-
-        // 🔥 Исправлено: добавляем логи через тот же addLog (глобальный)
-        if (response.logs && response.logs.length) {
-          for (const log of response.logs) {
-            let type: 'info' | 'warning' | 'error' | 'success' = 'info';
-            if (log.includes('ERROR')) type = 'error';
-            else if (log.includes('WARN')) type = 'warning';
-            else if (log.includes('SUCCESS')) type = 'success';
-            addLog(type, log);
-          }
-        }
-        addLog('success', `Модуль-скрипт "${module.name}" выполнен успешно`)
-      } catch (err: any) {
-        addLog('error', `Ошибка при запуске "${module.name}": ${err?.data?.message || err?.message || err}`)
-        if (err.data?.logs) {
-          for (const log of err.data.logs) {
-            addLog('error', log);
-          }
-        }
-      }
+  try {
+    await Promise.all([
+      menuStore.loadMenu(role, force),
+      enterpriseId ? modulesStore.loadEnterpriseModules(enterpriseId, force) : Promise.resolve()
+    ])
+  } catch (e: any) {
+    addLog('error', `Ошибка загрузки меню: ${e?.message || e}`)
+  } finally {
+    loading.value = false
+    isLoaded.value = true
+    if (allGroups.value.length > 0 && !activeGroupId.value) {
+      activeGroupId.value = allGroups.value[0].id
     }
   }
 }
@@ -139,29 +116,18 @@ watch(
     () => enterprise.isLoggedIn.value,
     async (isLoggedIn, wasLoggedIn) => {
       if (isLoggedIn !== wasLoggedIn) {
-        addLog('info', isLoggedIn ? 'Вход в предприятие' : 'Выход из предприятия')
-        menuStore.invalidateMenu()
-        menuStore.invalidateDynamicModules()
-        loading.value = true
+        menuStore.invalidate()
         await loadAll(true)
-        loading.value = false
-        isLoaded.value = true
       }
-    },
-    { immediate: false }
+    }
 )
 
 watch(
     () => enterprise.enterpriseId.value,
     async (newId, oldId) => {
       if (newId && newId !== oldId) {
-        addLog('info', 'Сменилось предприятие, обновляю меню...')
-        menuStore.invalidateMenu()
-        menuStore.invalidateDynamicModules()
-        loading.value = true
+        menuStore.invalidate()
         await loadAll(true)
-        loading.value = false
-        isLoaded.value = true
       }
     }
 )
@@ -227,7 +193,6 @@ const resultPath = (result: any) => {
 
 const restartModule = async (moduleData: any) => {
   if (!moduleData) return
-
   const moduleId = moduleData._id
 
   if (executingModules.value.has(moduleId)) {
@@ -239,13 +204,13 @@ const restartModule = async (moduleData: any) => {
     executingModules.value.add(moduleId)
     addLog('info', `Перезапуск модуля: ${moduleData.name}`)
 
-    const enterpriseId = enterprise.enterpriseId.value
+    const enterpriseId = appStore.getEnterpriseId()
     if (!enterpriseId) {
       addLog('error', 'Нет ID предприятия')
       return
     }
 
-    const response = await $fetch(`/api/execute/${moduleData._id}`, {
+    const response = await $fetch<{ logs?: string[] }>(`/api/execute/${moduleData._id}`, {
       method: 'POST',
       body: {
         data: {
@@ -256,36 +221,24 @@ const restartModule = async (moduleData: any) => {
       }
     })
 
-    // 🔥 Добавляем логи из ответа в MoloLogger
     if (response.logs && response.logs.length) {
-      const { addLog: addModuleLog } = useLogger('Модуль');
+      const { addLog: addModuleLog } = useLogger('Модуль')
       for (const log of response.logs) {
-        // Определяем тип лога по наличию маркеров
-        let type: 'info' | 'warning' | 'error' | 'success' = 'info';
-        if (log.includes('ERROR')) type = 'error';
-        else if (log.includes('WARN')) type = 'warning';
-        else if (log.includes('SUCCESS')) type = 'success';
-        addModuleLog(type, log);
+        let type: 'info' | 'warning' | 'error' | 'success' = 'info'
+        if (log.includes('ERROR')) type = 'error'
+        else if (log.includes('WARN')) type = 'warning'
+        else if (log.includes('SUCCESS')) type = 'success'
+        addModuleLog(type, log)
       }
     }
 
     addLog('success', `Модуль "${moduleData.name}" выполнен успешно`)
-
   } catch (error: any) {
-    console.error('Restart error:', error)
     addLog('error', `Ошибка при выполнении модуля: ${error.message}`)
-    // Если в ошибке есть логи, тоже показываем их
-    if (error.data?.logs) {
-      const { addLog: addModuleLog } = useLogger('Модуль');
-      for (const log of error.data.logs) {
-        addModuleLog('error', log);
-      }
-    }
   } finally {
     executingModules.value.delete(moduleId)
   }
 }
-
 
 const openItem = (item: any, group: any, parent?: any) => {
   if (item.isScript) {
@@ -295,14 +248,8 @@ const openItem = (item: any, group: any, parent?: any) => {
   }
 
   if (item.isModule) {
-    // Пользовательский модуль из БД. Ключ окна = fileName, который
-    // пользователь задал при создании модуля (см. createDynamicItems выше,
-    // поле placeName) — вводить id вручную не нужно, он уже в moduleData.
     openWindow(item.placeName, item.moduleData)
   } else {
-    // Системный экран платформы (Login, Configurator и т.п.). Ключ должен
-    // совпадать с ключом в composables/systemWindows.ts — используем id
-    // самого пункта меню, это и есть его "имя файла" в терминах системы окон.
     openWindow(item.id || item.placeName, item.data)
   }
 
@@ -331,8 +278,6 @@ const selectResult = (result: any) => {
   openItem(result.item, result.group, parent)
 }
 
-const quickCategories = computed(() => allGroups.value.slice(0, 6))
-
 const openPanel = () => {
   isOpen.value = true
   if (!activeGroupId.value || !allGroups.value.some(g => g.id === activeGroupId.value)) {
@@ -343,22 +288,12 @@ const openPanel = () => {
   nextTick(() => searchInputRef.value?.focus())
 }
 
-const openPanelWithCategory = (group: any) => {
-  isOpen.value = true
-  activeGroupId.value = group.id
-  breadcrumbStack.value = []
-  searchQuery.value = ''
-}
-
 const closePanel = () => {
   isOpen.value = false
   searchQuery.value = ''
 }
 
 const togglePanel = () => (isOpen.value ? closePanel() : openPanel())
-
-// Размеры системных экранов больше не дублируются здесь — единственный
-// источник правды: composables/systemWindows.ts
 
 const onLockEnter = () => {
   if (props.role === 'Пользователь') {
@@ -380,15 +315,10 @@ const handleMouseMove = (e: MouseEvent) => {
 }
 
 const handleGlobalKeydown = (e: KeyboardEvent) => {
-  // ФИКС: e.key зависит от раскладки клавиатуры. На русской раскладке
-  // физическая клавиша Q — это "Й", и Ctrl+Q в моменте с русской
-  // раскладкой давал e.key === 'й', а не 'q' — сочетание "не работало"
-  // в зависимости от того, какой язык ввода был активен в моменте нажатия.
-  // e.code — физическое положение клавиши, от раскладки/языка НЕ зависит.
   const isToggleCombo = (e.ctrlKey || e.metaKey) && !e.altKey && e.code === 'KeyQ'
 
   if (isToggleCombo) {
-    if (e.repeat) return // не дёргаем toggle повторно, если клавишу держат зажатой
+    if (e.repeat) return
     e.preventDefault()
     e.stopPropagation()
     togglePanel()
@@ -399,21 +329,8 @@ const handleGlobalKeydown = (e: KeyboardEvent) => {
 
 onMounted(async () => {
   window.addEventListener('mousemove', handleMouseMove)
-  // ФИКС: capture: true — перехватываем keydown РАНЬШЕ вложенных полей
-  // ввода/редакторов кода (Monaco и т.п.), которые могут вызывать
-  // stopPropagation() на своих сочетаниях клавиш и не давать событию
-  // дойти до window в обычной фазе всплытия
   window.addEventListener('keydown', handleGlobalKeydown, { capture: true })
-
-  const alreadyCached = menuLoaded.value
-  if (!alreadyCached) loading.value = true
-
-  try {
-    await loadAll(false)
-  } finally {
-    loading.value = false
-    isLoaded.value = true
-  }
+  await loadAll(false)
 })
 
 onUnmounted(() => {
@@ -436,7 +353,7 @@ onUnmounted(() => {
       </button>
 
       <div v-if="loading" class="loading-inline">
-        <UIMoloLoaders wnd-loader/>
+        <UIMoloLoaders wnd-loader />
       </div>
     </div>
 
@@ -473,8 +390,8 @@ onUnmounted(() => {
                         :style="{ background: result.item.items?.length ? 'transparent' : undefined }"
                     >
                       <template v-if="result.item.items?.length">📁</template>
-                      <img v-else-if="result.item.format === 'ts'" :src="tsIcon" alt=""/>
-                      <img v-else-if="result.item.format === 'js'" :src="jsIcon" alt=""/>
+                      <img v-else-if="result.item.format === 'ts'" :src="tsIcon" alt="" />
+                      <img v-else-if="result.item.format === 'js'" :src="jsIcon" alt="" />
                       <span v-else class="vue-badge">V</span>
                     </span>
                     <span class="search-texts">
@@ -522,16 +439,17 @@ onUnmounted(() => {
                         :key="item.id"
                         class="item-card"
                         :class="{
-                          folder: item.items?.length,
-                          script: item.isScript,
-                          executing: item.isScript && executingModules.has(item.moduleId) }"
+                        folder: item.items?.length,
+                        script: item.isScript,
+                        executing: item.isScript && executingModules.has(item.moduleId)
+                      }"
                         @click="handleCardClick(item)"
-                        @mouseenter="item.isModule && item.moduleId && prefetchOne(item.moduleId, enterprise.enterpriseId.value)"
+                        @mouseenter="item.isModule && item.moduleId && prefetchOne(item.moduleId, appStore.getEnterpriseId() || '')"
                     >
                       <span class="card-icon">
                         <template v-if="item.items?.length">📁</template>
-                        <img v-else-if="item.format === 'ts'" :src="tsIcon" alt=""/>
-                        <img v-else-if="item.format === 'js'" :src="jsIcon" alt=""/>
+                        <img v-else-if="item.format === 'ts'" :src="tsIcon" alt="" />
+                        <img v-else-if="item.format === 'js'" :src="jsIcon" alt="" />
                         <span v-else class="vue-badge">V</span>
                       </span>
                       <span class="card-title">{{ item.title }}</span>
@@ -568,7 +486,7 @@ onUnmounted(() => {
     </Teleport>
 
     <div v-if="showLock" class="lock-overlay">
-      <img :src="lock" class="lock-icon"/>
+      <img :src="lock" class="lock-icon" />
       <div class="lock-tooltip" :style="{ left: tooltipX + 'px', top: tooltipY + 'px' }">
         Нет доступа
       </div>
@@ -670,23 +588,13 @@ onUnmounted(() => {
 }
 
 @keyframes radar-pulse {
-  0% {
-    transform: scale(0.3);
-    opacity: 0.9;
-  }
-  100% {
-    transform: scale(2.4);
-    opacity: 0;
-  }
+  0% { transform: scale(0.3); opacity: 0.9; }
+  100% { transform: scale(2.4); opacity: 0; }
 }
 
 @keyframes glow-pulse {
-  0% {
-    box-shadow: 0 0 12px 2px rgba(255, 215, 0, 0.6);
-  }
-  100% {
-    box-shadow: 0 0 24px 6px rgba(255, 215, 0, 0.9);
-  }
+  0% { box-shadow: 0 0 12px 2px rgba(255, 215, 0, 0.6); }
+  100% { box-shadow: 0 0 24px 6px rgba(255, 215, 0, 0.9); }
 }
 
 .launcher-text {
@@ -709,31 +617,6 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   padding: 0 8px;
-}
-
-.quick-dock {
-  display: flex;
-  gap: 6px;
-}
-
-.dock-blip {
-  --blip-color: #5b8def;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  border: 1px solid var(--panel-border);
-  background: rgba(255, 255, 255, 0.04);
-  color: white;
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: transform 0.15s, box-shadow 0.2s, border-color 0.2s;
-}
-
-.dock-blip:hover {
-  transform: translateY(-2px);
-  border-color: var(--blip-color);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--blip-color) 25%, transparent);
 }
 
 .deck-overlay {
@@ -918,6 +801,7 @@ onUnmounted(() => {
 
 .bc-sep {
   color: white;
+  opacity: 0.4;
 }
 
 .bc-root:hover, .bc-item:hover {
@@ -926,10 +810,6 @@ onUnmounted(() => {
 
 .bc-item:last-child {
   color: white;
-}
-
-.bc-sep {
-  opacity: 0.4;
 }
 
 .items-grid {
@@ -1188,7 +1068,6 @@ onUnmounted(() => {
 }
 
 .launcher-btn:focus-visible,
-.dock-blip:focus-visible,
 .rail-item:focus-visible,
 .item-card:focus-visible,
 .search-row:focus-visible {
@@ -1196,21 +1075,6 @@ onUnmounted(() => {
   outline-offset: 2px;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .orb-ring {
-    animation: none;
-  }
-  .orb-core.lg {
-    animation: none;
-  }
-  .item-card:hover {
-    transform: none;
-  }
-}
-
-/* ========================================
-   АДАПТИВНОСТЬ МЕНЮ
-======================================== */
 @media (max-width: 900px) {
   .items-grid {
     grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
@@ -1249,11 +1113,6 @@ onUnmounted(() => {
   .launcher-kbd {
     display: none;
   }
-  .quick-dock {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: thin;
-  }
 }
 
 @media (max-width: 600px) {
@@ -1273,7 +1132,7 @@ onUnmounted(() => {
     padding-top: max(12px, env(safe-area-inset-top));
   }
   .prompt-input {
-    font-size: 16px; /* предотвращает авто-зум на iOS Safari */
+    font-size: 16px;
   }
   .items-grid {
     grid-template-columns: repeat(auto-fill, minmax(122px, 1fr));
@@ -1314,11 +1173,8 @@ onUnmounted(() => {
   .item-card,
   .search-row,
   .rail-item,
-  .dock-blip,
   .launcher-btn,
-  .restart-btn,
-  .close-with-window-toggle,
-  .link-indicator {
+  .restart-btn {
     min-height: 40px;
   }
 }

@@ -5,3 +5,4 @@ aiohttp-socks>=0.9
 playwright>=1.47
 libsass>=0.23
 imageio-ffmpeg>=0.5
+google-genai>=1.0.0

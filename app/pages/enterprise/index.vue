@@ -1,24 +1,16 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter, useHead } from '#imports'
-import { useUserStore } from '~~/stores/userStore'
 import { useNotifications } from '~/composables/useNotifications'
 import { useWindowManager } from '~/composables/window/useWindowManager'
 import { readDrag, consumePinnedCallback } from '~/composables/window/useDragPayload'
 import { usePinnedItems } from '~/composables/window/usePinnedItems'
-import { usePersistentState } from '~/composables/window/usePersistentState'
 import { useLogger } from '~/composables/useLogger'
 import logo from '~~/public/logo.ico'
-import { useAppStore } from "~~/stores/appStore"
-import {useMenuEditorStore} from "~~/stores/menuEditorStore";
-import {useModuleEditorStore} from "~~/stores/moduleEditorStore";
+import { useAppStore } from '~~/stores/appStore'
 
-const name = ref('')
-const role = ref('')
-const enterpriseName = ref('')
 const isLoading = ref(true)
 const dataPreloadStarted = ref(false)
-
 
 const {
   windows,
@@ -31,79 +23,29 @@ const {
   maximizeWindow
 } = useWindowManager()
 
-const userStore = useUserStore()
 const appStore = useAppStore()
-const menuEditor = useMenuEditorStore()
-const moduleEditor = useModuleEditorStore()
 const router = useRouter()
 const { pin } = usePinnedItems()
 const { notifications, removeNotification } = useNotifications('Главная страница')
 const { addLog } = useLogger('Предприятие')
 
+// Реактивные данные из единого appStore
+const name = computed(() => appStore.currentUser?.name || 'Гость')
+const role = computed(() => appStore.currentMemberRole || appStore.currentUser?.role || 'Пользователь')
+const enterpriseName = computed(() => appStore.enterpriseName)
+
 useHead({
   title: computed(() => `Предприятие — ${enterpriseName.value || 'Загрузка...'}`)
 })
 
-// Функция загрузки данных (будет вызываться при монтировании и при событиях)
 const loadUserData = () => {
-  let userName = ''
-  let userRole = ''
-
-  // Данные из Pinia
-  if (userStore.userName && userStore.userRole) {
-    userName = userStore.userName
-    userRole = userStore.userRole
-  }
-
-  // Название предприятия из localStorage
-  const storageEnterprise = localStorage.getItem('currentEnterprise')
-  if (storageEnterprise) {
-    try {
-      const enterprise = JSON.parse(storageEnterprise)
-      const newName = enterprise.enterpriseName || enterprise.name || 'Без названия'
-
-      // Обновляем только если изменилось
-      if (enterpriseName.value !== newName) {
-        enterpriseName.value = newName
-      }
-    } catch {
-      enterpriseName.value = 'Ошибка загрузки'
-    }
-  } else {
-    enterpriseName.value = 'Без названия'
-  }
-
-  // Пользователь из localStorage (если Pinia пуст)
-  if (!userName || !userRole) {
-    const storageUser = localStorage.getItem('user')
-
-    if (storageUser) {
-      try {
-        const user = JSON.parse(storageUser)
-        userName = user.name || 'Гость'
-        userRole = user.role || 'Пользователь'
-      } catch (e) {
-        console.error('Ошибка парсинга user:', e)
-        userName = 'Гость'
-        userRole = 'Пользователь'
-      }
-    } else {
-      userName = 'Гость'
-      userRole = 'Пользователь'
-    }
-  }
-
-  name.value = userName
-  role.value = userRole
+  appStore.loadEnterpriseFromStorage()
   isLoading.value = false
 }
 
 function onWorkspaceDrop(e: DragEvent) {
   const payload = readDrag(e)
-
   if (!payload?.type) return
-
-  console.log('[index] onWorkspaceDrop payload.windowKey=', payload.windowKey, 'type=', payload.type)
 
   const workspace = e.currentTarget as HTMLElement
   const rect = workspace.getBoundingClientRect()
@@ -134,18 +76,15 @@ const openSettings = () => {
   openWindow('customisation')
 }
 
-// Предзагрузка всех данных предприятия (вкладки, стандарты, записи)
+// Предзагрузка данных предприятия в фоне
 const preloadEnterpriseData = async () => {
   if (dataPreloadStarted.value) return
-
   dataPreloadStarted.value = true
-  addLog('info', 'Начинаем предзагрузку данных предприятия...')
 
+  addLog('info', 'Начинаем предзагрузку данных предприятия...')
   try {
-    // Загружаем данные предприятия из хранилища, если нужно
     if (!appStore.getEnterpriseId()) {
       appStore.loadEnterpriseFromStorage()
-      addLog('warning', 'Информация о предприятии не найдена, загружаю!')
     }
     addLog('success', `Информация предприятия ${enterpriseName.value} загружена!`)
   } catch (error) {
@@ -154,13 +93,9 @@ const preloadEnterpriseData = async () => {
   }
 }
 
-
-// Слушатель изменений в localStorage (для других вкладок)
 const handleStorageChange = async (e: StorageEvent) => {
   if (e.key === 'currentEnterprise' || e.key === 'user') {
     loadUserData()
-
-    // Если сменилось предприятие - перезагружаем данные
     if (e.key === 'currentEnterprise') {
       dataPreloadStarted.value = false
       await preloadEnterpriseData()
@@ -168,25 +103,17 @@ const handleStorageChange = async (e: StorageEvent) => {
   }
 }
 
-// Пользовательское событие для обновления в той же вкладке
 const handleEnterpriseUpdate = async () => {
   loadUserData()
-  // При обновлении предприятия перезагружаем данные
   dataPreloadStarted.value = false
   await preloadEnterpriseData()
 }
 
 onMounted(async () => {
   loadUserData()
-
-  // Запускаем предзагрузку данных предприятия в фоне
-  // Не блокируем отображение интерфейса
   await preloadEnterpriseData()
 
-  // Слушаем изменения localStorage из других вкладок
   window.addEventListener('storage', handleStorageChange)
-
-  // Слушаем пользовательские события обновления предприятия
   window.addEventListener('enterprise-login', handleEnterpriseUpdate)
   window.addEventListener('enterprise-logout', handleEnterpriseUpdate)
   window.addEventListener('enterprise-updated', handleEnterpriseUpdate)
@@ -200,19 +127,19 @@ onUnmounted(() => {
 })
 
 function deleteUser() {
-  localStorage.removeItem('user')
-  localStorage.removeItem('currentEnterprise')
-  localStorage.removeItem('enterprise_token')
-
-  // Оповещаем об изменении
-  window.dispatchEvent(new Event('enterprise-logout'))
-
+  appStore.clearSession()
+  if (typeof window !== 'undefined') {
+    localStorage.removeItem('user')
+    localStorage.removeItem('currentEnterprise')
+    localStorage.removeItem('enterprise_token')
+    window.dispatchEvent(new Event('enterprise-logout'))
+  }
   router.push('/')
 }
 </script>
 
 <template>
-  <MoloGuard :allowedRoles="['Управляющий', 'Сотрудник', 'Пользователь']">
+  <MoloGuard :allowedRoles="['Администратор', 'Управляющий', 'Бухгалтер', 'Программист', 'Сотрудник', 'Наблюдатель', 'Пользователь']">
     <div class="enterprise-container">
       <!-- Фон -->
       <div class="background">
@@ -279,9 +206,11 @@ function deleteUser() {
         </header>
 
         <!-- Основная рабочая зона -->
-        <main class="workspace"
-              @dragover.prevent
-              @drop="onWorkspaceDrop">
+        <main
+            class="workspace"
+            @dragover.prevent
+            @drop="onWorkspaceDrop"
+        >
           <DekstopMoloPinnedLayer />
 
           <section class="workspace-header">
@@ -289,9 +218,8 @@ function deleteUser() {
                 :role="role"
                 @open-window="openWindow"
             />
-            <LayoutMoloToolbar/>
+            <LayoutMoloToolbar />
           </section>
-
 
           <WindowWindowsManager
               :windows="windows"
@@ -497,7 +425,6 @@ function deleteUser() {
   padding: 24px 28px;
   border-radius: 28px;
   -webkit-backdrop-filter: blur(22px);
-
 }
 
 .brand {
@@ -566,11 +493,9 @@ function deleteUser() {
 @keyframes aaaaa {
   0% {
     background: linear-gradient(135deg, #3872ef, #7c3aed);
-
   }
   100% {
-    background: linear-gradient(135deg,  #7c3aed, #3872ef);
-
+    background: linear-gradient(135deg, #7c3aed, #3872ef);
   }
 }
 
@@ -592,20 +517,6 @@ function deleteUser() {
   font-weight: 600;
   color: #ffffff;
   white-space: nowrap;
-}
-
-/* ========================================
-   КНОПКА ВЫХОДА
-======================================== */
-.logout-btn {
-  height: 42px;
-  border: 1px solid var(--half_opacity_border);
-  border-radius: 6px;
-  background: rgba(208, 0, 22, 0.34);
-  color: #ffffff;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
 }
 
 /* ========================================
@@ -656,10 +567,6 @@ function deleteUser() {
     align-items: stretch;
   }
 
-  .logout-btn {
-    width: 100%;
-  }
-
   .logger-wrapper {
     left: 12px;
     bottom: 12px;
@@ -708,7 +615,6 @@ function deleteUser() {
   }
 }
 
-/* Отступы под "чёлку"/системные жесты на телефонах */
 @supports (padding: max(0px)) {
   .topbar {
     padding-top: max(24px, env(safe-area-inset-top));

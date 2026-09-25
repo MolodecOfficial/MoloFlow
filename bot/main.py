@@ -21,22 +21,13 @@ logging.getLogger("openai._base_client").setLevel(logging.WARNING)
 def build_session() -> AiohttpSession:
     kwargs = {}
 
-    # !!! ГЛАВНОЕ ИЗМЕНЕНИЕ ЗДЕСЬ !!!
-    # Мы используем TELEGRAM_API_BASE из вашего config.py
-    # Убедитесь, что в .env переменная TELEGRAM_API_BASE указывает на ваш Worker,
-    # а TELEGRAM_PROXY пуста или удалена.
     if config.TELEGRAM_API_BASE:
-        # ВАЖНО: Aiogram ожидает, что base URL будет без /bot{token}
-        # Ваш Worker должен принимать запросы вида https://your-worker.workers.dev/bot{token}/{method}
-        # Поэтому мы просто передаем базовый URL воркера.
-        kwargs["api"] = TelegramAPIServer.from_base(config.TELEGRAM_API_BASE)
-        logger.info("Telegram API через кастомный base (Cloudflare Worker): %s", config.TELEGRAM_API_BASE)
-
-    # Если вдруг вы захотите использовать локальный прокси, раскомментируйте это,
-    # но для работы через Worker он НЕ НУЖЕН.
-    # if config.TELEGRAM_PROXY:
-    #     kwargs["proxy"] = config.TELEGRAM_PROXY
-    #     logger.info("Исходящие запросы идут через прокси: %s", config.TELEGRAM_PROXY)
+        base = config.TELEGRAM_API_BASE.rstrip("/")
+        kwargs["api"] = TelegramAPIServer(
+            base=f"{base}/bot{{token}}/{{method}}",
+            file=f"{base}/file/bot{{token}}/{{path}}",
+        )
+        logger.info("Telegram API base: %s", base)
 
     return AiohttpSession(**kwargs)
 

@@ -1,24 +1,13 @@
-// composables/systemWindows.ts
-//
-// Это НЕ система окон пользователя. Здесь только те несколько экранов,
-// которые физически являются частью самой платформы (Login, Configurator
-// и т.д.) — их пишет разработчик, пользователь их не видит и не создаёт.
-//
-// Пользовательский контент (модули из Creature, всё что человек собирает
-// сам через UI) сюда НЕ добавляется — он всегда идёт через data.code
-// и рендерится DynamicModuleLoader'ом, минуя этот файл целиком.
-//
-// Добавлять сюда новую запись нужно только когда вы сами как разработчик
-// добавляете новый системный экран в код платформы.
-
 import type { Component } from 'vue'
 import type { WindowSizeOptions } from '~/types/window'
+import { PERMISSIONS, type PermissionKey } from '~/types/permissions'
 
 export interface SystemWindowDefinition {
     component: () => Promise<Component>
     title: string
     size?: WindowSizeOptions
     modal?: boolean
+    requiredPermission?: PermissionKey
 }
 
 export const SYSTEM_WINDOWS: Record<string, SystemWindowDefinition> = {
@@ -34,35 +23,46 @@ export const SYSTEM_WINDOWS: Record<string, SystemWindowDefinition> = {
         size: { width: 980, height: 520 },
         modal: false,
     },
-    'configurator': {
-        component: () => import('~/layouts/company/enterprise/Configurator.vue'),
-        title: 'Конфигуратор',
-        size: { width: 900, height: 650 },
-    },
     'control': {
         component: () => import('~/layouts/company/enterprise/Control.vue'),
         title: 'Управление',
         size: { width: 900, height: 650 },
+        requiredPermission: PERMISSIONS.CONTROL_PANEL,
+    },
+    'configurator': {
+        component: () => import('~/layouts/company/enterprise/Configurator.vue'),
+        title: 'Конфигуратор',
+        size: { width: 900, height: 650 },
+        requiredPermission: PERMISSIONS.ACCESS_MANAGE,
     },
     'workspace': {
         component: () => import('~/layouts/company/enterprise/Workspace.vue'),
         title: 'Пространство',
-        size: {width: 1200, height: 700 },
+        size: { width: 1200, height: 700 },
+        requiredPermission: PERMISSIONS.WORKSPACE_VIEW,
     },
-    'terms-of-use': {
-        component: () => import('~/layouts/company/TermsOfUse.vue'),
-        title: 'Условия использования',
-        size: { width: 700, height: 600 },
+    'directory': {
+        component: () => import('~/layouts/company/enterprise/Directory.vue'),
+        title: 'Справочники',
+        size: { width: 1200, height: 800 },
+        requiredPermission: PERMISSIONS.DIRECTORY_VIEW,
     },
     'browser': {
         component: () => import('~/layouts/modules/Browser.vue'),
         title: 'Модули',
         size: { width: 1000, height: 650 },
+        requiredPermission: PERMISSIONS.MODULES_BROWSE,
     },
     'creature': {
         component: () => import('~/layouts/modules/Creature.vue'),
         title: 'Создание модуля',
         size: { width: 1200, height: 750 },
+        requiredPermission: PERMISSIONS.MODULES_DEV,
+    },
+    'terms-of-use': {
+        component: () => import('~/layouts/company/TermsOfUse.vue'),
+        title: 'Условия использования',
+        size: { width: 700, height: 600 },
     },
     'confirm': {
         component: () => import('~/layouts/settings/Confirm.vue'),
@@ -78,14 +78,13 @@ export const SYSTEM_WINDOWS: Record<string, SystemWindowDefinition> = {
     'documentation': {
         component: () => import('~/layouts/settings/Documentation.vue'),
         title: 'Документация',
-        size: { width:   1400, height: 600 },
+        size: { width: 1400, height: 600 },
     },
     'standard': {
         component: () => import('~/layouts/settings/Standard.vue'),
         title: 'Стандарты отображения',
         size: { width: 800, height: 600 },
     },
-
     'dev:json': {
         component: () => import('~/components/devtools/MoloJSONTool.vue'),
         title: 'JSON',
@@ -106,7 +105,6 @@ export const SYSTEM_WINDOWS: Record<string, SystemWindowDefinition> = {
         title: 'Заметки',
         size: { width: 600, height: 500 },
     },
-
     'dev:calculator': {
         component: () => import('~/components/devtools/MoloCalculatorTool.vue'),
         title: 'Калькулятор',

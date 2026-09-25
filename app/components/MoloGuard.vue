@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import {useUserStore} from "~~/stores/userStore";
-import error from "../../public/error.svg";
+import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+import { useAppStore } from '~~/stores/appStore'
+import error from '../../public/error.svg'
 
 interface Props {
   allowedRoles?: string[]
@@ -11,81 +13,73 @@ const props = withDefaults(defineProps<Props>(), {
 })
 
 const router = useRouter()
-const userStore = useUserStore()
+const appStore = useAppStore()
 
-const loading = ref(true) // начинаем с true
-const userRole = ref('')
-const userName = ref('')
+const loading = ref(true)
 
-const loadUserData = async () => {
-  loading.value = true
-
-  // Даем время на гидратацию стора и DOM
-  await new Promise(resolve => setTimeout(resolve, 0))
-
-  try {
-    if (userStore.userName && userStore.userRole) {
-      userName.value = userStore.userName
-      userRole.value = userStore.userRole
-    } else {
-      const storageUser = localStorage.getItem('user')
-      if (storageUser) {
-        const user = JSON.parse(storageUser)
-        userName.value = user.name || 'Гость'
-        userRole.value = user.role || ''
-      } else {
-        userName.value = 'Гость'
-        userRole.value = ''
-      }
-    }
-  } catch (error) {
-    console.error('Ошибка получения пользователя:', error)
-    userName.value = 'Гость'
-    userRole.value = ''
-  } finally {
-    loading.value = false
-  }
-}
+const activeRole = computed(() => {
+  return appStore.currentMemberRole || appStore.currentUser?.role || 'Гость'
+})
 
 const hasAccess = computed(() => {
   if (loading.value) return false
 
+  // Если список разрешенных ролей пуст — пускаем любого авторизованного
   if (props.allowedRoles.length === 0) return true
 
-  return props.allowedRoles.includes(userRole.value)
+  // Администратор имеет абсолютный приоритет
+  if (activeRole.value === 'Администратор') {
+    return true
+  }
+
+  return props.allowedRoles.includes(activeRole.value)
 })
+
+const loadAccess = async () => {
+  loading.value = true
+  try {
+    appStore.loadEnterpriseFromStorage()
+  } catch (err) {
+    console.error('[MoloGuard] Ошибка проверки прав:', err)
+  } finally {
+    loading.value = false
+  }
+}
 
 const goBack = () => {
   router.back()
 }
 
 const goToLogin = () => {
-  localStorage.removeItem('user')
+  if (typeof window !== 'undefined') {
+    localStorage.removeItem('user')
+    localStorage.removeItem('currentEnterprise')
+    localStorage.removeItem('enterprise_token')
+  }
   router.push('/')
 }
 
 onMounted(() => {
-  loadUserData()
+  loadAccess()
 })
 </script>
 
 <template>
   <div>
-    <!-- Пока загружаемся, показываем только спиннер -->
     <div v-if="loading" class="loading-overlay">
       <div class="loading-spinner"></div>
       <span class="loading-text">Проверка доступа...</span>
     </div>
-    <!-- После загрузки показываем либо контент, либо запрет -->
+
     <div v-else-if="hasAccess">
       <slot />
     </div>
 
     <div v-else class="access-denied-page">
       <div class="denied-container">
-        <img :src="error" alt="">
+        <img :src="error" alt="Доступ запрещен">
         <h1>Доступ запрещен</h1>
-        <p>У вас недостаточно прав для просмотра этой страницы</p>
+        <p>У вашей роли ({{ activeRole }}) недостаточно прав для входа</p>
         <div class="actions">
           <UIMoloButton @click="goBack" class="close">Назад</UIMoloButton>
           <UIMoloButton @click="goToLogin" class="confirm">На главную</UIMoloButton>
@@ -117,79 +111,35 @@ onMounted(() => {
   background-color: #020b18;
   min-height: 100vh;
   display: flex;
-  align-items: start;
+  align-items: center;
   justify-content: center;
 }
 
 .denied-container {
   text-align: center;
   color: white;
-  max-width: 400px;
-  padding: 20px;
-  margin: 20px;
-  border-radius: 10px;
+  max-width: 420px;
+  padding: 24px;
+  border-radius: 12px;
   background-color: var(--half_opacity_bg);
   border: 1px solid var(--half_opacity_border);
 }
 
 .denied-container h1 {
-  font-size: 2rem;
-  margin: 0 0;
+  font-size: 1.8rem;
+  margin: 12px 0 6px;
   color: #ff4444;
 }
 
 .denied-container p {
-  font-size: 1.1rem;
+  font-size: 1rem;
   opacity: 0.8;
-  margin: 10px 0;
+  margin: 10px 0 20px;
 }
 
 .actions {
   display: flex;
-  gap: 15px;
+  gap: 12px;
   justify-content: center;
-  margin-top: 20px;
-}
-
-.actions button {
-  cursor: pointer;
-  color: white;
-  text-decoration: none;
-  padding: 10px 15px;
-  border: 1px solid var(--half_opacity_border);
-  background-color: rgba(255, 255, 255, 0.08);
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 120px;
-  min-height: 40px;
-  transition: all 0.3s ease;
-  font-family: inherit;
-  font-size: inherit;
-  flex-shrink: 0;
-}
-
-.btn-back {
-  background-color: #6c757d;
-  color: white;
-}
-
-.btn-back:hover {
-  background-color: #5a6268;
-}
-
-.btn-login {
-  background-color: #38ef7d;
-  color: #020b18;
-}
-
-.btn-login:hover {
-  background-color: #2bd16a;
-}
-
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
 }
 </style>

@@ -1,10 +1,10 @@
 <script lang="ts" setup>
-import {nextTick, onBeforeUnmount, onMounted, ref, toRaw, watch} from 'vue'
-import type {FUniver, Univer} from '@univerjs/presets'
-import {createUniver, LocaleType, mergeLocales} from '@univerjs/presets'
-import {UniverSheetsCorePreset} from '@univerjs/preset-sheets-core'
+import { nextTick, onBeforeUnmount, onMounted, ref, toRaw, watch } from 'vue'
+import type { FUniver, Univer } from '@univerjs/presets'
+import { createUniver, LocaleType, mergeLocales } from '@univerjs/presets'
+import { UniverSheetsCorePreset } from '@univerjs/preset-sheets-core'
 import UniverPresetSheetsCoreRuRU from '@univerjs/preset-sheets-core/locales/ru-RU'
-import excelIcon from '~~/app/assets/icons/excel.png'
+import excelIcon from '~~/app/assets/icons/excel.svg'
 import '@univerjs/preset-sheets-core/lib/index.css'
 import * as XLSX from 'xlsx'
 
@@ -57,7 +57,6 @@ function replaceWorkbook(data: Record<string, any>) {
   }
 }
 
-// ===== Экспорт в XLSX =====
 function sheetToWs(sheet: any): XLSX.WorkSheet {
   const cellData = sheet.cellData || {}
   const colData = sheet.columnData || {}
@@ -83,20 +82,20 @@ function sheetToWs(sheet: any): XLSX.WorkSheet {
 
       let out: XLSX.CellObject
       if (cell.t === 3) {
-        out = {t: 'b', v: cell.v === true || cell.v === 1 || cell.v === 'TRUE'}
+        out = { t: 'b', v: cell.v === true || cell.v === 1 || cell.v === 'TRUE' }
       } else if (typeof cell.v === 'number' || (cell.t === 2 && Number.isFinite(Number(cell.v)))) {
-        out = {t: 'n', v: Number(cell.v)}
+        out = { t: 'n', v: Number(cell.v) }
       } else {
-        out = {t: 's', v: String(cell.v ?? '')}
+        out = { t: 's', v: String(cell.v ?? '') }
       }
       if (cell.f) out.f = String(cell.f).replace(/^=/, '')
-      ws[XLSX.utils.encode_cell({r, c})] = out
+      ws[XLSX.utils.encode_cell({ r, c })] = out
     }
   }
 
   const merges = (sheet.mergeData || []).map((m: any) => ({
-    s: {r: m.startRow, c: m.startColumn},
-    e: {r: m.endRow, c: m.endColumn},
+    s: { r: m.startRow, c: m.startColumn },
+    e: { r: m.endRow, c: m.endColumn },
   }))
   merges.forEach((m: any) => {
     maxR = Math.max(maxR, m.e.r)
@@ -105,14 +104,14 @@ function sheetToWs(sheet: any): XLSX.WorkSheet {
   Object.keys(rowData).forEach(k => { if (rowData[k]?.h) maxR = Math.max(maxR, Number(k)) })
   Object.keys(colData).forEach(k => { if (colData[k]?.w) maxC = Math.max(maxC, Number(k)) })
 
-  ws['!ref'] = XLSX.utils.encode_range({s: {r: 0, c: 0}, e: {r: maxR, c: maxC}})
+  ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: maxR, c: maxC } })
   if (merges.length) ws['!merges'] = merges
 
-  ws['!cols'] = Array.from({length: maxC + 1}, (_, c) => ({
+  ws['!cols'] = Array.from({ length: maxC + 1 }, (_, c) => ({
     wpx: colData[c]?.w ?? defW,
     hidden: colData[c]?.hd === 1,
   }))
-  ws['!rows'] = Array.from({length: maxR + 1}, (_, r) => ({
+  ws['!rows'] = Array.from({ length: maxR + 1 }, (_, r) => ({
     hpx: rowData[r]?.h ?? rowData[r]?.ah ?? defH,
     hidden: rowData[r]?.hd === 1,
   }))
@@ -140,7 +139,6 @@ function exportToXlsx() {
   XLSX.writeFile(wb, `${fileName}.xlsx`)
 }
 
-// ===== Импорт XLSX =====
 function wsToSheet(ws: XLSX.WorkSheet, id: string, name: string) {
   const range = XLSX.utils.decode_range(ws['!ref'] || 'A1:A1')
 
@@ -150,7 +148,7 @@ function wsToSheet(ws: XLSX.WorkSheet, id: string, name: string) {
     const cell = ws[addr] as XLSX.CellObject
     if (!cell || ((cell.v === undefined || cell.v === null) && !cell.f)) continue
 
-    const {r, c} = XLSX.utils.decode_cell(addr)
+    const { r, c } = XLSX.utils.decode_cell(addr)
     const out: Record<string, any> = {}
     if (cell.t === 'n') {
       out.v = cell.v
@@ -181,14 +179,14 @@ function wsToSheet(ws: XLSX.WorkSheet, id: string, name: string) {
   ;(ws['!cols'] || []).forEach((col: XLSX.ColInfo, i: number) => {
     if (!col) return
     const w = col.wpx ?? (col.wch != null ? col.wch * 7 + 5 : col.width != null ? col.width * 7 + 5 : undefined)
-    if (w || col.hidden) columnData[i] = {...(w ? {w: Math.round(w)} : {}), ...(col.hidden ? {hd: 1} : {})}
+    if (w || col.hidden) columnData[i] = { ...(w ? { w: Math.round(w) } : {}), ...(col.hidden ? { hd: 1 } : {}) }
   })
 
   const rowData: Record<number, any> = {}
   ;(ws['!rows'] || []).forEach((row: XLSX.RowInfo, i: number) => {
     if (!row) return
     const h = row.hpx ?? (row.hpt != null ? (row.hpt * 96) / 72 : undefined)
-    if (h || row.hidden) rowData[i] = {...(h ? {h: Math.round(h)} : {}), ...(row.hidden ? {hd: 1} : {})}
+    if (h || row.hidden) rowData[i] = { ...(h ? { h: Math.round(h) } : {}), ...(row.hidden ? { hd: 1 } : {}) }
   })
 
   return {
@@ -215,7 +213,7 @@ function triggerExcelImport() {
 
     try {
       const buf = await file.arrayBuffer()
-      const wb = XLSX.read(buf, {type: 'array', cellStyles: true})
+      const wb = XLSX.read(buf, { type: 'array', cellStyles: true })
 
       const sheets: Record<string, any> = {}
       const sheetOrder: string[] = []
@@ -240,19 +238,19 @@ function triggerExcelImport() {
   input.click()
 }
 
-// Пересчёт размеров Univer под текущий контейнер
 function resizeUniver() {
   if (!univerAPIInstance || !containerEl.value) return
   try {
     const w = containerEl.value.clientWidth
     const h = containerEl.value.clientHeight
     if (w <= 0 || h <= 0) return
-    // В разных версиях Univer доступны разные методы ресайза — вызываем, что есть
+
     const api: any = univerAPIInstance
+
     api.resize?.()
     const wb: any = api.getActiveWorkbook?.()
     wb?.resize?.()
-    // Резервный путь: через события окна (Univer слушает window.resize)
+
     window.dispatchEvent(new Event('resize'))
   } catch (e) {
     console.warn('Univer resize:', e)
@@ -261,11 +259,9 @@ function resizeUniver() {
 
 onMounted(async () => {
   if (!containerEl.value) return
-
-  // Ждём, пока родитель (tab-panel / tab-content) применит финальные размеры
   await nextTick()
 
-  const {univer, univerAPI} = createUniver({
+  const { univer, univerAPI } = createUniver({
     locale: LocaleType.RU_RU,
     locales: {
       [LocaleType.RU_RU]: mergeLocales(UniverPresetSheetsCoreRuRU),
@@ -281,7 +277,7 @@ onMounted(async () => {
   univerAPIInstance = univerAPI
 
   const hasData = props.modelValue && Object.keys(props.modelValue).length > 0
-  const workbook = univerAPI.createWorkbook(hasData ? props.modelValue! : {name: 'Новая таблица'})
+  const workbook = univerAPI.createWorkbook(hasData ? props.modelValue! : { name: 'Новая таблица' })
   lastEmitted = hasData ? toRaw(props.modelValue) : null
 
   const sub: any = univerAPI.onCommandExecuted((command: any) => {
@@ -290,21 +286,17 @@ onMounted(async () => {
   commandUnsub = () => (typeof sub === 'function' ? sub() : sub?.dispose?.())
   void workbook
 
-  // Пересчитываем размеры после монтирования и при любом изменении контейнера.
-  // Это критично: v-show в родителе даёт 0×0 при первом монтировании.
-  resizeObserver = new ResizeObserver(() => resizeUniver())
+  resizeObserver = new ResizeObserver(() => {
+    requestAnimationFrame(() => resizeUniver())
+  })
   resizeObserver.observe(containerEl.value)
 
-  // И разово — после того как браузер отрисует layout
   requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      resizeUniver()
-    })
-  })
-
-  setTimeout(() => {
     resizeUniver()
-  }, 300)
+    setTimeout(resizeUniver, 50)
+    setTimeout(resizeUniver, 150)
+    setTimeout(resizeUniver, 300)
+  })
 })
 
 watch(() => props.modelValue, (val) => {
@@ -322,7 +314,7 @@ onBeforeUnmount(() => {
   resizeObserver = null
   try {
     commandUnsub?.()
-  } catch { /* уже освобождено */ }
+  } catch { /* noop */ }
   commandUnsub = null
   try {
     univerAPIInstance?.dispose()
@@ -331,7 +323,7 @@ onBeforeUnmount(() => {
   }
   try {
     univerInstance?.dispose()
-  } catch { /* уже освобождено вместе с API */ }
+  } catch { /* noop */ }
   univerAPIInstance = null
   univerInstance = null
 })
@@ -340,13 +332,13 @@ onBeforeUnmount(() => {
 <template>
   <div class="molo-sheet-wrapper">
     <div class="sheet-toolbar">
-      <div class="toolbar-group">
-        <button class="toolbar-btn" title="Экспорт в Excel (.xlsx)" @click="exportToXlsx">
-          <img :src="excelIcon" alt="" style="width: 15px;">
-        </button>
-        <button class="toolbar-btn" title="Импорт из Excel" @click="triggerExcelImport">
+      <div class="btn-group">
+        <UIMoloButton class="small" title="Экспорт в Excel (.xlsx)" @click="exportToXlsx">
+          <img :src="excelIcon" alt="" style="width: 12px;">
+        </UIMoloButton>
+        <UIMoloButton class="small" title="Импорт из Excel" @click="triggerExcelImport">
           <span class="toolbar-icon">📂</span>
-        </button>
+        </UIMoloButton>
       </div>
       <div class="toolbar-sep"/>
       <div class="toolbar-group">
@@ -358,19 +350,17 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-/* Обёртка: flex-колонка, забирает всю высоту панели, сама не скроллится */
 .molo-sheet-wrapper {
   display: flex;
   flex-direction: column;
-
   width: 100%;
   height: 100%;
   min-width: 0;
   min-height: 0;
-
   background: #fff;
   overflow: hidden;
   box-sizing: border-box;
+  position: relative;
 }
 
 .sheet-toolbar {
@@ -422,24 +412,29 @@ onBeforeUnmount(() => {
   color: #6b7280;
 }
 
-/* Контейнер Univer: только flex:1 + min-height:0.
-   НИКАКОГО min-height в пикселях — он ломал растягивание на всю панель. */
+/* Контейнер Univer: забирает всё оставшееся место.
+   Никаких position:absolute — Univer сам выставляет обёртки. */
 .molo-sheet-root {
-  flex: 1 1 0;
+  flex: 1 1 auto;
   width: 100%;
+  height: 100vh;
   min-width: 0;
   min-height: 0;
-
   position: relative;
   overflow: hidden;
 }
 
-/* Внутренние обёртки Univer заполняют контейнер */
-.molo-sheet-root :deep(.univer),
-.molo-sheet-root :deep(.univer-app),
-.molo-sheet-root :deep(.univer-container),
-.molo-sheet-root :deep(.univer-sheet-container) {
+/* Только верхнеуровневые обёртки Univer растягиваем на контейнер.
+   Внутренние canvas НЕ трогаем — иначе ломается сетка и оверлеи. */
+.molo-sheet-root :deep(> .univer),
+.molo-sheet-root :deep(> .univer-app),
+.molo-sheet-root :deep(> .univer-container),
+.molo-sheet-root :deep(> .univer-workbench),
+.molo-sheet-root :deep(> .univer-workbench-layout) {
   width: 100% !important;
   height: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+  min-height: 0 !important;
 }
 </style>

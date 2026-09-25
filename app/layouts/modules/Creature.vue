@@ -1,98 +1,66 @@
 <script lang="ts" setup>
-import {computed, nextTick, onMounted, onUnmounted, ref, watch} from 'vue'
-import {getMonacoLanguage, initMonaco, buildEditorFiles} from '~~/app/composables/monaco/index'
-import {useUserStore} from '~~/stores/userStore'
-import {useMenuEditorStore} from '~~/stores/menuEditorStore'
-import {useModuleEditorStore} from '~~/stores/moduleEditorStore'
-import {useAppStore} from '~~/stores/appStore'
-import {storeToRefs} from 'pinia'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { storeToRefs } from 'pinia'
+import { getMonacoLanguage, buildEditorFiles } from '~~/app/composables/monaco/index'
+import { useAppStore } from '~~/stores/appStore'
+import { useMenuStore } from '~~/stores/menuStore'
+import { useModulesStore } from '~~/stores/modulesStore'
+import { useWindowManager } from '~~/app/composables/window/useWindowManager'
+
 import jsIcon from '~~/public/js.png'
 import tsIcon from '~~/public/ts.png'
 import vueIcon from '~~/public/vue.png'
-import { useWindowManager } from "~~/app/composables/window/useWindowManager";
 
 defineOptions({
   inheritAttrs: false
 })
-// =============================================
-// ПРОПСЫ
-// =============================================
+
 const props = defineProps<{
-  initialModuleId?: string // передаётся из openWindow
+  initialModuleId?: string
 }>()
-// =============================================
-// EMITS
-// =============================================
+
 const emit = defineEmits(['close', 'saved'])
-// =============================================
-// Храним ссылки на редакторы
-// =============================================
+
 let mainEditorInstance: any = null
-let monacoInstance: any = null
 let monacoCtx: any = null
-const monacoEditorRef = ref(null)
+const monacoEditorRef = ref<any>(null)
 
-const {
-  updateFiles: updateMonacoFiles
-} = useMonacoFiles()
-
+const { updateFiles: updateMonacoFiles } = useMonacoFiles()
 const editorFiles = computed(() => [])
 
-// =============================================
-// COMPOSABLES
-// =============================================
-const {openWindow, updateWindowData, windows, focusWindow, closeWindow, openPreviewWindow} = useWindowManager()
-const {addNotification} = useNotifications('Создание модуля')
-const {addLog} = useLogger('Создание модуля')
-const userStore = useUserStore()
-const menuStore = useMenuEditorStore()
-const moduleStore = useModuleEditorStore()
+const { openWindow, updateWindowData, closeWindow, openPreviewWindow } = useWindowManager()
+const { addNotification } = useNotifications('Создание модуля')
+const { addLog } = useLogger('Создание модуля')
+
 const appStore = useAppStore()
+const menuStore = useMenuStore()
+const modulesStore = useModulesStore()
 
-// =============================================
-// STORE REFS (только общие данные)
-// =============================================
-const {locations, selectedGroupId, selectedParentId, adding, creating, tree} = storeToRefs(menuStore)
+const { locations, selectedGroupId, selectedParentId, tree } = storeToRefs(menuStore)
+const {
+  formData,
+  moduleFiles,
+  loadingFiles,
+  selectedModuleId,
+  isEditing,
+  clientFiles,
+  serverFiles,
+  enterpriseModules: modules
+} = storeToRefs(modulesStore)
 
-const {modules} = storeToRefs(moduleStore)
-// =============================================
-// ЛОКАЛЬНОЕ СОСТОЯНИЕ (изолированное для каждого экземпляра)
-// =============================================
-const enterpriseInfo = ref<any>(null)
 const previewWindowId = ref<string | null>(null)
-const showDocumentation = ref(false)
 const loadingUPD = ref(false)
 const loadingDEP = ref(false)
 const newDepName = ref('')
 const newDepVersion = ref('')
-const initialDataLoaded = ref(false)
 const menuLocationModalOpen = ref(false)
-const menuLocationModalMode = ref<'create' | 'edit'>('create')
-let debounceTimer: ReturnType<typeof setTimeout> | null = null
-// Локальный выбранный модуль
-const selectedModuleId = ref<string | null>(props.initialModuleId || null)
-// Локальная форма
-const formData = ref({
-  name: '',
-  fileName: '',
-  description: '',
-  format: 'vue' as 'vue' | 'js' | 'ts',
-  code: '',
-  isPublic: false,
-  tags: [] as string[],
-  previewImage: null as string | null,
-  dependencies: {} as Record<string, string>,
-  devDependencies: {} as Record<string, string>,
-  serverEntry: '',
-  composables: [] as string[]
-})
-// Локальные файлы
-const moduleFiles = ref<any[]>([])
-// Локальное состояние загрузки
-const loading = ref(false)
-const loadingFiles = ref(false)
+const adding = ref(false)
+const creating = ref(false)
 const clearingCache = ref(false)
-// Локальный редактор файлов
+const loading = ref(false)
+
+const activeMainTab = ref<'code' | 'files' | 'deps'>('code')
+
 const showFileEditor = ref(false)
 const fileForm = ref({
   name: '',
@@ -102,29 +70,22 @@ const fileForm = ref({
   isServer: false
 })
 const editingFilePath = ref<string | null>(null)
-// Локальные зависимости
+
 const activeDepTab = ref<'dependencies' | 'devDependencies'>('dependencies')
-// Локальные инпуты для тегов
 const tagsInput = ref('')
 const composablesInput = ref('')
-// =============================================
-// КОНСТАНТЫ
-// =============================================
-const locationTypes = [
-  {label: 'Меню', value: 'menu'},
-  {label: 'Модули', value: 'module'}
-]
+
 const fileFormats = [
-  {label: '.vue', value: 'vue'},
-  {label: '.js', value: 'js'},
-  {label: '.ts', value: 'ts'}
+  { label: '.vue', value: 'vue' },
+  { label: '.js', value: 'js' },
+  { label: '.ts', value: 'ts' }
 ]
 const availableFormats = [
-  {label: '.vue', value: 'vue'},
-  {label: '.js', value: 'js'},
-  {label: '.ts', value: 'ts'}
+  { label: '.vue', value: 'vue' },
+  { label: '.js', value: 'js' },
+  { label: '.ts', value: 'ts' }
 ]
-// Форма для модалки создания места
+
 const modalLocationForm = ref({
   title: '',
   placeName: '',
@@ -133,54 +94,42 @@ const modalLocationForm = ref({
   requiredRole: ['Управляющий'] as string[],
   parentId: null as string | null
 })
-// Ref для контейнеров Monaco - больше не нужен, используем UIMoloMonaco
-// =============================================
-// COMPUTED
-// =============================================
+
 const currentUser = computed(() => ({
-  _id: userStore.userId || 'system',
-  name: userStore.userName || 'System',
-  role: userStore.userRole || 'system'
+  _id: appStore.currentUser?._id || 'system',
+  name: appStore.currentUser?.name || 'System',
+  role: appStore.currentMemberRole || appStore.currentUser?.role || 'system'
 }))
-const isEditing = computed(() => !!selectedModuleId.value)
+
 const currentDeps = computed(() => {
   if (activeDepTab.value === 'dependencies') {
     return formData.value.dependencies || {}
   }
   return formData.value.devDependencies || {}
 })
-const clientFiles = computed(() => moduleFiles.value.filter(f => !f.isServerFile))
-const serverFiles = computed(() => moduleFiles.value.filter(f => f.isServerFile))
-const editorLanguage = computed(() => {
-  return getMonacoLanguage(formData.value.format)
-})
-const fileEditorLanguage = computed(() => {
-  return getMonacoLanguage(fileForm.value.format)
-})
+
+const editorLanguage = computed(() => getMonacoLanguage(formData.value.format))
+const fileEditorLanguage = computed(() => getMonacoLanguage(fileForm.value.format))
+
+// Формируем безопасный список родительских папок внутри выбранной группы
 const availableParents = computed(() => {
   if (!selectedGroupId.value) return []
-  const group = locations.value.find(
-      (g: any) => g.groupId === selectedGroupId.value
-  )
+  const group = (locations.value || []).find((g: any) => (g.groupId || g.id) === selectedGroupId.value)
   if (!group) return []
-  return (group.locations || []).filter(
-      (loc: any) => loc.id !== null
-  )
+  return (group.locations || group.items || []).filter((loc: any) => loc.id !== null && loc.type === 'folder')
 })
-// =============================================
-// Рекурсивный сбор папок
-// =============================================
-const collectFolderItems = (items: any[], groupId: string, level: number = 0): any[] => {
+
+const collectFolderItems = (items: any[], groupId: string, level = 0): any[] => {
   const result: any[] = []
   if (!items || !Array.isArray(items)) return result
   for (const item of items) {
     if (item.items && Array.isArray(item.items) && item.items.length > 0) {
       const indent = '  '.repeat(level)
       result.push({
-        id: item.id,
-        groupId: groupId,
+        id: item.id || item._id,
+        groupId,
         title: `${indent}📂 ${item.title}`,
-        level: level,
+        level,
         type: 'folder'
       })
       const children = collectFolderItems(item.items, groupId, level + 1)
@@ -189,49 +138,54 @@ const collectFolderItems = (items: any[], groupId: string, level: number = 0): a
   }
   return result
 }
+
 const parentLocationOptions = computed(() => {
   const options: { id: string | null; groupId: string | null; title: string; level: number; type: string }[] = [
-    {id: null, groupId: null, title: '📁 Корень меню (верхний уровень)', level: 0, type: 'root'}
+    { id: null, groupId: null, title: '📁 Корень меню (верхний уровень)', level: 0, type: 'root' }
   ]
-  for (const group of tree.value) {
-    if (group.id && group.title) {
+  for (const group of (tree.value || [])) {
+    const gId = group.id || group.groupId || group._id
+    if (gId && group.title) {
       options.push({
-        id: group.id,
-        groupId: group.id,
+        id: gId,
+        groupId: gId,
         title: `📁 ГРУППА: ${group.title}`,
         level: 0,
         type: 'group'
       })
       if (group.items && group.items.length) {
-        const folders = collectFolderItems(group.items, group.id, 1)
+        const folders = collectFolderItems(group.items, gId, 1)
         options.push(...folders)
       }
     }
   }
   return options
 })
-// =============================================
-// PLACEHOLDER
-// =============================================
+
 const getPlaceholder = () => {
   if (formData.value.format === 'vue') {
-    return `
-<script setup>
+    return `<script setup>
 import { ref } from 'vue'
+
 const message = ref('Привет из динамического модуля!')
 const handleClick = () => {
-    message.value = 'Работает!'
+  message.value = 'Работает!'
 }
 <\/script>
+
 <template>
-    <div>
-        <h1>{{ message }}</h1>
-        <button @click="handleClick">Нажми на меня</button>
-    </div>
+  <div class="module-card">
+    <h1>{{ message }}</h1>
+    <button @click="handleClick">Нажми на меня</button>
+  </div>
 </template>
+
 <style scoped>
-</style>
-  `
+.module-card {
+  padding: 16px;
+  color: #fff;
+}
+</style>`
   }
   if (formData.value.format === 'ts') {
     return `// TypeScript module
@@ -240,210 +194,41 @@ export function main(): string {
 }
 `
   }
-  if (formData.value.format === 'js') {
-    return `// JavaScript module
+  return `// JavaScript module
 export function main() {
   return 'Hello from JavaScript!'
 }
 `
-  }
-  return '// module code...'
 }
+
 const getFilePlaceholder = (format: string) => {
   if (format === 'vue') {
-    return `<template>
+    return `<script setup>
+// Код компонента
+<\/script>
+
+<template>
   <div>
-    <h1>Новый компонент</h1>
+    <h2>Новый компонент</h2>
   </div>
 </template>
-<script setup>
-// Ваш код здесь
-<\/script>`
+`
   }
   if (format === 'ts') {
-    return `// TypeScript файл
-export function example(): void {
+    return `export function example(): void {
   console.log('Hello from TypeScript!')
 }`
   }
-  return `// JavaScript файл
-export function example() {
+  return `export function example() {
   console.log('Hello from JavaScript!')
 }`
 }
-// =============================================
-// МЕТОДЫ ЗАГРУЗКИ ДАННЫХ (локальные)
-// =============================================
 
-// ФИКС БАГА №1 (потеря code/isPublic/description/tags/... при выборе модуля):
-// раньше форма заполнялась из ОБЛЕГЧЁННОГО списка modules.value (там только
-// _id/name/fileName/format), из-за чего всё остальное затиралось дефолтами.
-// Теперь — один запрос к новому эндпоинту, отдающему модуль ПОЛНОСТЬЮ
-// (мета + code + files + dependencies), и он же убирает 2 лишних round-trip'а
-// (/files и /dependencies), из-за которых открытие модуля было медленным
-// (см. проблему №3).
-const loadFullModuleData = async (id: string): Promise<any | null> => {
-  if (!id || !enterpriseInfo.value?._id) return null
-  addLog('info', 'Начинаю загрузку полной информации о модуле...')
-  try {
-    const result: any = await $fetch(
-        `/api/enterprises/${enterpriseInfo.value._id}/dynamicModules/${id}`
-    )
-    addLog('success', 'Информация о модуле загружена')
-    return result?.module || null
-  } catch (error) {
-    console.error('loadFullModuleData error:', error)
-    addLog('error', `Не удалось загрузить полные данные модуля - ${ error?.data?.message ||
-    error?.message || error}`)
-    addNotification('error', 'Не удалось загрузить полные данные модуля. Смотрите логированиие')
-    return null
-  }
-}
-
-// Точечные догрузки — используются ТОЛЬКО как быстрый рефреш после
-// локальных мутаций файлов/зависимостей (saveFile/deleteFile/addDependency/
-// removeDependency), где тянуть весь модуль целиком избыточно.
-const loadModuleFiles = async () => {
-  if (!selectedModuleId.value || !enterpriseInfo.value?._id) return
-  loadingFiles.value = true
-  addLog('info', 'Загружаю файлы для модуля...')
-  try {
-    const result = await moduleStore.loadModuleFilesById(
-        enterpriseInfo.value._id,
-        selectedModuleId.value
-    )
-    moduleFiles.value = result.files || []
-    if (result.mainFile) {
-      formData.value.code = result.mainFile.code || ''
-    }
-    addLog('success', 'Файлы загружены!')
-  } catch (error) {
-    addLog('error', `Ошибка загрузки файлов для модуля - ${ error?.data?.message ||
-    error?.message || error}`)
-    console.error('loadModuleFiles error:', error)
-  } finally {
-    loadingFiles.value = false
-  }
-}
-const loadDependencies = async () => {
-  if (!selectedModuleId.value || !enterpriseInfo.value?._id) return
-  addLog('info', 'Загружаю зависиомсти для модуля...')
-
-  try {
-    const result = await moduleStore.loadModuleDependencies(
-        enterpriseInfo.value._id,
-        selectedModuleId.value
-    )
-    formData.value.dependencies = result.dependencies || {}
-    formData.value.devDependencies = result.devDependencies || {}
-    addLog('success', 'Зависимости загружены!')
-
-  } catch (error) {
-    addLog('error', `Ошибка загрузки зависимостей для модуля - ${ error?.data?.message ||
-    error?.message || error}`)
-    console.error('loadDependencies error:', error)
-  }
-}
-// loadModule теперь ожидает ПОЛНЫЙ объект модуля (с code, если он есть).
-// mod.code берётся через `??`, а не `||` — чтобы легитимный пустой код
-// ('') не затирался старым значением формы.
-const loadModule = (mod: any) => {
-  if (!mod) return
-  formData.value = {
-    name: mod.name || '',
-    fileName: mod.fileName || '',
-    description: mod.description || '',
-    format: mod.format || 'vue',
-    code: mod.code ?? formData.value.code ?? '',
-    isPublic: mod.isPublic || false,
-    tags: mod.tags || [],
-    previewImage: mod.previewImage || null,
-    dependencies: mod.dependencies || {},
-    devDependencies: mod.devDependencies || {},
-    serverEntry: mod.serverEntry || '',
-    composables: mod.composables || []
-  }
-  tagsInput.value = (mod.tags || []).join(', ')
-  composablesInput.value = (mod.composables || []).join(', ')
-}
-const resetForm = () => {
-  formData.value = {
-    name: '',
-    fileName: '',
-    description: '',
-    format: 'vue',
-    code: getPlaceholder(),
-    isPublic: false,
-    tags: [],
-    previewImage: null,
-    dependencies: {},
-    devDependencies: {},
-    serverEntry: '',
-    composables: []
-  }
-  tagsInput.value = ''
-  composablesInput.value = ''
-  moduleFiles.value = []
-}
-// =============================================
-// ВЫБОР МОДУЛЯ
-// =============================================
-const selectModule = async (id: string | null) => {
-  if (id === selectedModuleId.value) return
-  selectedModuleId.value = id
-  if (!id) {
-    resetForm()
-    if (mainEditorInstance) {
-      mainEditorInstance.setValue(formData.value.code)
-    }
-    syncEditorFiles()
-    return
-  }
-  // Мгновенно показываем то немногое, что уже есть в лёгком списке
-  // (для отзывчивости UI, без ожидания сети), а затем одним запросом
-  // догружаем ВСЁ остальное (code/isPublic/description/tags/files/deps/...)
-  const lightMod = modules.value.find((m: any) => m._id === id)
-  if (lightMod) {
-    formData.value.name = lightMod.name || ''
-    formData.value.fileName = lightMod.fileName || ''
-    formData.value.format = lightMod.format || 'vue'
-  }
-  loadingFiles.value = true
-  try {
-    const full = await loadFullModuleData(id)
-    if (full) {
-      loadModule(full)
-      moduleFiles.value = full.files || []
-    }
-  } finally {
-    loadingFiles.value = false
-  }
-  if (!formData.value.code) {
-    formData.value.code = getPlaceholder()
-  }
-  if (mainEditorInstance) {
-    mainEditorInstance.setValue(formData.value.code)
-  }
-  syncEditorFiles()
-}
-// =============================================
-// СИНХРОНИЗАЦИЯ РЕДАКТОРА
-// =============================================
 const syncEditorFiles = () => {
   if (!monacoCtx) return
-
-  const files = buildEditorFiles(
-      formData.value,
-      moduleFiles.value
-  )
-
-  // Monaco filesystem
+  const files = buildEditorFiles(formData.value, moduleFiles.value)
   monacoCtx.fs.loadFiles(files)
-
-  // Наш индекс компонентов/composables
   updateMonacoFiles(files)
-
-  // VFS
   monacoCtx.vfs.loadModuleFiles({
     code: formData.value.code,
     fileName: formData.value.fileName,
@@ -452,11 +237,58 @@ const syncEditorFiles = () => {
   })
 }
 
-// =============================================
-// СОХРАНЕНИЕ МОДУЛЯ
-// =============================================
+const selectModule = async (id: string | null) => {
+  if (id === selectedModuleId.value) return
+  selectedModuleId.value = id
+  if (!id) {
+    modulesStore.resetForm()
+    formData.value.code = getPlaceholder()
+    if (mainEditorInstance) {
+      mainEditorInstance.setValue(formData.value.code)
+    }
+    syncEditorFiles()
+    return
+  }
+
+  const entId = appStore.getEnterpriseId()
+  if (!entId) return
+
+  loadingFiles.value = true
+  try {
+    const res: any = await $fetch(`/api/enterprises/${entId}/dynamicModules/${id}`)
+    const full = res?.module || null
+    if (full) {
+      formData.value = {
+        name: full.name || '',
+        fileName: full.fileName || '',
+        description: full.description || '',
+        format: full.format || 'vue',
+        code: full.code || getPlaceholder(),
+        isPublic: full.isPublic || false,
+        tags: full.tags || [],
+        previewImage: full.previewImage || null,
+        dependencies: full.dependencies || {},
+        devDependencies: full.devDependencies || {},
+        serverEntry: full.serverEntry || '',
+        composables: full.composables || []
+      }
+      tagsInput.value = (full.tags || []).join(', ')
+      composablesInput.value = (full.composables || []).join(', ')
+      moduleFiles.value = full.files || []
+    }
+  } finally {
+    loadingFiles.value = false
+  }
+
+  if (mainEditorInstance) {
+    mainEditorInstance.setValue(formData.value.code)
+  }
+  syncEditorFiles()
+}
+
 const saveModule = async () => {
-  if (!enterpriseInfo.value?._id) {
+  const enterpriseId = appStore.getEnterpriseId()
+  if (!enterpriseId) {
     addNotification('error', 'ID предприятия не найден')
     return
   }
@@ -469,47 +301,41 @@ const saveModule = async () => {
     return
   }
   loading.value = true
-  addLog('info', 'Начинаю сохранение модуля...')
   try {
     if (mainEditorInstance) {
       formData.value.code = mainEditorInstance.getValue()
     }
-    const {useModuleApi} = await import('~/composables/useModuleApi')
-    const moduleApi = useModuleApi()
     const payload = {
       ...formData.value,
       code: formData.value.code || getPlaceholder(),
       createdBy: currentUser.value
     }
-    const response = await moduleApi.saveModule(
-        enterpriseInfo.value._id,
-        payload,
-        isEditing.value,
-        selectedModuleId.value || undefined
-    )
-    await moduleStore.loadModules(enterpriseInfo.value._id, true)
+
+    const url = isEditing.value && selectedModuleId.value
+        ? `/api/enterprises/${enterpriseId}/dynamicModules/${selectedModuleId.value}`
+        : `/api/enterprises/${enterpriseId}/dynamicModules`
+
+    const response: any = await $fetch(url, {
+      method: isEditing.value ? 'PUT' : 'POST',
+      body: payload
+    })
+
+    await modulesStore.loadEnterpriseModules(enterpriseId, true)
     addLog('success', 'Модуль успешно сохранён!')
     if (!isEditing.value) {
-      selectedModuleId.value = response.module._id
+      selectedModuleId.value = response.module?._id || response._id
       addNotification('info', 'Модуль создан')
     } else {
       addNotification('info', 'Модуль обновлён')
     }
-    emit('saved', response.module)
+    emit('saved', response.module || response)
   } catch (error: any) {
-    addNotification(
-        'error',
-        error?.data?.message ||
-        error?.message ||
-        'Ошибка сохранения модуля'
-    )
+    addNotification('error', error?.data?.message || error?.message || 'Ошибка сохранения модуля')
   } finally {
     loading.value = false
   }
 }
-// =============================================
-// РАБОТА С ФАЙЛАМИ
-// =============================================
+
 const normalizePath = (name: string, pathInput: string, format: string) => {
   let basePath = pathInput?.trim() || name.trim()
   basePath = basePath.replace(/^\.\//, '')
@@ -518,8 +344,10 @@ const normalizePath = (name: string, pathInput: string, format: string) => {
   }
   return basePath
 }
+
 const saveFile = async () => {
-  if (!selectedModuleId.value || !enterpriseInfo.value?._id) {
+  const enterpriseId = appStore.getEnterpriseId()
+  if (!selectedModuleId.value || !enterpriseId) {
     addNotification('error', 'Модуль не выбран')
     return
   }
@@ -527,17 +355,9 @@ const saveFile = async () => {
     addNotification('warning', 'Введите имя файла')
     return
   }
-  addLog('info', 'Сохраняю файл...')
   try {
     loadingUPD.value = true
-    // Код уже обновлен через UIMoloMonaco, берем из fileForm
-    const {useModuleApi} = await import('~/composables/useModuleApi')
-    const moduleApi = useModuleApi()
-    const filePath = normalizePath(
-        fileForm.value.name,
-        fileForm.value.path,
-        fileForm.value.format
-    )
+    const filePath = normalizePath(fileForm.value.name, fileForm.value.path, fileForm.value.format)
     const fileData = {
       name: fileForm.value.name,
       path: filePath,
@@ -545,48 +365,46 @@ const saveFile = async () => {
       code: fileForm.value.code || getFilePlaceholder(fileForm.value.format),
       isServerFile: fileForm.value.isServer
     }
-    await moduleApi.saveFile(
-        enterpriseInfo.value._id,
-        selectedModuleId.value,
-        fileData,
-        !!editingFilePath.value,
-        editingFilePath.value || undefined
-    )
-    addNotification(
-        'info',
-        editingFilePath.value ? 'Файл обновлён' : 'Файл добавлен'
-    )
-    await loadModuleFiles()
+
+    await $fetch(`/api/enterprises/${enterpriseId}/dynamicModules/${selectedModuleId.value}/files`, {
+      method: 'POST',
+      body: {
+        action: editingFilePath.value ? 'update' : 'add',
+        file: fileData,
+        oldPath: editingFilePath.value || undefined
+      }
+    })
+
+    addNotification('info', editingFilePath.value ? 'Файл обновлён' : 'Файл добавлен')
+    await modulesStore.loadModuleFilesById(enterpriseId, selectedModuleId.value)
     closeFileEditor()
     syncEditorFiles()
   } catch (error: any) {
-    console.error('Save file error:', error)
     addNotification('error', error?.message || 'Ошибка сохранения файла')
-    addLog('error', error?.message || 'Unknown error')
   } finally {
     loadingUPD.value = false
   }
 }
+
 const deleteFile = async (filePath: string) => {
-  if (!selectedModuleId.value || !enterpriseInfo.value?._id) return
-  addLog('info', 'Удаляю файл...')
+  const enterpriseId = appStore.getEnterpriseId()
+  if (!selectedModuleId.value || !enterpriseId) return
   try {
-    const {useModuleApi} = await import('~/composables/useModuleApi')
-    const moduleApi = useModuleApi()
-    await moduleApi.deleteFile(
-        enterpriseInfo.value._id,
-        selectedModuleId.value,
-        filePath
-    )
+    await $fetch(`/api/enterprises/${enterpriseId}/dynamicModules/${selectedModuleId.value}/files`, {
+      method: 'POST',
+      body: {
+        action: 'delete',
+        file: { path: filePath }
+      }
+    })
     addNotification('info', 'Файл удалён')
-    await loadModuleFiles()
+    await modulesStore.loadModuleFilesById(enterpriseId, selectedModuleId.value)
     syncEditorFiles()
-  } catch (error) {
-    addLog('error', `Ошибка удаления файла - ${ error?.data?.message ||
-    error?.message || error }`)
+  } catch (error: any) {
     addNotification('error', 'Ошибка удаления файла')
   }
 }
+
 const openFileEditor = (file?: any) => {
   if (file) {
     fileForm.value = {
@@ -603,85 +421,78 @@ const openFileEditor = (file?: any) => {
   }
   showFileEditor.value = true
 }
+
 const closeFileEditor = () => {
   showFileEditor.value = false
   editingFilePath.value = null
 }
-// =============================================
-// ЗАВИСИМОСТИ
-// =============================================
+
 const addDependency = async () => {
-  if (!newDepName.value || !selectedModuleId.value) return
+  const enterpriseId = appStore.getEnterpriseId()
+  if (!newDepName.value || !selectedModuleId.value || !enterpriseId) return
   loadingDEP.value = true
-  addLog('info', `Начинаю установку зависимости "${newDepName.value}"...`)
   try {
-    const {useModuleApi} = await import('~/composables/useModuleApi')
-    const moduleApi = useModuleApi()
-    await moduleApi.addDependency(
-        enterpriseInfo.value._id,
-        selectedModuleId.value,
-        newDepName.value,
-        newDepVersion.value || 'latest',
-        activeDepTab.value
-    )
-    await loadDependencies()
-    addLog('success', `Зависимость "${newDepName.value}" успешно установлена!`)
+    await $fetch(`/api/enterprises/${enterpriseId}/dynamicModules/${selectedModuleId.value}/dependencies`, {
+      method: 'POST',
+      body: {
+        action: 'add',
+        packageName: newDepName.value,
+        version: newDepVersion.value || 'latest',
+        packageType: activeDepTab.value
+      }
+    })
+    const res: any = await $fetch(`/api/enterprises/${enterpriseId}/dynamicModules/${selectedModuleId.value}/dependencies`)
+    formData.value.dependencies = res.dependencies || {}
+    formData.value.devDependencies = res.devDependencies || {}
     addNotification('info', 'Зависимость добавлена')
     newDepName.value = ''
     newDepVersion.value = ''
-  } catch (error) {
-    addLog('error', `Ошибка установки зависимости - ${error}`)
+  } catch (error: any) {
     addNotification('error', 'Ошибка добавления зависимости')
   } finally {
     loadingDEP.value = false
   }
 }
+
 const removeDependency = async (packageName: string) => {
-  if (!selectedModuleId.value) return
+  const enterpriseId = appStore.getEnterpriseId()
+  if (!selectedModuleId.value || !enterpriseId) return
   try {
-    const {useModuleApi} = await import('~/composables/useModuleApi')
-    const moduleApi = useModuleApi()
-    await moduleApi.removeDependency(
-        enterpriseInfo.value._id,
-        selectedModuleId.value,
+    await $fetch(`/api/enterprises/${enterpriseId}/dynamicModules/${selectedModuleId.value}/dependencies`, {
+      method: 'POST',
+      body: {
+        action: 'remove',
         packageName,
-        activeDepTab.value
-    )
-    await loadDependencies()
+        packageType: activeDepTab.value
+      }
+    })
+    const res: any = await $fetch(`/api/enterprises/${enterpriseId}/dynamicModules/${selectedModuleId.value}/dependencies`)
+    formData.value.dependencies = res.dependencies || {}
+    formData.value.devDependencies = res.devDependencies || {}
     addNotification('info', 'Зависимость удалена')
   } catch {
     addNotification('error', 'Ошибка удаления зависимости')
   }
 }
+
 const clearModuleCache = async () => {
-  if (!selectedModuleId.value || !enterpriseInfo.value?._id) return
+  const enterpriseId = appStore.getEnterpriseId()
+  if (!selectedModuleId.value || !enterpriseId) return
   try {
     clearingCache.value = true
-    const {useModuleApi} = await import('~/composables/useModuleApi')
-    const moduleApi = useModuleApi()
-    const result = await moduleApi.clearCache(
-        selectedModuleId.value,
-        enterpriseInfo.value._id
-    )
-    console.log('Cache clear result:', result)
+    await $fetch('/api/npm/install', {
+      method: 'POST',
+      body: { moduleId: selectedModuleId.value, enterpriseId, forceReinstall: true }
+    })
     addNotification('info', 'Кеш модуля очищен')
   } catch (error: any) {
-    console.error('Clear cache error:', error)
-    addNotification('error', error?.data?.message || error?.message || 'Ошибка очистки кеша')
+    addNotification('error', error?.data?.message || 'Ошибка очистки кеша')
   } finally {
     clearingCache.value = false
   }
 }
-// =============================================
-// МЕНЮ
-// =============================================
-const refreshMenuData = async () => {
-  await menuStore.loadLocations()
-  await menuStore.loadTree()
-  await menuStore.refreshAllMenuData()
-}
+
 function openCreateLocationModal() {
-  menuLocationModalMode.value = 'create'
   modalLocationForm.value = {
     title: '',
     placeName: '',
@@ -692,7 +503,13 @@ function openCreateLocationModal() {
   }
   menuLocationModalOpen.value = true
 }
+
 async function handleSaveLocation() {
+  const enterpriseId = appStore.getEnterpriseId()
+  if (!enterpriseId) {
+    addNotification('error', 'Предприятие не выбрано')
+    return
+  }
   if (!modalLocationForm.value.title.trim()) {
     addNotification('warning', 'Введите название места')
     return
@@ -703,60 +520,71 @@ async function handleSaveLocation() {
   }
   try {
     creating.value = true
-    const {useMenuApi} = await import('~/composables/useMenuApi')
-    const menuApi = useMenuApi()
     const parentId = modalLocationForm.value.parentId
     const selectedOption = parentLocationOptions.value.find(opt => opt.id === parentId)
     const groupId = selectedOption?.groupId
+
+    let createdId = ''
+
     if (parentId && groupId) {
-      await menuApi.addMenuItem(
+      const res: any = await $fetch('/api/menu', {
+        method: 'POST',
+        body: {
+          enterpriseId,
+          action: 'addItem',
           groupId,
           parentId,
-          modalLocationForm.value.title,
-          modalLocationForm.value.placeName,
-          modalLocationForm.value.type,
-          modalLocationForm.value.order,
-          modalLocationForm.value.requiredRole
-      )
+          title: modalLocationForm.value.title,
+          placeName: modalLocationForm.value.placeName,
+          type: modalLocationForm.value.type === 'menu' ? 'folder' : 'item',
+          order: modalLocationForm.value.order,
+          requiredRole: modalLocationForm.value.requiredRole
+        }
+      })
+      createdId = res?.item?.id || res?.id || ''
       addNotification('info', 'Вложенная папка создана')
     } else {
-      await menuApi.createGroup(
-          modalLocationForm.value.title,
-          modalLocationForm.value.placeName,
-          modalLocationForm.value.type,
-          modalLocationForm.value.order
-      )
+      const res: any = await $fetch('/api/menu', {
+        method: 'POST',
+        body: {
+          enterpriseId,
+          action: 'createGroup',
+          title: modalLocationForm.value.title,
+          placeName: modalLocationForm.value.placeName,
+          type: modalLocationForm.value.type,
+          order: modalLocationForm.value.order,
+          requiredRole: ['Управляющий']
+        }
+      })
+      createdId = res?.group?.groupId || res?.group?._id || res?.groupId || res?._id || ''
       addNotification('info', 'Новая группа меню создана')
     }
-    await refreshMenuData()
-    if (!parentId) {
-      const newGroup = locations.value.find(
-          (g: any) => g.groupTitle === modalLocationForm.value.title
-      )
-      if (newGroup) {
-        selectedGroupId.value = newGroup.groupId
-      }
+
+    await menuStore.loadLocations()
+    await menuStore.loadTree()
+
+    // Сразу выбираем созданное место в селекте
+    if (groupId) {
+      selectedGroupId.value = groupId
+      selectedParentId.value = createdId || null
+    } else if (createdId) {
+      selectedGroupId.value = createdId
+      selectedParentId.value = null
     }
-    modalLocationForm.value = {
-      title: '',
-      placeName: '',
-      type: 'menu',
-      order: 0,
-      requiredRole: ['Управляющий'],
-      parentId: null
-    }
+
     window.dispatchEvent(new CustomEvent('modules-updated'))
     menuLocationModalOpen.value = false
   } catch (error: any) {
-    console.error('Create location error:', error)
-    addNotification('error', error?.message || 'Ошибка создания места')
+    addNotification('error', error?.data?.message || error?.message || 'Ошибка создания места')
   } finally {
     creating.value = false
   }
 }
+
 const addModuleToMenu = async () => {
-  if (!selectedGroupId.value) {
-    addNotification('warning', 'Выберите группу')
+  const enterpriseId = appStore.getEnterpriseId()
+  if (!selectedGroupId.value || !enterpriseId) {
+    addNotification('warning', 'Выберите группу меню')
     return
   }
   let moduleId = selectedModuleId.value
@@ -764,23 +592,15 @@ const addModuleToMenu = async () => {
     await saveModule()
     moduleId = selectedModuleId.value
   }
-  if (!moduleId) {
-    addNotification('error', 'Не удалось сохранить модуль')
-    return
-  }
+  if (!moduleId) return
   const mod = modules.value.find((m: any) => m._id === moduleId)
-  if (!mod) {
-    addNotification('error', 'Модуль не найден')
-    return
-  }
+  if (!mod) return
   try {
     adding.value = true
-    const {useMenuApi} = await import('~/composables/useMenuApi')
-    const menuApi = useMenuApi()
-    await menuApi.addModule(mod, selectedGroupId.value, selectedParentId.value)
+    await menuStore.addModuleToMenu(mod, selectedGroupId.value, selectedParentId.value, enterpriseId)
     addNotification('info', 'Модуль добавлен в меню')
-    menuStore.resetSelection()
-    await refreshMenuData()
+    menuStore.selectedGroupId = ''
+    menuStore.selectedParentId = null
     window.dispatchEvent(new CustomEvent('modules-updated'))
   } catch {
     addNotification('error', 'Модуль не добавлен в меню')
@@ -788,10 +608,6 @@ const addModuleToMenu = async () => {
     adding.value = false
   }
 }
-// =============================================
-// ПРЕДПРОСМОТР
-// =============================================
-
 
 const openPreview = () => {
   previewWindowId.value = openPreviewWindow(formData.value.fileName, {
@@ -801,12 +617,9 @@ const openPreview = () => {
     dependencies: formData.value.dependencies,
     devDependencies: formData.value.devDependencies,
     moduleId: selectedModuleId.value
-  } )
+  })
 }
 
-// =============================================
-// ИЗОБРАЖЕНИЯ
-// =============================================
 const handleImageUpload = (event: Event) => {
   const input = event.target as HTMLInputElement
   if (!input.files?.[0]) return
@@ -816,149 +629,72 @@ const handleImageUpload = (event: Event) => {
   }
   reader.readAsDataURL(input.files[0])
 }
+
 const removePreview = () => {
   formData.value.previewImage = null
 }
+
 const openDocumentation = () => {
-  openWindow(
-      'documentation',
-      null,
-      {
-        width: 1400,
-        height: 600,
-        minWidth: 600,
-        minHeight: 400
-      }
-  )
+  openWindow('documentation', null, {
+    width: 1200,
+    height: 700,
+    minWidth: 600,
+    minHeight: 400
+  })
 }
-// =============================================
-// ВСПОМОГАТЕЛЬНЫЕ
-// =============================================
-const getEnterpriseId = (): string | null => {
-  return appStore.getEnterpriseId()
-}
-// =============================================
-// WATCHERS
-// =============================================
+
 watch(tagsInput, value => {
   formData.value.tags = value.split(',').map(v => v.trim()).filter(Boolean)
 })
+
 watch(composablesInput, value => {
   formData.value.composables = value.split(',').map(v => v.trim()).filter(Boolean)
 })
-watch(
-    () => formData.value.format,
-    () => {
-      if (!isEditing.value) {
-        formData.value.code = getPlaceholder()
-        if (mainEditorInstance) {
-          mainEditorInstance.setValue(formData.value.code)
-        }
-      }
+
+watch(() => formData.value.format, () => {
+  if (!isEditing.value) {
+    formData.value.code = getPlaceholder()
+    if (mainEditorInstance) {
+      mainEditorInstance.setValue(formData.value.code)
     }
-)
+  }
+})
+
 watch(selectedGroupId, () => {
   selectedParentId.value = null
 })
-watch(
-    () => formData.value.code,
-    code => {
-      if (!previewWindowId.value) return
-      updateWindowData(previewWindowId.value, {
-        moduleName: formData.value.name,
-        code: code,
-        isEditing: isEditing.value,
-        _updated: Date.now()
-      })
-    }
-)
-watch(showDocumentation, async () => {
-  await nextTick()
-  setTimeout(() => {
-    mainEditorInstance?.layout?.()
-  }, 50)
+
+watch(() => formData.value.code, code => {
+  if (!previewWindowId.value) return
+  updateWindowData(previewWindowId.value, {
+    moduleName: formData.value.name,
+    code,
+    isEditing: isEditing.value,
+    _updated: Date.now()
+  })
 })
+
 watch(moduleFiles, (newFiles) => {
   if (!previewWindowId.value) return
-  updateWindowData(previewWindowId.value, {
-    files: newFiles
-  })
-})
-watch(editorLanguage, (newLang) => {
-  if (mainEditorInstance && monacoInstance) {
-    const model = mainEditorInstance.getModel()
-    if (model) {
-      monacoInstance.editor.setModelLanguage(model, newLang)
-    }
-  }
-}, {immediate: true})
-
-watch(() => formData.value.dependencies, (newDeps) => {
-  if (!previewWindowId.value) return
-  updateWindowData(previewWindowId.value, {
-    dependencies: newDeps,
-    _updated: Date.now()
-  })
-}, { deep: true })
-
-watch(() => formData.value.devDependencies, (newDeps) => {
-  if (!previewWindowId.value) return
-  updateWindowData(previewWindowId.value, {
-    devDependencies: newDeps,
-    _updated: Date.now()
-  })
-}, { deep: true })
-
-// ── При изменении имени модуля — обновляем заголовок превью ──
-watch(() => formData.value.name, (newName) => {
-  if (!previewWindowId.value) return
-  updateWindowData(previewWindowId.value, {
-    moduleName: newName || 'Без названия',
-    _updated: Date.now()
-  })
+  updateWindowData(previewWindowId.value, { files: newFiles })
 })
 
-// =============================================
-// LIFECYCLE
-// =============================================
 onMounted(async () => {
-  const enterpriseId = getEnterpriseId()
-  if (!enterpriseId) {
-    const retryOnLogin = () => {
-      const id = getEnterpriseId()
-      if (id) {
-        enterpriseInfo.value = JSON.parse(localStorage.getItem('currentEnterprise') || 'null')
-        moduleStore.loadModules(id, true)
-      }
-    }
-    window.addEventListener('enterprise-login', retryOnLogin, { once: true })
-    onUnmounted(() => window.removeEventListener('enterprise-login', retryOnLogin))
-    return
-  }
-  enterpriseInfo.value = JSON.parse(localStorage.getItem('currentEnterprise') || 'null')
+  const enterpriseId = appStore.getEnterpriseId()
+  if (!enterpriseId) return
   await Promise.all([
-    moduleStore.loadModules(enterpriseId),
-    menuStore.loadLocations(),
-    menuStore.loadTree()
+    modulesStore.loadEnterpriseModules(enterpriseId),
+    menuStore.loadLocations(enterpriseId),
+    menuStore.loadTree(enterpriseId)
   ])
   if (props.initialModuleId) {
-    selectedModuleId.value = props.initialModuleId
-    const full = await loadFullModuleData(props.initialModuleId)
-    if (full) {
-      loadModule(full)
-      moduleFiles.value = full.files || []
-    } else {
-      selectedModuleId.value = null
-    }
-  }
-  if (!selectedModuleId.value) {
-    resetForm()
-  }
-  if (!formData.value.code) {
+    await selectModule(props.initialModuleId)
+  } else {
+    modulesStore.resetForm()
     formData.value.code = getPlaceholder()
   }
-  initialDataLoaded.value = true
 })
+
 onUnmounted(() => {
   if (previewWindowId.value) {
     closeWindow(previewWindowId.value)
@@ -966,799 +702,940 @@ onUnmounted(() => {
   }
 })
 </script>
+
 <template>
-  <div class="module-editor">
-    <div class="editor-header">
-      <div class="header-left">
-        <h1>{{ isEditing ? 'Редактирование модуля' : 'Создание модуля' }}</h1>
-        <div class="header-actions">
+  <div class="creator-workspace">
+    <header class="top-nav-bar">
+      <div class="nav-left">
+        <div class="badge-title">
+          <span class="icon">⚡</span>
+          <span>{{ isEditing ? formData.name || 'Модуль' : 'Новый модуль' }}</span>
+        </div>
+
+        <div class="quick-nav-actions">
+          <section class="btn-group">
+            <UIMoloButton
+                class="small"
+                :class="selectedModuleId ? 'default' : 'confirm'"
+                @click="selectModule(null)"
+            >
+              Создать
+            </UIMoloButton>
+
+            <UIMoloButton
+                v-if="formData.format === 'vue'"
+                class="small confirm"
+                title="Запустить просмотр компонента"
+                @click="openPreview"
+            >
+              Запуск
+            </UIMoloButton>
+          </section>
+
           <UIMoloButton
               class="small"
-              :class="selectedModuleId ? 'default' : 'confirm'"
-              @click="selectModule(null)"
-          >
-            Новый
-          </UIMoloButton>
-          <UIMoloButton
-              v-if="formData.format === 'vue'"
-              class="small confirm"
-              @click="openPreview"
-          >
-            Предпросмотр
-          </UIMoloButton>
-          <UIMoloButton
-              class="small"
-              :class="showDocumentation ? 'confirm' : 'default'"
+              title="Справочные материалы"
               @click="openDocumentation"
           >
-            {{ showDocumentation ? 'Скрыть док.' : 'Документация' }}
+            📚 Документация
           </UIMoloButton>
         </div>
       </div>
-      <div class="header-right">
-        <UIMoloSelect
-            :model-value="selectedModuleId"
-            :disabled="!modules || modules.length === 0 ? 'Нет модулей' : 'Выбрать модуль'"
-            :parent="modules"
-            children="name"
-            class="module-select"
-            valueKey="_id"
-            @update:model-value="selectModule"
-        />
-      </div>
-    </div>
-    <hr/>
-    <div class="editor-grid">
-      <!-- ОСНОВНЫЕ НАСТРОЙКИ -->
-      <div class="main-settings">
-        <UIMoloSection>
-          <template #header>
-            <span>Основное</span>
-          </template>
-          <template #main>
-            <div class="form-row">
-              <UIMoloInput
-                  v-model="formData.name"
-                  lRequired
-                  placeholder="Введите название"
-                  tLabel="Название"
-              />
-              <UIMoloInput
-                  v-model="formData.fileName"
-                  lRequired
-                  placeholder="на_английском"
-                  tLabel="Имя файла"
-              />
-              <UIMoloSelect
-                  v-model="formData.format"
-                  :parent="availableFormats"
-                  children="label"
-                  lRequired
-                  tLabel="Формат"
-                  valueKey="value"
-              />
-            </div>
-          </template>
-        </UIMoloSection>
-        <UIMoloSection>
-          <template #header>
-            <span>Мета</span>
-          </template>
-          <template #main>
-            <div class="form-row">
-              <UIMoloInput
-                  v-model="formData.description"
-                  placeholder="Что делает модуль?"
-                  tLabel="Описание"
-              />
-              <UIMoloInput
-                  v-model="tagsInput"
-                  placeholder="ui, таблицы, графики"
-                  tLabel="Теги"
-              />
-            </div>
-          </template>
-        </UIMoloSection>
-        <UIMoloSection>
-          <template #header>
-            <span>Дополнительно</span>
-            <label class="checkbox-label">
-              <input v-model="formData.isPublic" type="checkbox"/>
-              <span>Общедоступный</span>
-            </label>
-          </template>
-          <template #main>
-            <div class="preview-upload">
-              <UIMoloInput
-                  accept="image/*"
-                  tLabel="Превью"
-                  type="file"
-                  @change="handleImageUpload"
-              />
-              <div v-if="formData.previewImage" class="preview-image">
-                <img :src="formData.previewImage" alt="preview" style="width: 60px"/>
-                <UIMoloButton class="action-btn close small" @click="removePreview">
-                  ✕
-                </UIMoloButton>
-              </div>
-            </div>
-          </template>
-        </UIMoloSection>
-      </div>
-      <!-- УПРАВЛЕНИЕ МЕНЮ -->
-      <div class="menu-settings">
-        <UIMoloSection>
-          <template #header>
-            <span>Добавить в меню</span>
-          </template>
-          <template #main>
-            <UIMoloSelect
-                v-model="selectedGroupId"
-                :disabled="locations.length === 0 ? 'Нет доступных групп' : 'Выбрать группу'"
-                :parent="locations"
-                children="groupTitle"
-                tLabel="Группа"
-                valueKey="groupId"
-                :key="locations.length"
-            />
-            <UIMoloSelect
-                v-if="availableParents.length"
-                v-model="selectedParentId"
-                :parent="availableParents"
-                children="title"
-                disabled="Выбрать родителя (опционально)"
-                tLabel="Родительский элемент"
-                valueKey="id"
-            />
-            <UIMoloButton
-                :disabled="!selectedGroupId || adding"
-                class="confirm"
-                @click="addModuleToMenu"
-            >
-              <span v-if="!adding">Добавить в меню</span>
-              <UIMoloLoaders v-else btnLoader/>
-            </UIMoloButton>
-          </template>
-        </UIMoloSection>
-        <UIMoloSection>
-          <template #header>
-            <span>Работа с меню</span>
-          </template>
-          <template #main>
-            <UIMoloButton
-                class="confirm full small"
-                @click="openCreateLocationModal"
-            >
-              Добавить место
-            </UIMoloButton>
-            <UIMoloButton
-                class="action full small"
-            >
-              Удалить место
-            </UIMoloButton>
-          </template>
-        </UIMoloSection>
-        <UIMoloSection>
-          <template #header>
-            <section style="display: flex; justify-content: space-between; align-items: center; width: 100%">
-              <span>Сохранение</span>
-              <div class="editor-actions">
-                <UIMoloButton class="small close" @click="emit('close')">
-                  Отмена
-                </UIMoloButton>
-                <UIMoloButton :loading="loading" :disabled="loading" class="small confirm" @click="saveModule">
-                  <span v-if="!loading">
-                    {{ isEditing ? 'Обновить' : 'Создать' }}
-                  </span>
-                </UIMoloButton>
-              </div>
-            </section>
-          </template>
-          <template #main>
-            <span>Не забывайте сохранять изменения <3</span>
-          </template>
-        </UIMoloSection>
-      </div>
-    </div>
-    <hr/>
-    <!-- КОД МОДУЛЯ -->
-    <UIMoloSection>
-      <template #header>
-        <span>Код модуля</span>
-        <UIMoloButton
-            v-if="selectedModuleId && enterpriseInfo?._id"
-            :disabled="clearingCache"
-            class="confirm small"
-            @click="clearModuleCache"
-        >
-          <UIMoloLoaders v-if="clearingCache" btnLoader/>
-          <span v-else>Очистить кеш</span>
-        </UIMoloButton>
-      </template>
-      <template #main>
-        <div class="code-container">
-          <UIMoloMonaco
-              ref="monacoEditorRef"
-              :initial-code="formData.code"
-              :language="editorLanguage"
-              :files="editorFiles"
-              :module-id="selectedModuleId"
-              :enterprise-id="enterpriseInfo?._id"
-              :on-save="saveModule"
-              @update:code="(code) => formData.code = code"
+
+      <div class="nav-right">
+        <div class="select-wrap">
+          <UIMoloSelect
+              compact
+              :model-value="selectedModuleId"
+              :disabled="!modules || modules.length === 0 ? 'Нет модулей' : 'Выбрать модуль...'"
+              :parent="modules"
+              children="name"
+              valueKey="_id"
+              @update:model-value="selectModule"
           />
         </div>
-      </template>
-    </UIMoloSection>
-    <hr/>
-    <!-- ФАЙЛЫ МОДУЛЯ -->
-    <UIMoloSection>
-      <template #header>
-        <span>Файлы модуля</span>
-        <UIMoloButton class="confirm small" @click="openFileEditor()">
-          Добавить файл
-        </UIMoloButton>
-      </template>
-      <template #main>
-        <div v-if="loadingFiles" class="loader-wrapper">
-          <UIMoloLoaders wndLoader/>
-        </div>
-        <div class="file-list">
-          <div v-for="file in clientFiles" :key="file.path" class="file-item">
-            <div class="file-info">
-              <span class="file-logo">
-                <img
-                    v-if="file.format === 'vue'"
-                    :src="vueIcon"
-                    alt=""
-                    class="file-icon"
-                />
-                <img
-                    v-else-if="file.format === 'ts'"
-                    :src="tsIcon"
-                    alt=""
-                    class="file-icon"
-                />
-                <img v-else :src="jsIcon" alt="" class="file-icon"/>
-                {{ file.name }}
-              </span>
-              <span class="file-badge">
-                {{ file.format }}
-              </span>
-              <span class="file-path">
-                {{ file.path }}
-              </span>
-            </div>
-            <div class="file-actions">
-              <UIMoloButton
-                  class="action-btn-small edit"
-                  title="Редактировать"
-                  @click="openFileEditor(file)"
-              >
-                ↩
-              </UIMoloButton>
-              <UIMoloButton
-                  class="action-btn-small delete"
-                  title="Удалить"
-                  @click="deleteFile(file.path)"
-              >
-                ×
-              </UIMoloButton>
-            </div>
-          </div>
-          <div
-              v-if="!loadingFiles && clientFiles.length === 0 && serverFiles.length === 0"
-              class="file-empty"
+        <section class="btn-group">
+          <UIMoloButton
+              v-if="selectedModuleId && appStore.getEnterpriseId()"
+              class="small action"
+              :disabled="clearingCache"
+              title="Сбросить кеш скомпилированного кода"
+              @click="clearModuleCache"
           >
-            Нет файлов
+            <UIMoloLoaders v-if="clearingCache" btnLoader />
+            <span v-else>Очистить кеш</span>
+          </UIMoloButton>
+
+          <UIMoloButton
+              :loading="loading"
+              class="small confirm save-btn"
+              @click="saveModule"
+          >
+            {{ isEditing ? 'Обновить' : 'Сохранить' }}
+          </UIMoloButton>
+        </section>
+      </div>
+    </header>
+
+    <main class="ide-layout">
+      <section class="editor-pane">
+        <div class="ide-tab-bar">
+          <button
+              class="tab-btn"
+              :class="{ active: activeMainTab === 'code' }"
+              @click="activeMainTab = 'code'"
+          >
+            <span class="tab-icon">📄</span>
+            <span>Основной код ({{ formData.fileName || 'index' }}.{{ formData.format }})</span>
+          </button>
+
+          <button
+              class="tab-btn"
+              :class="{ active: activeMainTab === 'files' }"
+              @click="activeMainTab = 'files'"
+          >
+            <span class="tab-icon">📁</span>
+            <span>Файлы компонента</span>
+            <span class="tab-count">{{ moduleFiles.length }}</span>
+          </button>
+
+          <button
+              class="tab-btn"
+              :class="{ active: activeMainTab === 'deps' }"
+              @click="activeMainTab = 'deps'"
+          >
+            <span class="tab-icon">📦</span>
+            <span>Зависимости (NPM)</span>
+            <span class="tab-count">{{ Object.keys(formData.dependencies || {}).length }}</span>
+          </button>
+        </div>
+
+        <div class="tab-content-area">
+          <div v-show="activeMainTab === 'code'" class="monaco-full-height">
+            <UIMoloMonaco
+                ref="monacoEditorRef"
+                :initial-code="formData.code"
+                :language="editorLanguage"
+                :files="editorFiles"
+                :module-id="selectedModuleId"
+                :enterprise-id="appStore.getEnterpriseId()"
+                :on-save="saveModule"
+                @update:code="(code) => (formData.code = code)"
+            />
+          </div>
+
+          <div v-show="activeMainTab === 'files'" class="files-view-wrap">
+            <div class="subview-header">
+              <span class="view-title">Файлы текущего модуля</span>
+              <UIMoloButton class="small confirm" @click="openFileEditor()">
+                + Добавить файл
+              </UIMoloButton>
+            </div>
+
+            <div v-if="loadingFiles" class="subview-loader">
+              <UIMoloLoaders wndLoader />
+            </div>
+
+            <div v-else-if="clientFiles.length === 0 && serverFiles.length === 0" class="subview-empty">
+              <span>У этого модуля нет дополнительных файлов. Создайте компоненты, хелперы или стили.</span>
+            </div>
+
+            <div v-else class="file-grid">
+              <div v-for="file in moduleFiles" :key="file.path" class="file-card">
+                <div class="file-card-top">
+                  <img
+                      v-if="file.format === 'vue'"
+                      :src="vueIcon"
+                      class="ext-icon"
+                      alt=""
+                  />
+                  <img
+                      v-else-if="file.format === 'ts'"
+                      :src="tsIcon"
+                      class="ext-icon"
+                      alt=""
+                  />
+                  <img v-else :src="jsIcon" class="ext-icon" alt="" />
+
+                  <span class="file-name">{{ file.name }}</span>
+                  <span class="file-tag" :class="{ server: file.isServerFile }">
+                    {{ file.isServerFile ? 'Server' : file.format }}
+                  </span>
+                </div>
+
+                <div class="file-card-path">{{ file.path }}</div>
+
+                <div class="btn-group">
+                  <UIMoloButton class="small" @click="openFileEditor(file)">
+                    Изменить
+                  </UIMoloButton>
+                  <UIMoloButton class="small close" @click="deleteFile(file.path)">
+                    ✕
+                  </UIMoloButton>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div v-show="activeMainTab === 'deps'" class="deps-view-wrap">
+            <div class="deps-container">
+              <div class="deps-header-row">
+                <div class="dep-switch-tabs">
+                  <UIMoloButton
+                      class="small"
+                      :class="activeDepTab === 'dependencies' ? 'confirm' : 'default'"
+                      @click="activeDepTab = 'dependencies'"
+                  >
+                    dependencies
+                  </UIMoloButton>
+                  <UIMoloButton
+                      class="small"
+                      :class="activeDepTab === 'devDependencies' ? 'confirm' : 'default'"
+                      @click="activeDepTab = 'devDependencies'"
+                  >
+                    devDependencies
+                  </UIMoloButton>
+                </div>
+
+                <div class="dep-add-inline">
+                  <UIMoloInput
+                      v-model="newDepName"
+                      compact
+                      placeholder="Имя пакета (напр. lodash)"
+                  />
+                  <UIMoloInput
+                      v-model="newDepVersion"
+                      compact
+                      placeholder="Версия (latest)"
+                  />
+                  <UIMoloButton
+                      class="small confirm"
+                      :disabled="!newDepName || loadingDEP"
+                      @click="addDependency"
+                  >
+                    <UIMoloLoaders v-if="loadingDEP" btnLoader />
+                    <span v-else>+ Установить</span>
+                  </UIMoloButton>
+                </div>
+              </div>
+
+              <div class="dep-list-table">
+                <div class="dep-row-head">
+                  <span>Пакет</span>
+                  <span>Версия</span>
+                  <span></span>
+                </div>
+
+                <div
+                    v-for="(version, pkg) in currentDeps"
+                    :key="pkg"
+                    class="dep-row-item"
+                >
+                  <span class="pkg-name">📦 {{ pkg }}</span>
+                  <span class="pkg-ver">{{ version }}</span>
+                  <button class="dep-del-btn" title="Удалить пакет" @click="removeDependency(pkg as string)">
+                    ✕
+                  </button>
+                </div>
+
+                <div v-if="Object.keys(currentDeps).length === 0" class="subview-empty">
+                  Нет установленных пакетов в этой секции
+                </div>
+              </div>
+            </div>
           </div>
         </div>
-      </template>
-    </UIMoloSection>
-    <!-- МОДАЛКА РЕДАКТОРА ФАЙЛОВ -->
+
+        <footer class="ide-status-bar">
+          <div class="status-left">
+            <span>● {{ isEditing ? 'Синхронизировано' : 'Черновик' }}</span>
+            <span>Формат: <b>{{ formData.format.toUpperCase() }}</b></span>
+            <span>Кодировка: UTF-8</span>
+          </div>
+          <div class="status-right">
+            <span>Всего файлов: {{ moduleFiles.length + 1 }}</span>
+          </div>
+        </footer>
+      </section>
+
+      <aside class="sidebar-pane">
+        <UIMoloSection>
+          <template #header>
+            <span class="pane-sec-title">Параметры модуля</span>
+          </template>
+          <template #main>
+            <div class="form-vertical-stack">
+              <UIMoloInput
+                  v-model="formData.name"
+                  compact
+                  lRequired
+                  tLabel="Название модуля"
+                  placeholder="Мой компонент"
+              />
+
+              <div class="grid-two-col">
+                <UIMoloInput
+                    v-model="formData.fileName"
+                    compact
+                    lRequired
+                    tLabel="Имя файла"
+                    placeholder="MyComponent"
+                />
+                <UIMoloSelect
+                    v-model="formData.format"
+                    compact
+                    :parent="availableFormats"
+                    children="label"
+                    tLabel="Формат"
+                    valueKey="value"
+                />
+              </div>
+
+              <UIMoloInput
+                  v-model="formData.description"
+                  compact
+                  tLabel="Описание назначения"
+                  placeholder="Что выполняет модуль..."
+              />
+
+              <UIMoloInput
+                  v-model="tagsInput"
+                  compact
+                  tLabel="Теги (через запятую)"
+                  placeholder="ui, chart, report"
+              />
+
+              <div class="custom-check-row">
+                <label class="check-box-label">
+                  <input v-model="formData.isPublic" type="checkbox" />
+                  <span>Публичный доступ в каталоге</span>
+                </label>
+              </div>
+            </div>
+          </template>
+        </UIMoloSection>
+
+        <UIMoloSection>
+          <template #header>
+            <div class="menu-head-between">
+              <span class="pane-sec-title">Интеграция в меню</span>
+              <button class="add-loc-btn" title="Создать новое место" @click="openCreateLocationModal">
+                + Место
+              </button>
+            </div>
+          </template>
+          <template #main>
+            <div class="form-vertical-stack">
+              <UIMoloSelect
+                  v-model="selectedGroupId"
+                  compact
+                  :disabled="!locations || locations.length === 0 ? 'Нет доступных групп' : 'Выберите группу...'"
+                  :parent="locations"
+                  children="groupTitle"
+                  tLabel="Группа меню"
+                  valueKey="groupId"
+              />
+
+              <UIMoloSelect
+                  v-if="availableParents.length"
+                  v-model="selectedParentId"
+                  compact
+                  :parent="availableParents"
+                  children="title"
+                  disabled="Корень группы (опционально)"
+                  tLabel="Родительский раздел"
+                  valueKey="id"
+              />
+
+              <UIMoloButton
+                  class="small full confirm"
+                  :disabled="!selectedGroupId || adding"
+                  @click="addModuleToMenu"
+              >
+                <UIMoloLoaders v-if="adding" btnLoader />
+                <span v-else>Закрепить в меню</span>
+              </UIMoloButton>
+            </div>
+          </template>
+        </UIMoloSection>
+
+        <UIMoloSection>
+          <template #header>
+            <span class="pane-sec-title">Иконка / Превью</span>
+          </template>
+          <template #main>
+            <div class="preview-box">
+              <div v-if="formData.previewImage" class="img-frame">
+                <img :src="formData.previewImage" alt="Превью" />
+                <button class="del-preview-badge" title="Удалить" @click="removePreview">✕</button>
+              </div>
+              <div v-else class="img-placeholder">
+                <span>Нет изображения</span>
+              </div>
+
+              <div class="img-upload-input">
+                <UIMoloInput
+                    compact
+                    accept="image/*"
+                    type="file"
+                    @change="handleImageUpload"
+                />
+              </div>
+            </div>
+          </template>
+        </UIMoloSection>
+      </aside>
+    </main>
+
     <UIMoloModal
         v-model="showFileEditor"
-        :title="editingFilePath ? 'Редактирование файла' : 'Новый файл'"
+        :title="editingFilePath ? 'Редактирование файла' : 'Создание нового файла'"
         :confirm-text="editingFilePath ? 'Обновить' : 'Создать'"
         cancel-text="Отмена"
-        width="700px"
+        width="780px"
         :loading="loadingUPD"
         @confirm="saveFile"
         @cancel="closeFileEditor"
     >
       <template #body>
-        <div style="display: flex; flex-direction: column; gap: 16px;">
-          <div class="form-row">
+        <div class="file-modal-layout">
+          <div class="grid-three-col">
             <UIMoloInput
                 v-model="fileForm.name"
+                compact
                 lRequired
                 placeholder="Button"
-                tLabel="Имя файла (без расширения)"
+                tLabel="Имя файла"
             />
             <UIMoloInput
                 v-model="fileForm.path"
+                compact
                 placeholder="components/Button"
-                tLabel="Путь (опционально)"
-                help-text="Оставьте пустым для автоматического пути"
+                tLabel="Путь"
             />
             <UIMoloSelect
                 v-model="fileForm.format"
+                compact
                 :parent="fileFormats"
                 children="label"
                 tLabel="Формат"
                 valueKey="value"
             />
           </div>
-          <div class="file-editor-container">
+
+          <div class="modal-monaco-box">
             <UIMoloMonaco
                 :initial-code="fileForm.code"
                 :language="fileEditorLanguage"
                 :module-id="selectedModuleId"
-                :enterprise-id="enterpriseInfo?._id"
-                @update:code="(code) => fileForm.code = code"
+                :enterprise-id="appStore.getEnterpriseId()"
+                @update:code="(code) => (fileForm.code = code)"
             />
           </div>
         </div>
       </template>
     </UIMoloModal>
-    <hr/>
-    <!-- ЗАВИСИМОСТИ -->
-    <div class="dependencies">
-      <UIMoloSection>
-        <template #header>
-          <span>Зависимости</span>
-          <div class="dep-tabs">
-            <UIMoloButton
-                :class="activeDepTab === 'dependencies' ? 'confirm small' : 'default small'"
-                @click="activeDepTab = 'dependencies'"
-            >
-              dependencies
-            </UIMoloButton>
-            <UIMoloButton
-                :class="activeDepTab === 'devDependencies' ? 'confirm small' : 'default small'"
-                @click="activeDepTab = 'devDependencies'"
-            >
-              devDependencies
-            </UIMoloButton>
+
+    <UIMoloModal
+        v-model="menuLocationModalOpen"
+        title="Создание места в меню"
+        confirm-text="Создать место"
+        cancel-text="Отмена"
+        width="550px"
+        close-on-overlay
+        @confirm="handleSaveLocation"
+    >
+      <template #body>
+        <div class="form-vertical-stack">
+          <div class="grid-two-col">
+            <UIMoloInput
+                v-model="modalLocationForm.title"
+                compact
+                tLabel="Название места"
+                lRequired
+                placeholder="Склад"
+            />
+            <UIMoloInput
+                v-model="modalLocationForm.placeName"
+                compact
+                tLabel="Ключ маршрута"
+                lRequired
+                placeholder="storage"
+            />
           </div>
-        </template>
-        <template #main>
-          <div class="dep-list-header">
-            <span>Название пакета</span>
-            <span>Версия</span>
-            <span>Действия</span>
-          </div>
-          <div class="dep-list">
-            <div
-                v-for="(version, pkg) in currentDeps"
-                :key="pkg"
-                class="dep-item"
-            >
-              <span class="dep-name">{{ pkg }}</span>
-              <span class="dep-version">{{ version }}</span>
-              <button
-                  class="action-btn-small delete"
-                  @click="removeDependency(pkg as string)"
-              >
-                ×
-              </button>
-            </div>
-            <div v-if="Object.keys(currentDeps).length === 0" class="dep-empty">
-              Нет зависимостей
-            </div>
-          </div>
-        </template>
-      </UIMoloSection>
-      <UIMoloSection>
-        <template #header>
-          <span>Добавить зависимость</span>
-          <UIMoloButton :disabled="!newDepName || loadingDEP" class="confirm small" @click="addDependency">
-            <span v-if="!loadingDEP">Добавить</span>
-            <UIMoloLoaders v-else btnLoader/>
-          </UIMoloButton>
-        </template>
-        <template #main>
-          <UIMoloInput
-              v-model="newDepName"
-              placeholder="package-name"
-              tLabel="Пакет"
+
+          <UIMoloSelect
+              v-model="modalLocationForm.parentId"
+              compact
+              :parent="parentLocationOptions"
+              children="title"
+              tLabel="Родительский раздел"
+              valueKey="id"
           />
+
           <UIMoloInput
-              v-model="newDepVersion"
-              placeholder="latest"
-              tLabel="Версия"
+              v-model.number="modalLocationForm.order"
+              compact
+              tLabel="Порядковый номер"
+              type="number"
+              placeholder="0"
           />
-        </template>
-      </UIMoloSection>
-    </div>
+        </div>
+      </template>
+    </UIMoloModal>
   </div>
-  <!-- МОДАЛКА СОЗДАНИЯ МЕСТА В МЕНЮ -->
-  <UIMoloModal
-      v-model="menuLocationModalOpen"
-      title="Создание места в меню"
-      confirm-text="Создать"
-      cancel-text="Отмена"
-      width="550px"
-      close-on-overlay
-      @confirm="handleSaveLocation"
-      help-text="Вы можете создать вложенное меню, выбрав родительский элемент.
-      Если выберите родителя (папку), новое место создастся внутри неё как подменю"
-  >
-    <template #body>
-      <div style="display: flex; flex-direction: column; gap: 16px;">
-        <section class="form-row">
-          <UIMoloInput
-              v-model="modalLocationForm.title"
-              tLabel="Название места"
-              lRequired
-              placeholder="Например: Информация"
-          />
-          <UIMoloInput
-              v-model="modalLocationForm.placeName"
-              tLabel="Название ключа (название файла)"
-              lRequired
-              placeholder="Например: info"
-          />
-        </section>
-        <UIMoloSelect
-            v-model="modalLocationForm.type"
-            :parent="locationTypes"
-            children="label"
-            tLabel="Тип места"
-            valueKey="value"
-        />
-        <UIMoloSelect
-            v-model="modalLocationForm.parentId"
-            :parent="parentLocationOptions"
-            children="title"
-            tLabel="Родительское место"
-            valueKey="id"
-            help-text="Выберите, внутри какого места создать новое"
-        />
-        <UIMoloInput
-            v-model.number="modalLocationForm.order"
-            tLabel="Порядок сортировки"
-            type="number"
-            placeholder="0"
-            help-text="Чем меньше число, тем выше в списке"
-        />
-      </div>
-    </template>
-  </UIMoloModal>
 </template>
+
 <style scoped>
-.module-editor {
+.creator-workspace {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 20px;
+  width: 100%;
+  height: 90vh;
+  background: var(--half_opacity_bg);
+  color: #e0e0e0;
   box-sizing: border-box;
-}
-.editor-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 20px;
-}
-.header-left {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 20px;
-}
-.header-left h1 {
-  margin: 0;
-  font-size: 24px;
-}
-.header-actions {
-  display: flex;
-  gap: 8px;
-}
-.header-right {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 250px;
-}
-.editor-grid {
-  display: grid;
-  grid-template-columns: 1fr 320px;
-  gap: 10px;
-}
-.main-settings {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.menu-settings {
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  gap: 10px;
-}
-.editor-actions {
-  display: flex;
-  gap: 5px;
-}
-.code-container {
-  display: flex;
-  height: 500px;
-  width: 100%;
   overflow: hidden;
-}
-.file-editor-container {
-  display: flex;
-  height: 400px;
-  width: 100%;
-  overflow: hidden;
-  border: 1px solid #3c3c3c;
-  border-radius: 4px;
-}
-.form-row {
-  display: flex;
-  gap: 10px;
-}
-.form-row > * {
-  flex: 1;
-}
-.checkbox-label {
-  width: fit-content;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  cursor: pointer;
-  color: rgba(255, 255, 255, 0.9);
-  font-size: 14px;
-}
-.preview-upload {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 8px;
-}
-.preview-image {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.file-list {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-.file-item {
-  display: flex;
-  gap: 15px;
-  justify-content: space-between;
-  align-items: center;
-  font-family: monospace;
-  font-size: 13px;
-  padding: 2px 0;
-}
-.file-item:last-child {
-  border-bottom: none;
-}
-.file-logo {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-}
-.file-icon {
-  width: 20px;
-}
-.file-info {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 8px;
-  flex: 1;
-}
-.file-badge {
-  font-size: 10px;
-  background: #3c3c3c;
-  padding: 2px 6px;
-  border-radius: 10px;
-  color: #aaa;
-}
-.file-badge.server {
-  background: #3a6ea5;
-  color: #fff;
-}
-.file-path {
-  font-size: 11px;
-  color: #666;
-}
-.file-empty {
-  text-align: center;
-  color: #666;
-  padding: 20px;
-}
-.file-actions {
-  display: flex;
-  gap: 4px;
-}
-.action-btn-small {
-  padding: 2px 8px;
-  font-size: 14px;
-  background: none;
-  border-radius: 4px;
-  cursor: pointer;
-  color: #ccc;
-  transition: all 0.2s;
 }
 
-.action-btn-small.edit:hover {
-  border-color: #3a6ea5;
-  color: #3a6ea5;
-}
-.action-btn-small.delete:hover {
-  border-color: #ef4444;
-  color: #ef4444;
-}
-.dep-tabs {
+.top-nav-bar {
   display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 14px;
+  background: var(--half_opacity_bg);
+  border-bottom: 1px solid var(--half_opacity_border);
+  flex-shrink: 0;
+  gap: 12px;
+}
+
+.nav-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.badge-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.04);
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--half_opacity_border);
+}
+
+.quick-nav-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.nav-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.select-wrap {
+  width: 220px;
+}
+
+.ide-layout {
+  flex: 1 1 0%;
+  display: flex;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.editor-pane {
+  flex: 1 1 0%;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border-right: 1px solid var(--half_opacity_border);
+  background: var(--half_opacity_bg);
+}
+
+.ide-tab-bar {
+  display: flex;
+  border-bottom: 1px solid var(--half_opacity_border);
+  flex-shrink: 0;
+}
+
+.tab-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background: none;
+  border: none;
+  border-right: 1px solid var(--half_opacity_border);
+  color: #8c8c9e;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.tab-btn:hover {
+  background: rgba(255, 255, 255, 0.03);
+  color: #fff;
+}
+
+.tab-btn.active {
+  background: #1a1b26;
+  color: #6496ff;
+  font-weight: 600;
+  border-bottom: 2px solid #6496ff;
+}
+
+.tab-count {
+  background: rgba(255, 255, 255, 0.08);
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-size: 10px;
+}
+
+.tab-content-area {
+  flex: 1 1 0%;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.monaco-full-height {
+  width: 100%;
+  height: 100%;
+}
+
+.files-view-wrap,
+.deps-view-wrap {
+  flex: 1;
+  padding: 16px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.subview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.view-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.file-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 10px;
 }
-.dep-list {
-  max-height: 300px;
-  overflow-y: auto;
-  border-radius: 4px;
+
+.file-card {
+  background: #1e1e26;
+  border: 1px solid var(--half_opacity_border);
+  border-radius: 8px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
-.dep-list-header {
-  display: grid;
-  gap: 16px;
-  grid-template-columns: 1fr 100px 70px;
-  padding: 10px 12px;
-  background: rgba(0, 0, 0, 0.3);
-  border-bottom: 1px solid #3c3c3c;
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: rgba(255, 255, 255, 0.5);
-}
-.dep-item {
-  display: grid;
-  grid-template-columns: 1fr 100px 70px;
+
+.file-card-top {
+  display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 10px 12px;
-  background: var(--half_opacity_bg);
-  border-bottom: 1px solid #3c3c3c;
-  transition: all 0.2s ease;
+  gap: 8px;
 }
-.dep-item:last-child {
-  border-bottom: none;
+
+.ext-icon {
+  width: 16px;
+  height: 16px;
 }
-.dep-item:hover {
-  background: #2a2a2a;
-}
-.dep-name {
-  font-family: 'Monaco', 'Menlo', monospace;
+
+.file-name {
   font-size: 13px;
-  font-weight: 500;
-  color: #fff;
+  font-weight: 600;
+  flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.dep-version {
-  font-family: 'Monaco', 'Menlo', monospace;
-  font-size: 12px;
-  color: #1eef6f;
-  background: rgba(30, 239, 111, 0.1);
-  padding: 4px 8px;
+
+.file-tag {
+  font-size: 9px;
+  padding: 2px 5px;
   border-radius: 4px;
-  text-align: center;
-  justify-self: start;
+  background: #2b2b38;
+  color: #8c8c9e;
 }
-.dep-empty {
-  text-align: center;
-  color: #666;
-  padding: 40px 20px;
-  font-size: 14px;
+
+.file-tag.server {
+  background: #2a3c5a;
+  color: #80b3ff;
 }
-.dependencies {
+
+.file-card-path {
+  font-size: 10px;
+  color: #7b7b8f;
+  font-family: monospace;
+}
+
+.deps-container {
   display: flex;
-  flex-direction: row;
-  gap: 20px;
-  justify-content: space-between;
+  flex-direction: column;
+  gap: 12px;
 }
-.loader-wrapper {
+
+.deps-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.dep-switch-tabs {
+  display: flex;
+  gap: 6px;
+}
+
+.dep-add-inline {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.dep-list-table {
+  background: #16161d;
+  border: 1px solid var(--half_opacity_border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.dep-row-head {
+  display: grid;
+  grid-template-columns: 1fr 140px 40px;
+  padding: 8px 12px;
+  font-size: 11px;
+  color: #8c8c9e;
+  border-bottom: 1px solid var(--half_opacity_border);
+  text-transform: uppercase;
+}
+
+.dep-row-item {
+  display: grid;
+  grid-template-columns: 1fr 140px 40px;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  font-size: 12px;
+}
+
+.pkg-name {
+  font-weight: 500;
+  font-family: monospace;
+}
+
+.pkg-ver {
+  color: #4ade80;
+  font-family: monospace;
+}
+
+.dep-del-btn {
+  background: none;
+  border: none;
+  color: #ef4444;
+  cursor: pointer;
+  padding: 4px;
+  font-size: 12px;
+}
+
+.dep-del-btn:hover {
+  background: rgba(239, 68, 68, 0.1);
+  border-radius: 4px;
+}
+
+.subview-empty {
+  padding: 30px;
+  text-align: center;
+  color: #7b7b8f;
+  font-size: 12px;
+}
+
+.ide-status-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 12px;
+  background: var(--half_opacity_bg);
+  border-top: 1px solid var(--half_opacity_border);
+  font-size: 10px;
+  color: #6e6e7e;
+  flex-shrink: 0;
+}
+
+.status-left,
+.status-right {
+  display: flex;
+  gap: 12px;
+}
+
+.sidebar-pane {
+  width: 320px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+  overflow-y: auto;
+}
+
+.pane-sec-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #c7c7c7;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.form-vertical-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.grid-two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.grid-three-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr 120px;
+  gap: 8px;
+}
+
+.custom-check-row {
+  padding-top: 4px;
+}
+
+.check-box-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #aaa;
+  cursor: pointer;
+}
+
+.menu-head-between {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+
+.add-loc-btn {
+  background: none;
+  border: none;
+  color: #6496ff;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.add-loc-btn:hover {
+  text-decoration: underline;
+}
+
+.preview-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.img-frame {
   display: flex;
   justify-content: center;
   align-items: center;
-  padding: 40px;
-}
-hr {
-  border-color: #3c3c3c;
-  margin: 16px 0;
-}
-@media (max-width: 768px) {
-  .form-row {
-    flex-direction: column;
-  }
-  .modal-content {
-    width: 95%;
-    max-height: 90vh;
-  }
-  .file-editor-container {
-    height: 300px;
-  }
-  .dependencies {
-    flex-direction: column;
-  }
-  .editor-header {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  .header-left {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  .header-actions {
-    flex-wrap: wrap;
-  }
-  .editor-grid {
-    grid-template-columns: 1fr;
-  }
-  .dep-list-header,
-  .dep-item {
-    grid-template-columns: 1fr 80px 50px;
-    font-size: 12px;
-  }
+  position: relative;
+  width: 80px;
+  height: 80px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--half_opacity_border);
 }
 
-@media (max-width: 480px) {
-  .module-editor {
-    padding: 10px;
-  }
-  .header-left h1 {
-    font-size: 17px;
-  }
-  .header-actions {
-    gap: 6px;
-  }
-  .header-actions :deep(.molo-btn) {
-    flex: 1;
-    min-width: 90px;
-  }
-  .header-right {
-    width: 100%;
-  }
-  .module-select {
-    width: 100%;
-  }
-  .file-editor-container {
-    height: 240px;
-  }
-  .dep-list-header,
-  .dep-item {
-    grid-template-columns: 1fr 60px;
-  }
-  .dep-list-header span:last-child,
-  .dep-item .dep-actions {
-    display: none;
-  }
-  .file-item {
-    flex-wrap: wrap;
-  }
-  .action-btn-small {
-    min-width: 36px;
-    min-height: 36px;
-  }
+.img-frame img {
+  width: 80%;
+  height: 80%;
+  object-fit: contain;
 }
 
-@media (hover: none) and (pointer: coarse) {
-  .file-item,
-  .dep-item {
-    min-height: 44px;
+.del-preview-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  background: rgba(0, 0, 0, 0.7);
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 1px 4px;
+  font-size: 10px;
+}
+
+.img-placeholder {
+  width: 100%;
+  height: 60px;
+  border: 1px dashed var(--half_opacity_border);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: #666;
+}
+
+.img-upload-input {
+  width: 100%;
+}
+
+.file-modal-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.modal-monaco-box {
+  height: 380px;
+  border: 1px solid var(--half_opacity_border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+@media (max-width: 900px) {
+  .ide-layout {
+    flex-direction: column;
   }
-  .action-btn-small,
-  .checkbox-label input {
-    min-width: 20px;
-    min-height: 20px;
+  .sidebar-pane {
+    width: 100%;
+    max-height: 280px;
+    border-top: 1px solid var(--half_opacity_border);
+  }
+  .editor-pane {
+    border-right: none;
   }
 }
 </style>

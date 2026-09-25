@@ -1,90 +1,67 @@
-// server/api/menu/module.post.ts
-import { Menu } from '~~/server/models/menu.model';
-import { DynamicModule } from '~~/server/models/dynamicModules.model';
+import { defineEventHandler, readBody, createError } from 'h3'
+import { Types } from 'mongoose'
+import { Menu } from '~~/server/models/menu.model'
+import { checkEnterpriseAccess } from '~~/server/utils/enterpriseAuth'
 
 export default defineEventHandler(async (event) => {
-    try {
-        const body = await readBody(event);
-        let { module, targetGroupId, parentItemId } = body;
+    const body = await readBody(event)
+    const { enterpriseId, groupId, parentId, module } = body
 
-        if (!module || !targetGroupId) {
-            throw createError({ statusCode: 400, message: 'Не переданы обязательные данные' });
-        }
-        if (!module._id || !module.name) {
-            throw createError({ statusCode: 400, message: 'module должен содержать _id и name' });
-        }
+    if (!enterpriseId || !groupId || !module) {
+        throw createError({ statusCode: 400, statusMessage: 'Не переданы обязательные поля (enterpriseId, groupId, module)' })
+    }
 
-        // Раньше тут тянули весь документ и клали code/files/dependencies
-        // прямо в пункт меню — это раздувало каждую загрузку /api/menu.
-        // Теперь берём только лёгкие поля через .select().
-        const fullModule = await DynamicModule.findById(module._id).select('_id name fileName format');
-        if (!fullModule) {
-            throw createError({ statusCode: 404, message: 'Модуль не найден в базе' });
-        }
+    await checkEnterpriseAccess(event, enterpriseId, ['Администратор', 'Управляющий'])
 
-        if (parentItemId && typeof parentItemId === 'object') {
-            parentItemId = parentItemId.id || parentItemId._id || null;
-        }
-        if (typeof parentItemId === 'string' && parentItemId === '[object Object]') {
-            parentItemId = null;
-        }
+    // Поиск группы по ObjectId либо по строковому id (placeName)
+    const groupQuery: any = Types.ObjectId.isValid(groupId)
+        ? { $or: [{ _id: new Types.ObjectId(groupId) }, { id: String(groupId) }] }
+        : { id: String(groupId) }
 
-        const menuItem = {
-            id: fullModule.fileName,
-            placeName: fullModule.fileName || fullModule._id,
-            title: fullModule.name,
-            type: 'item',
-            requiredRole: ['Управляющий', 'Сотрудник'],
-            isActive: true,
-            componentName: 'DynamicModuleLoader',
-            componentPath: 'modules/DynamicModuleLoader',
-            isModule: true,
-            moduleId: fullModule._id,
-            format: fullModule.format,
-            // Лёгкая ссылка. Код/файлы DynamicModuleLoader должен подтягивать
-            // сам по moduleId в момент открытия окна, а не таскаться в дереве меню.
-            moduleData: {
-                _id: fullModule._id,
-                name: fullModule.name,
-                placeName: fullModule.fileName,
-                format: fullModule.format,
-            },
-            items: [],
-        };
+    const group = await Menu.findOne(groupQuery)
+    if (!group) {
+        throw createError({ statusCode: 404, statusMessage: `Группа меню "${groupId}" не найдена` })
+    }
 
-        let group = await Menu.findOne({ id: targetGroupId });
-        if (!group && /^[0-9a-fA-F]{24}$/.test(targetGroupId)) {
-            group = await Menu.findById(targetGroupId);
-        }
-        if (!group) throw createError({ statusCode: 404, message: 'Группа не найдена' });
+    const newMenuItem = {
+        id: module.fileName || `module_${module._id}`,
+        placeName: module.fileName,
+        title: module.name,
+        format: module.format || 'vue',
+        isModule: true,
+        moduleId: module._id,
+        isActive: true,
+        requiredRole: module.requiredRole || [],
+        items: []
+    }
 
-        const insertItem = (items: any[]): boolean => {
+    if (parentId) {
+        const insertIntoChildren = (items: any[]): boolean => {
             for (const item of items) {
-                if (String(item.id) === String(parentItemId)) {
-                    item.items = item.items || [];
-                    item.items.push(menuItem);
-                    return true;
+                if (String(item.id) === String(parentId) || String(item._id) === String(parentId)) {
+                    item.items = item.items || []
+                    item.items.push(newMenuItem)
+                    return true
                 }
-                if (item.items?.length) {
-                    if (insertItem(item.items)) return true;
+                if (item.items && insertIntoChildren(item.items)) {
+                    return true
                 }
             }
-            return false;
-        };
-
-        if (parentItemId) {
-            const inserted = insertItem(group.items || []);
-            if (!inserted) throw createError({ statusCode: 400, message: 'Родительский элемент не найден' });
-        } else {
-            group.items = group.items || [];
-            group.items.push(menuItem);
+            return false
         }
 
-        await group.save();
-
-        return { success: true, menuItem, group: group.id };
-    } catch (error: any) {
-        console.error('Ошибка modulePost:', error);
-        throw createError({ statusCode: 500, message: error.message || 'Ошибка добавления модуля' });
+        const inserted = insertIntoChildren(group.items || [])
+        if (!inserted) {
+            group.items = group.items || []
+            group.items.push(newMenuItem)
+        }
+    } else {
+        group.items = group.items || []
+        group.items.push(newMenuItem)
     }
-});
+
+    group.markModified('items')
+    await group.save()
+
+    return { success: true, item: newMenuItem }
+})

@@ -1,4 +1,4 @@
-export interface RawModuleData {
+    export interface RawModuleData {
     _id: string
     name: string
     fileName?: string

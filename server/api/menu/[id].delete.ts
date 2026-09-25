@@ -1,36 +1,27 @@
-import { Menu } from '~~/server/models/menu.model';
+import { defineEventHandler, getRouterParam, getQuery, createError } from 'h3'
+import { Types } from 'mongoose'
+import { Menu } from '~~/server/models/menu.model'
+import { checkEnterpriseAccess } from '~~/server/utils/enterpriseAuth'
 
 export default defineEventHandler(async (event) => {
-    const id = getRouterParam(event, 'id');
-    const query = getQuery(event);
-    const { itemId, parentId } = query;
+    const id = getRouterParam(event, 'id')
+    const query = getQuery(event)
+    const enterpriseId = String(query.enterpriseId || '')
 
-    // Удаление группы
-    if (!itemId) {
-        const deleted = await Menu.findOneAndDelete({ id });
-        if (!deleted) {
-            throw createError({ statusCode: 404, message: 'Группа не найдена' });
-        }
-        return { message: 'Группа удалена', deleted };
+    if (!enterpriseId || !Types.ObjectId.isValid(enterpriseId)) {
+        throw createError({ statusCode: 400, statusMessage: 'Не передан enterpriseId' })
     }
 
-    // Удаление пункта из группы
-    const group = await Menu.findOne({ id });
-    if (!group) {
-        throw createError({ statusCode: 404, message: 'Группа не найдена' });
+    await checkEnterpriseAccess(event, enterpriseId, ['Администратор', 'Управляющий'])
+
+    // Удаление целой группы либо очистка элемента
+    const deleted = await Menu.findByIdAndDelete(id)
+    if (!deleted) {
+        await Menu.updateMany(
+            {},
+            { $pull: { items: { id } } }
+        )
     }
 
-    const removeItem = (items: any[]): any[] => {
-        return items
-            .filter(item => item.id !== itemId)
-            .map(item => ({
-                ...item,
-                items: item.items ? removeItem(item.items) : undefined
-            }));
-    };
-
-    group.items = removeItem(group.items || []);
-    await group.save();
-
-    return { message: 'Пункт удален', group };
-});
+    return { success: true }
+})

@@ -1,115 +1,114 @@
-// stores/appStore.ts
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
+import type { UserRole, PermissionKey } from '~/types/permissions'
+import { ROLE_DEFAULT_PERMISSIONS } from '~/types/permissions'
 
-export interface Tab {
+export interface UserSessionData {
     _id: string
     name: string
-    slug: string
-    description?: string
-    icon?: string
-    color?: string
-    category?: string
-    defaultViewType?: 'table' | 'card' | 'list'
-    groups?: TabGroup[]
-    permissions?: any
-    defaultStandardId?: string | null
+    phone?: string
+    email?: string
+    role?: string
 }
 
-export interface TabGroup {
-    _id?: string
-    name: string
-    description?: string
-    icon?: string
-    order?: number
-    image?: string | null
-    link?: string
-    fields?: TabField[]
+export interface EnterpriseMemberInfo {
+    userId: string
+    name?: string
+    phone?: string
+    role: UserRole
+    joinedAt?: string
 }
 
-export interface TabField {
-    key: string
-    label: string
-    type: string
-    required?: boolean
-    description?: string
-    options?: Array<{ label: string; value: string; color?: string }>
-    isArray?: boolean
-    isUnique?: boolean
-    isSearchable?: boolean
-    isFilterable?: boolean
-    isSortable?: boolean
-    isReadonly?: boolean
-    isHidden?: boolean
-    validation?: any
-    display?: any
-}
-
-// Убираем tabId - стандарты глобальные
-export interface Standard {
+export interface EnterpriseData {
     _id: string
-    name: string
-    description?: string
-    type: 'table' | 'card' | 'list'
-    isDefault: boolean
-    settings?: any
-    styles?: any
-    tableRows?: any[]
-    cardSettings?: any
-    listSettings?: any
+    enterpriseName: string
+    ownershipForm: string
+    inn: string
+    kpp?: string
+    ogrn?: string
+    director?: string
+    members?: EnterpriseMemberInfo[]
+    [key: string]: any
 }
 
 export const useAppStore = defineStore('app', () => {
     const enterpriseId = ref<string | null>(null)
-    const enterpriseData = ref<any>(null)
+    const enterpriseData = ref<EnterpriseData | null>(null)
+    const currentUser = ref<UserSessionData | null>(null)
+    const currentMemberRole = ref<UserRole | null>(null)
 
-    const tabs = ref<Tab[]>([])
-    const tabsLoading = ref(false)
-    const currentTabId = ref<string | null>(null)
-    const currentTab = ref<Tab | null>(null)
-    const currentTabFields = ref<TabField[]>([])
-    const tabsLoaded = ref(false)
-    const tabsLoadingPromise = ref<Promise<any> | null>(null)
+    const isEnterpriseLoaded = computed(() => !!enterpriseId.value && !!enterpriseData.value)
+    const enterpriseName = computed(() => enterpriseData.value?.enterpriseName || enterpriseData.value?.name || 'Без названия')
 
-    // Стандарты теперь глобальные - один массив, не привязанный к tabId
-    const standards = ref<Standard[]>([])
-    const standardsLoading = ref(false)
-    const currentStandard = ref<Standard | null>(null)
+    const currentUserPermissions = computed<PermissionKey[]>(() => {
+        const role = currentMemberRole.value || (currentUser.value?.role as UserRole) || 'Пользователь'
+        return ROLE_DEFAULT_PERMISSIONS[role] || []
+    })
 
-    // Кэш записей (остаётся по tabId)
-    const entriesCache = ref<Map<string, any[]>>(new Map())
-    const entriesLoading = ref(false)
+    const syncRoles = () => {
+        if (!currentUser.value) return
 
-    const setEnterprise = (id: string, data?: any) => {
-        enterpriseId.value = id
-        enterpriseData.value = data || null
-        if (id) {
-            localStorage.setItem('currentEnterprise', JSON.stringify({ _id: id, ...data }))
+        const currentUserId = String(currentUser.value._id)
+        const members = enterpriseData.value?.members || []
+
+        const member = members.find((m: any) => String(m.userId?._id || m.userId) === currentUserId)
+
+        if (member?.role) {
+            currentMemberRole.value = member.role as UserRole
+        } else if (enterpriseData.value?.director && enterpriseData.value.director === currentUser.value.name) {
+            currentMemberRole.value = 'Администратор'
+        } else if (currentUser.value.role === 'Администратор') {
+            currentMemberRole.value = 'Администратор'
+        } else {
+            currentMemberRole.value = (currentUser.value.role as UserRole) || 'Пользователь'
         }
-        clearCache()
     }
 
-    const clearCache = () => {
-        entriesCache.value.clear()
-        tabsLoaded.value = false
-        tabs.value = []
-        // Стандарты не очищаем при смене предприятия (они глобальные)
-        // но для полной очистки можно:
-        standards.value = []
-        currentStandard.value = null
-    }
-
-    const loadEnterpriseFromStorage = (): boolean => {
-        const str = localStorage.getItem('currentEnterprise')
-        if (!str) return false
+    const loadUserFromStorage = (): boolean => {
+        if (typeof window === 'undefined') return false
+        const raw = localStorage.getItem('user')
+        if (!raw) return false
         try {
-            const data = JSON.parse(str)
-            enterpriseId.value = data._id
-            enterpriseData.value = data
+            currentUser.value = JSON.parse(raw)
             return true
         } catch {
             return false
         }
+    }
+
+    const loadEnterpriseFromStorage = (): boolean => {
+        if (typeof window === 'undefined') return false
+        loadUserFromStorage()
+
+        const raw = localStorage.getItem('currentEnterprise')
+        if (!raw) return false
+        try {
+            const data = JSON.parse(raw)
+            enterpriseId.value = data._id || data.id || null
+            enterpriseData.value = data
+            syncRoles()
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    const setEnterprise = (id: string, data?: any) => {
+        enterpriseId.value = id
+        enterpriseData.value = data ? { ...data, _id: id } : null
+        if (typeof window !== 'undefined') {
+            if (data) localStorage.setItem('currentEnterprise', JSON.stringify({ ...data, _id: id }))
+            else localStorage.removeItem('currentEnterprise')
+        }
+        syncRoles()
+    }
+
+    const setUser = (user: UserSessionData) => {
+        currentUser.value = user
+        if (typeof window !== 'undefined') {
+            localStorage.setItem('user', JSON.stringify(user))
+        }
+        syncRoles()
     }
 
     const getEnterpriseId = (): string | null => {
@@ -118,251 +117,19 @@ export const useAppStore = defineStore('app', () => {
         return enterpriseId.value
     }
 
-    // ========== ВКЛАДКИ ==========
-    const loadTabs = async (force = false): Promise<Tab[]> => {
-        const id = getEnterpriseId()
-        if (!id) return []
-
-        if (tabsLoaded.value && !force) return tabs.value
-        if (tabsLoadingPromise.value) {
-            await tabsLoadingPromise.value
-            return tabs.value
-        }
-
-        tabsLoadingPromise.value = (async () => {
-            tabsLoading.value = true
-            try {
-                const response = await $fetch(`/api/enterprises/${id}/tabs`)
-                tabs.value = response.tabs || []
-                tabsLoaded.value = true
-                return tabs.value
-            } catch (error) {
-                console.error('Ошибка загрузки вкладок', error)
-                tabs.value = []
-                return []
-            } finally {
-                tabsLoading.value = false
-                tabsLoadingPromise.value = null
-            }
-        })()
-        return await tabsLoadingPromise.value
-    }
-
-    const loadTabById = async (tabId: string, force = false) => {
-        const id = getEnterpriseId()
-        if (!id || !tabId) return null
-
-        if (!force && currentTab.value?._id === tabId) return currentTab.value
-
-        try {
-            const response: any = await $fetch(`/api/enterprises/${id}/tabs/${tabId}`)
-            currentTab.value = response.tab
-            if (currentTab.value && response.tab.defaultStandardId !== undefined) {
-                currentTab.value.defaultStandardId = response.tab.defaultStandardId
-            }
-            const fields: TabField[] = []
-            if (response.tab?.groups) {
-                for (const group of response.tab.groups) {
-                    if (group.fields) fields.push(...group.fields)
-                }
-            }
-            currentTabFields.value = fields
-
-            const index = tabs.value.findIndex(t => t._id === tabId)
-            if (index !== -1) tabs.value[index] = response.tab
-            else tabs.value.push(response.tab)
-
-            return response.tab
-        } catch (error) {
-            console.error('Ошибка загрузки вкладки', error)
-            return null
-        }
-    }
-
-    const setCurrentTab = (tabId: string) => {
-        currentTabId.value = tabId
-        const found = tabs.value.find(t => t._id === tabId)
-        if (found) {
-            currentTab.value = found
-            const fields: TabField[] = []
-            if (found.groups) {
-                for (const group of found.groups) {
-                    if (group.fields) fields.push(...group.fields)
-                }
-            }
-            currentTabFields.value = fields
-
-            // Выбираем стандарт по умолчанию из глобального списка
-            const defaultStd = standards.value.find(s => s.isDefault === true)
-            currentStandard.value = defaultStd || standards.value[0] || null
-        }
-    }
-
-    const saveTab = async (tabData: any, editingId?: string | null) => {
-        const id = getEnterpriseId()
-        if (!id) throw new Error('Нет предприятия')
-
-        const url = editingId ? `/api/enterprises/${id}/tabs/${editingId}` : `/api/enterprises/${id}/tabs`
-        const method = editingId ? 'PUT' : 'POST'
-        const response: any = await $fetch(url, { method, body: tabData })
-
-        tabsLoaded.value = false
-        if (editingId) {
-            entriesCache.value.delete(editingId)
-        }
-        await loadTabs(true)
-        return response.tab
-    }
-
-    const deleteTab = async (tabId: string) => {
-        const id = getEnterpriseId()
-        if (!id) throw new Error('Нет предприятия')
-        await $fetch(`/api/enterprises/${id}/tabs/${tabId}`, { method: 'DELETE' })
-
-        entriesCache.value.delete(tabId)
-        await loadTabs(true)
-
-        if (currentTabId.value === tabId) {
-            currentTabId.value = null
-            currentTab.value = null
-            currentTabFields.value = []
-        }
-    }
-
-    // ========== СТАНДАРТЫ (глобальные, без привязки к вкладкам) ==========
-    const loadStandards = async (force = false): Promise<Standard[]> => {
-        if (!force && standards.value.length) return standards.value
-
-        standardsLoading.value = true
-        try {
-            const response = await $fetch('/api/standards')
-            standards.value = response.standards || []
-            return standards.value
-        } catch (error) {
-            console.error('Ошибка загрузки стандартов', error)
-            return []
-        } finally {
-            standardsLoading.value = false
-        }
-    }
-
-    const saveStandard = async (standardData: any, editingId?: string | null) => {
-        const url = editingId ? `/api/standards/${editingId}` : '/api/standards'
-        const method = editingId ? 'PUT' : 'POST'
-        const response = await $fetch(url, { method, body: standardData })
-        await loadStandards(true)
-        return response.standard
-    }
-
-    const deleteStandard = async (standardId: string) => {
-        await $fetch(`/api/standards/${standardId}`, { method: 'DELETE' })
-        await loadStandards(true)
-    }
-
-    const setDefaultStandard = async (standardId: string) => {
-        await $fetch(`/api/standards/${standardId}`, {
-            method: 'PUT',
-            body: { isDefault: true }
-        })
-        await loadStandards(true)
-    }
-
-    // ========== ЗАПИСИ ==========
-    const loadEntries = async (tabId: string, force = false): Promise<any[]> => {
-        const id = getEnterpriseId()
-        if (!id || !tabId) return []
-
-        if (!force && entriesCache.value.has(tabId)) {
-            if (currentTabId.value === tabId) entriesLoading.value = false
-            return entriesCache.value.get(tabId)!
-        }
-
-        entriesLoading.value = true
-        try {
-            const response = await $fetch(`/api/enterprises/${id}/tabs/${tabId}/full`)
-            const loaded = response.entries || []
-            entriesCache.value.set(tabId, loaded)
-            return loaded
-        } catch (error) {
-            console.error('[loadEntries] Ошибка:', error)
-            return []
-        } finally {
-            entriesLoading.value = false
-        }
-    }
-
-    const loadEntriesForTab = async (tabId: string, force = false): Promise<any[]> => {
-        return loadEntries(tabId, force)
-    }
-
-    const preloadTabData = async (tabId: string): Promise<void> => {
-        // Стандарты глобальные, не нужно загружать для каждой вкладки
-        // Загружаем только записи для конкретной вкладки
-        await loadEntries(tabId)
-    }
-
-    const preloadAllTabsData = async (): Promise<void> => {
-        const id = getEnterpriseId()
-        if (!id) return
-
-        // Загружаем стандарты один раз (глобально)
-        await loadStandards()
-
-        // Загружаем вкладки
-        const tabsList = await loadTabs()
-
-        // Загружаем записи для всех вкладок
-        await Promise.all(tabsList.map(tab => loadEntries(tab._id)))
-    }
-
-    // Геттеры
-    const isEnterpriseLoaded = computed(() => !!enterpriseId.value)
-    const enterpriseName = computed(() => enterpriseData.value?.enterpriseName || '')
-    const currentTabName = computed(() => currentTab.value?.name || '')
-    const hasEntries = computed(() => (currentTabId.value ? (entriesCache.value.get(currentTabId.value)?.length || 0) > 0 : false))
-    const hasStandards = computed(() => standards.value.length > 0)
-
     return {
         enterpriseId,
         enterpriseData,
-        tabs,
-        tabsLoading,
-        tabsLoaded,
-        currentTabId,
-        currentTab,
-        currentTabFields,
-        standards,           // ← теперь standards (не standardsCache)
-        standardsLoading,
-        currentStandard,
-        entriesCache,
-        entriesLoading,
-
+        currentUser,
+        currentMemberRole,
         isEnterpriseLoaded,
         enterpriseName,
-        currentTabName,
-        hasEntries,
-        hasStandards,
-
-        setEnterprise,
+        currentUserPermissions,
         loadEnterpriseFromStorage,
+        loadUserFromStorage,
+        setEnterprise,
+        setUser,
         getEnterpriseId,
-        clearCache,
-
-        loadTabs,
-        loadTabById,
-        setCurrentTab,
-        saveTab,
-        deleteTab,
-
-        loadStandards,
-        saveStandard,
-        deleteStandard,
-        setDefaultStandard,
-
-        loadEntries,
-        loadEntriesForTab,
-
-        preloadTabData,
-        preloadAllTabsData,
+        syncRoles
     }
 })

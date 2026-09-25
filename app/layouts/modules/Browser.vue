@@ -1,18 +1,21 @@
 <script setup>
-import {onMounted, ref} from 'vue'
-import {storeToRefs} from 'pinia'
-import {useModulesStore} from '~~/stores/moduleStore'
+import { onMounted, ref, watch } from 'vue'
+import { storeToRefs } from 'pinia'
+import { useModulesStore } from '~~/stores/modulesStore'
+import { useAppStore } from '~~/stores/appStore'
+import { useModulePrefetch } from '~/composables/compiler/useModulePrefetch'
 import isOfficial from '~~/public/isOfficial.svg'
-import jsIcon from "~~/public/js.png"
-import tsIcon from "~~/public/ts.png"
-import vueIcon from "~~/public/vue.png"
-import { useWindowManager } from "~~/app/composables/window/useWindowManager.ts";
+import jsIcon from '~~/public/js.png'
+import tsIcon from '~~/public/ts.png'
+import vueIcon from '~~/public/vue.png'
 
-const {openWindow} = useWindowManager()
-const {addNotification} = useNotifications('Браузер')
-const {addLog} = useLogger('Браузер')
+const { addNotification } = useNotifications('Браузер')
+const { addLog } = useLogger('Браузер')
 
-const moduleStore = useModulesStore()
+const appStore = useAppStore()
+const modulesStore = useModulesStore()
+const { prefetchOne } = useModulePrefetch()
+
 const {
   browserModules: modules,
   browserLoading: loading,
@@ -20,24 +23,11 @@ const {
   browserCurrentPage: currentPage,
   browserSearchQuery: searchQuery,
   browserFormatFilter: formatFilter,
-  browserSortBy: sortBy,
-  hasEditorAccess
-} = storeToRefs(moduleStore)
-
-const {
-  setBrowserSearchQuery,
-  setBrowserFormatFilter,
-  setBrowserSortBy,
-  setBrowserPage,
-  importBrowserModule,
-  isImportingModule,
-  checkEditorAccess,
-  enableEditor,
-  disableEditor
-} = moduleStore
+  browserSortBy: sortBy
+} = storeToRefs(modulesStore)
 
 const activeTooltip = ref(null)
-const currentEnterprise = ref(null)
+const importingId = ref(null)
 
 const handleImageError = (event) => {
   const img = event.target
@@ -46,15 +36,15 @@ const handleImageError = (event) => {
 }
 
 const formats = [
-  {label: 'Javascript', value: 'js'},
-  {label: 'TypeScript', value: 'ts'},
-  {label: 'Vue', value: 'vue'}
+  { label: 'Javascript', value: 'js' },
+  { label: 'TypeScript', value: 'ts' },
+  { label: 'Vue', value: 'vue' }
 ]
 
 const sorts = [
-  {label: 'Количество загрузок', value: 'downloads'},
-  {label: 'Рейтинг', value: 'rating'},
-  {label: 'Новинки', value: 'createdAt'}
+  { label: 'Количество загрузок', value: 'downloads' },
+  { label: 'Рейтинг', value: 'rating' },
+  { label: 'Новинки', value: 'createdAt' }
 ]
 
 const showTooltip = (moduleId) => {
@@ -65,38 +55,54 @@ const showTooltip = (moduleId) => {
 }
 
 const handleImport = async (mod) => {
-  if (!currentEnterprise.value?._id) {
+  const enterpriseId = appStore.getEnterpriseId()
+  if (!enterpriseId) {
     addNotification('warning', 'Не удалось определить текущее предприятие')
     return
   }
-  addLog('info', `Импорт модуля "${mod.name}"`)
+  importingId.value = mod._id
+  addLog('info', `Импорт модуля "${mod.name}"...`)
   try {
-    await importBrowserModule(mod._id, currentEnterprise.value._id)
-    addNotification('success', `Модуль "${mod.name}" импортирован`)
+    await modulesStore.importBrowserModule(mod._id, enterpriseId)
+    addNotification('success', `Модуль "${mod.name}" успешно импортирован`)
     addLog('success', `Модуль "${mod.name}" импортирован`)
+
+    // Сразу прогреваем импортированный модуль в фоновом кэше предприятия
+    void prefetchOne(mod._id, enterpriseId)
   } catch (err) {
     addNotification('error', 'Ошибка импорта')
-    addLog('error', `Ошибка импорта: ${err?.data?.message || err.message}`)
+    addLog('error', `Ошибка импорта: ${err?.data?.message || err?.message}`)
+  } finally {
+    importingId.value = null
   }
 }
 
+let searchTimer = null
+const onSearchInput = () => {
+  if (searchTimer) clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => {
+    currentPage.value = 1
+    modulesStore.fetchBrowserModules()
+  }, 300)
+}
+
+const changePage = (page) => {
+  currentPage.value = page
+  modulesStore.fetchBrowserModules()
+}
+
+watch([formatFilter, sortBy], () => {
+  currentPage.value = 1
+  modulesStore.fetchBrowserModules()
+})
+
 onMounted(() => {
-  const entData = localStorage.getItem('currentEnterprise')
-  if (entData) {
-    try {
-      currentEnterprise.value = JSON.parse(entData)
-    } catch (e) {
-      console.error('Error parsing enterprise data', e)
-    }
-  }
-  checkEditorAccess()
-  moduleStore.fetchBrowserModules()
+  modulesStore.fetchBrowserModules()
 })
 </script>
 
 <template>
   <div class="browser-container">
-    <!-- Фильтры - фиксированная ширина -->
     <div class="filters-panel">
       <UIMoloSection>
         <template #header>
@@ -108,11 +114,10 @@ onMounted(() => {
               type="text"
               tLabel="Найдите модуль в поиске"
               placeholder="Поиск по названию, описанию, тегам..."
-              @input="setBrowserSearchQuery"
+              @input="onSearchInput"
           />
           <UIMoloSelect
               v-model="formatFilter"
-              @change="setBrowserFormatFilter"
               :parent="formats"
               tLabel="Выберите формат"
               disabled="Формат файла"
@@ -122,7 +127,6 @@ onMounted(() => {
           />
           <UIMoloSelect
               v-model="sortBy"
-              @change="setBrowserSortBy"
               :parent="sorts"
               tLabel="Выберите фильтр"
               disabled="Выбранный фильтр"
@@ -133,16 +137,19 @@ onMounted(() => {
       </UIMoloSection>
     </div>
 
-    <!-- Основной контент -->
     <div class="modules-content">
-      <UIMoloLoaders wndLoader v-if="loading"/>
+      <UIMoloLoaders v-if="loading" wndLoader />
 
       <div v-else-if="modules.length === 0" class="empty">
         Модулей не найдено
       </div>
 
       <div v-else class="modules-grid">
-        <UIMoloSection v-for="mod in modules" :key="mod._id" class="module-card">
+        <UIMoloSection
+            v-for="mod in modules"
+            :key="mod._id"
+            class="module-card"
+        >
           <template #header>
             <div class="card-header-content">
               <div class="card-name">
@@ -166,9 +173,9 @@ onMounted(() => {
                   <div v-if="activeTooltip === mod._id" class="files-tooltip">
                     <div class="tooltip-content">
                       <div v-for="file in mod.files" :key="file.path" class="tooltip-file">
-                        <img :src="vueIcon" class="file-icon" alt="" v-if="file.format == 'vue'">
-                        <img :src="tsIcon" class="file-icon" alt="" v-else-if="file.format == 'ts'">
-                        <img :src="jsIcon" class="file-icon" alt="" v-else>
+                        <img v-if="file.format == 'vue'" :src="vueIcon" class="file-icon" alt="" />
+                        <img v-else-if="file.format == 'ts'" :src="tsIcon" alt="" />
+                        <img v-else :src="jsIcon" class="file-icon" alt="" />
                         <code>{{ file.name }}</code>
                       </div>
                     </div>
@@ -176,12 +183,11 @@ onMounted(() => {
                 </Transition>
                 <UIMoloButton
                     class="confirm small"
+                    :disabled="importingId === mod._id"
                     @click="handleImport(mod)"
-                    :disabled="isImportingModule(mod._id)"
                 >
-                  <UIMoloLoaders btnLoader v-if="isImportingModule(mod._id)"/>
+                  <UIMoloLoaders v-if="importingId === mod._id" btnLoader />
                   <span v-else>Импорт</span>
-
                 </UIMoloButton>
               </div>
             </div>
@@ -207,15 +213,15 @@ onMounted(() => {
                 </div>
               </div>
             </div>
-            <code class="mod_version">Номер сборки: {{ mod.version }}</code>
+            <code class="mod_version">Номер сборки: {{ mod.version || 1 }}</code>
           </template>
         </UIMoloSection>
       </div>
 
-      <div class="pagination" v-if="totalPages > 1">
-        <UIMoloButton :disabled="currentPage === 1" @click="setBrowserPage(currentPage - 1)">←</UIMoloButton>
+      <div v-if="totalPages > 1" class="pagination">
+        <UIMoloButton :disabled="currentPage === 1" @click="changePage(currentPage - 1)">←</UIMoloButton>
         <span>Страница {{ currentPage }} из {{ totalPages }}</span>
-        <UIMoloButton :disabled="currentPage === totalPages" @click="setBrowserPage(currentPage + 1)">→</UIMoloButton>
+        <UIMoloButton :disabled="currentPage === totalPages" @click="changePage(currentPage + 1)">→</UIMoloButton>
       </div>
     </div>
   </div>
@@ -224,21 +230,19 @@ onMounted(() => {
 <style scoped>
 .browser-container {
   display: flex;
-  gap: 24px;
-  padding: 20px;
+  gap: 20px;
+  padding: 16px;
   color: #e0e0e0;
-  font-family: sans-serif;
-  min-height: 100vh;
+  min-height: 100%;
   height: 100%;
   width: 100%;
   box-sizing: border-box;
 }
 
-/* Фильтры - фиксированная ширина */
 .filters-panel {
-  flex: 0 0 300px;
-  min-width: 250px;
-  max-width: 350px;
+  flex: 0 0 280px;
+  min-width: 240px;
+  max-width: 320px;
 }
 
 .modules-content {
@@ -247,26 +251,21 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   width: 100%;
-  gap: 20px;
+  gap: 16px;
+  overflow-y: auto;
 }
 
-/* ПРАВИЛЬНЫЙ ГРИД - без 2fr */
 .modules-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
   gap: 10px;
   width: 100%;
 }
 
-/* Карточка модуля */
 .module-card {
   display: flex;
   flex-direction: column;
   height: 100%;
-  min-height: 200px;
-  background: var(--half_opacity_bg);
-  border: 1px solid var(--half_opacity_border);
-  border-radius: 12px;
   overflow: hidden;
   transition: all 0.2s ease;
 }
@@ -281,21 +280,19 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   width: 100%;
-  gap: 12px;
-  flex-wrap: wrap;
+  gap: 10px;
 }
 
 .card-name {
   display: flex;
-  flex-direction: row;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   flex: 1;
   min-width: 0;
 }
 
 .module-title {
-  font-size: 16px;
+  font-size: 14.5px;
   font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
@@ -304,7 +301,7 @@ onMounted(() => {
 
 .card-body {
   display: flex;
-  gap: 16px;
+  gap: 14px;
   align-items: flex-start;
   width: 100%;
   position: relative;
@@ -312,30 +309,20 @@ onMounted(() => {
 
 .card-logo {
   flex-shrink: 0;
-  width: 90px;
-  height: 90px;
+  width: 74px;
+  height: 74px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
   overflow: hidden;
-  position: relative;
 }
 
 .logo {
   width: 80%;
   height: 80%;
   object-fit: contain;
-  background: transparent;
-  transition: transform 0.3s ease;
-}
-
-.logo:hover {
-  transform: scale(1.05);
-}
-
-.fallback-image {
-  object-fit: cover;
 }
 
 .card-info-main {
@@ -347,48 +334,46 @@ onMounted(() => {
 }
 
 .description {
-  font-size: 0.85rem;
-  color: #b0b0b0;
+  font-size: 0.82rem;
+  color: #a0a0b0;
   margin: 0;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  line-height: 1.4;
-  word-break: break-word;
+  line-height: 1.35;
 }
 
 .stats {
   display: flex;
-  gap: 12px;
-  font-size: 0.8rem;
+  gap: 10px;
+  font-size: 0.75rem;
   color: #888;
-  flex-wrap: wrap;
 }
 
 .tags {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 4px;
 }
 
 .tag {
-  background: #2c2c2c;
-  padding: 2px 8px;
-  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 1px 6px;
+  border-radius: 4px;
   font-size: 0.7rem;
-  color: #ccc;
+  color: #bbb;
 }
 
 .official-badge {
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   flex-shrink: 0;
 }
 
 .actions {
   display: flex;
-  gap: 10px;
+  gap: 6px;
   position: relative;
   flex-shrink: 0;
 }
@@ -396,9 +381,9 @@ onMounted(() => {
 .files-tooltip {
   position: absolute;
   right: 100%;
-  top: 75%;
+  top: 50%;
   z-index: 100;
-  min-width: 200px;
+  min-width: 180px;
 }
 
 .tooltip-content {
@@ -406,148 +391,41 @@ onMounted(() => {
   border: 1px solid var(--half_opacity_border);
   border-radius: 8px;
   padding: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
 }
 
 .tooltip-file {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px;
+  padding: 4px;
   font-size: 0.8rem;
 }
 
 .file-icon {
-  width: 20px;
+  width: 16px;
+  height: 16px;
 }
 
 .pagination {
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 16px;
-  margin-top: 20px;
-  padding: 16px 0;
-}
-
-.pagination button {
-  background: #1e1e1e;
-  border: 1px solid #3c3c3c;
-  color: white;
-  padding: 8px 16px;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.pagination button:hover:not(:disabled) {
-  background: #2c2c2c;
-  border-color: #3a6ea5;
-}
-
-.pagination button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+  gap: 12px;
+  padding: 12px 0;
 }
 
 .empty {
   text-align: center;
-  padding: 60px 20px;
+  padding: 50px 20px;
   color: #888;
-  font-size: 1.1rem;
-}
-
-/* Анимация тултипа */
-.tooltip-enter-active,
-.tooltip-leave-active {
-  transition: all 0.2s ease;
-}
-
-.tooltip-enter-from,
-.tooltip-leave-to {
-  opacity: 0;
-  transform: translateY(-10px);
 }
 
 .mod_version {
   position: absolute;
   right: 6px;
-  bottom: 6px;
-  font-size: 10px;
-}
-
-/* Адаптивность */
-@media (max-width: 1024px) {
-  .modules-grid {
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  }
-}
-
-@media (max-width: 768px) {
-  .browser-container {
-    flex-direction: column;
-    padding: 16px;
-  }
-
-  .filters-panel {
-    flex: none;
-    width: 100%;
-    max-width: 100%;
-    min-width: unset;
-  }
-
-  .modules-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .card-logo {
-    width: 70px;
-    height: 70px;
-  }
-
-  .card-body {
-    flex-direction: row;
-    align-items: flex-start;
-  }
-
-  .card-header-content {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .card-name {
-    width: 100%;
-  }
-
-  .module-title {
-    white-space: normal;
-    word-break: break-word;
-  }
-
-  .actions {
-    justify-content: flex-end;
-    width: 100%;
-  }
-}
-
-@media (max-width: 480px) {
-  .card-body {
-    flex-direction: column;
-    align-items: center;
-  }
-
-  .card-logo {
-    width: 100%;
-    height: 120px;
-  }
-
-  .card-info-main {
-    width: 100%;
-  }
-
-  .actions {
-    flex-wrap: wrap;
-    justify-content: center;
-  }
+  bottom: 4px;
+  font-size: 9.5px;
+  color: #666;
 }
 </style>

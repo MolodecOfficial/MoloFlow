@@ -2,8 +2,10 @@ import { ref, watch } from 'vue'
 import type { WindowItem, WindowPosition, WindowSize, OpenWindowOptions } from '~/types/window'
 import { getSystemWindow } from './systemWindows'
 import { usePinnedItems } from './usePinnedItems'
+import { PERMISSIONS, ROLE_DEFAULT_PERMISSIONS, type PermissionKey, type UserRole } from '~/types/permissions'
+import { useAppStore } from '~~/stores/appStore'
+import { useNotifications } from '~/composables/useNotifications'
 
-// Единое хранилище окон на всё приложение.
 const windows = ref<WindowItem[]>([])
 let zIndexCounter = 100
 let cascadeStep = 0
@@ -17,10 +19,6 @@ const dataCache = new Map<string, string>()
 
 const { findByWindowKey, syncDataByWindowKey } = usePinnedItems()
 
-// Поля, которые существуют только в контексте пина (снапшот HTML, служебный
-// dragId, тип виджета) и не должны утекать в data живого окна, когда мы
-// подмешиваем туда данные связанного пина (при переоткрытии окна или при
-// двойном клике "открыть связанное окно" из MoloPinnedShell).
 const PIN_ONLY_FIELDS = ['html', 'dragId', 'type', 'sourcePath']
 
 function sanitizePinData(pinData?: Record<string, any>) {
@@ -68,19 +66,57 @@ const getCascadePosition = (width: number, height: number) => {
 
 export function useWindowManager() {
     const { findByWindowKey, syncDataByWindowKey, pinnedItems, unpin } = usePinnedItems()
+    const store = useAppStore()
+    const { addNotification } = useNotifications('Оконный менеджер')
+
     const getEnterpriseId = (): string | null => {
         try {
             const data = localStorage.getItem('currentEnterprise')
             if (data) return JSON.parse(data)?._id ?? null
-        } catch (e) {}
+        } catch {}
         return null
     }
 
-    /**
-     * Загружает модуль из БД целиком (мета + code + files + dependencies).
-     * Дергает GET /api/enterprises/:id/dynamicModules/:moduleId — тот самый
-     * "полный" эндпоинт, который отдаёт всё одним запросом.
-     */
+    const resolveCurrentRole = (): UserRole => {
+        if (store.currentMemberRole) return store.currentMemberRole as UserRole
+
+        if (typeof window !== 'undefined') {
+            try {
+                const rawUser = localStorage.getItem('user')
+                const rawEnt = localStorage.getItem('currentEnterprise')
+                if (rawUser && rawEnt) {
+                    const u = JSON.parse(rawUser)
+                    const ent = JSON.parse(rawEnt)
+
+                    if (u.role === 'Администратор' || ent.director === u.name) return 'Администратор'
+
+                    if (ent.members && Array.isArray(ent.members)) {
+                        const m = ent.members.find((item: any) =>
+                            String(item.userId?._id || item.userId) === String(u._id)
+                        )
+                        if (m?.role) return m.role as UserRole
+                    }
+                }
+                if (rawUser) {
+                    const u = JSON.parse(rawUser)
+                    if (u.role) return u.role as UserRole
+                }
+            } catch {}
+        }
+
+        return 'Программист'
+    }
+
+    const hasAccess = (requiredPermission?: PermissionKey): boolean => {
+        if (!requiredPermission) return true
+
+        const role = resolveCurrentRole()
+        if (role === 'Администратор') return true
+
+        const permissions = ROLE_DEFAULT_PERMISSIONS[role] || []
+        return permissions.includes(requiredPermission)
+    }
+
     const fetchModuleFromDatabase = async (moduleId: string) => {
         const enterpriseId = getEnterpriseId()
         if (!enterpriseId) {
@@ -98,10 +134,6 @@ export function useWindowManager() {
         return response.module
     }
 
-    /**
-     * Подгружает модуль из БД в уже созданное окно (асинхронно, после того
-     * как окно отрисовалось со спиннером/лоадером в data.isLoading).
-     */
     const loadModuleIntoWindow = async (windowId: string, moduleId: string) => {
         try {
             const module = await fetchModuleFromDatabase(moduleId)
@@ -117,16 +149,15 @@ export function useWindowManager() {
                 error: null,
             })
 
-            // Если заголовок ещё не задан явно (остался как moduleId/key) — берём имя модуля
             const win = windows.value.find(w => w.id === windowId)
             if (win && win.title === moduleId && module.name) {
                 updateWindowTitle(windowId, module.name)
             }
         } catch (e: any) {
-            console.error('[WindowManager] Не удалось загрузить модуль из БД:', e)
+            console.error('[WindowManager] Ошибка загрузки модуля:', e)
             updateWindowData(windowId, {
                 isLoading: false,
-                error: e?.data?.message || e?.message || 'Информация о модуле не найдена',
+                error: e?.data?.message || e?.message || 'Модуль не найден',
             })
         }
     }
@@ -138,7 +169,7 @@ export function useWindowManager() {
         if (!stored) return null
         try {
             return JSON.parse(stored)
-        } catch (e) {
+        } catch {
             return null
         }
     }
@@ -149,37 +180,15 @@ export function useWindowManager() {
         localStorage.setItem(`${STORAGE_PREFIX}${enterpriseId}_${key}`, JSON.stringify(settings))
     }
 
-    /**
-     * ЕДИНСТВЕННЫЙ способ открыть окно во всём приложении.
-     *
-     *   openWindow('login')                                    // системный экран (SYSTEM_WINDOWS)
-     *   openWindow(moduleId)                                    // модуль из БД — code подтянется САМ, асинхронно
-     *   openWindow(moduleId, { code, name })                    // модуль, для которого code уже есть на руках (превью в Creature)
-     *   openWindow('preview:' + moduleId, { code, moduleName }) // окно превью, отдельное от самого модуля
-     *
-     * key — произвольная строка. Что рисовать по этому key, решает
-     * WindowsContent.vue в момент рендера, а определяется это здесь:
-     *   1) key есть в SYSTEM_WINDOWS               -> системный экран (login, creature и т.д.);
-     *   2) явно передан data.code                  -> рисуем сразу, без похода в сеть
-     *      (превью несохранённого модуля, DynamicModuleLoader.vue);
-     *   3) иначе (не системный key, нет data.code)  -> key считается moduleId из БД:
-     *      окно создаётся сразу с data.isLoading = true, а затем
-     *      loadModuleIntoWindow() асинхронно тянет GET
-     *      /api/enterprises/:id/dynamicModules/:moduleId и заполняет data.code.
-     *      Если модуль не нашёлся — в data.error попадёт текст ошибки
-     *      (WindowsContent.vue должен уметь отрисовать isLoading/error).
-     *
-     * Одинаковый key при повторном вызове не создаёт новое окно — оно
-     * фокусируется, а data обновляется. Нужно всегда новое — options.forceNew.
-     *
-     * Если для key существует закреплённый (pinned) элемент, и в этот
-     * момент НЕТ открытого окна с таким key — данные из пина (без служебных
-     * полей вроде html/dragId) подмешиваются в data вновь создаваемого окна.
-     * Это вторая половина двусторонней синхронизации: пин → окно.
-     */
     const openWindow = (key: string, data?: any, options: OpenWindowOptions = {}): string => {
-        const isModal = options.modal ?? getSystemWindow(key)?.modal ?? false
+        const sysDef = getSystemWindow(key)
 
+        if (sysDef?.requiredPermission && !hasAccess(sysDef.requiredPermission)) {
+            addNotification('warning', `Доступ ограничен: для открытия «${sysDef.title}» требуются повышенные права`)
+            return ''
+        }
+
+        const isModal = options.modal ?? sysDef?.modal ?? false
         let linkedPinData: Record<string, any> | undefined
 
         if (!isModal && !options.forceNew) {
@@ -193,20 +202,11 @@ export function useWindowManager() {
 
             const linkedPin = findByWindowKey(key)
             if (linkedPin) {
-                console.log('[WindowManager] no open window, merging pin data into new window key=', key)
                 linkedPinData = sanitizePinData(linkedPin.data)
             }
         }
 
-        const sysDef = getSystemWindow(key)
-
-        // options.fromDatabase — явный флаг для тех редких случаев, когда
-        // автоопределения недостаточно (например: принудительно перезагрузить
-        // модуль из БД, даже если code уже был передан). По умолчанию решаем
-        // сами: если ключ НЕ системный и code не передан явно — значит key
-        // это moduleId/fileName из БД, и модуль нужно подтянуть по API.
         const isDatabaseModule = options.fromDatabase ?? (!sysDef && !data?.code)
-
         const savedSettings = !isModal ? loadWindowSettings(key) : null
 
         const defaultSize: WindowSize = {
@@ -255,7 +255,6 @@ export function useWindowManager() {
 
         windows.value.push(newWindow)
 
-        // Окно уже открыто и показывает лоадер — теперь идём в БД за содержимым.
         if (isDatabaseModule) {
             loadModuleIntoWindow(newWindow.id, key)
         }
@@ -263,17 +262,6 @@ export function useWindowManager() {
         return newWindow.id
     }
 
-    /**
-     * Окно предпросмотра — например, в Creature.vue пользователь редактирует
-     * ещё не сохранённый модуль и хочет посмотреть, как он выглядит, не
-     * закрывая редактор. Это ДОЛЖНО быть отдельное окно от самого модуля
-     * (иначе клик "Превью" просто фокусировал бы окно редактора вместо
-     * открытия предпросмотра). Поэтому у окна превью свой ключ —
-     * 'preview:' + ключ источника, и эта деталь спрятана здесь, а не
-     * размазана по вызывающему коду.
-     *
-     *   openPreviewWindow(fileName, { code: currentCode, moduleName })
-     */
     const openPreviewWindow = (sourceKey: string, data?: any, options?: OpenWindowOptions) => {
         return openWindow(`preview:${sourceKey}`, data, {
             size: { width: 600, height: 500, minWidth: 600, minHeight: 400 },
@@ -281,13 +269,6 @@ export function useWindowManager() {
         })
     }
 
-    /**
-     * Закрывает окно. Если у окна был windowKey и на него ссылается пин
-     * с closeWithWindow=true — пин удаляется вместе с окном (второй вариант
-     * поведения, который просил пользователь: "пусть элемент просто
-     * закрывается вместе с окном"). Пины без этого флага просто переходят
-     * в offline-состояние (см. MoloPinnedShell.vue) и продолжают жить.
-     */
     const closeWindow = (id: string) => {
         const index = windows.value.findIndex(w => w.id === id)
         if (index === -1) return
@@ -366,7 +347,6 @@ export function useWindowManager() {
         const win = windows.value.find(w => w.id === id)
         if (win) {
             win.data = { ...(win.data || {}), ...newData, _updated: Date.now() }
-            console.log('[WindowManager] updateWindowData id=', id, 'key=', win.key)
         }
     }
 
@@ -382,7 +362,6 @@ export function useWindowManager() {
             const cached = dataCache.get(win.id)
             if (cached !== current) {
                 dataCache.set(win.id, current)
-                console.log('[WindowManager] windows watch → sync key=', win.key)
                 syncDataByWindowKey(win.key, win.data || {})
             }
         })
@@ -400,5 +379,6 @@ export function useWindowManager() {
         maximizeWindow,
         updateWindowData,
         updateWindowTitle,
+        hasAccess,
     }
 }

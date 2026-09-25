@@ -119,5 +119,54 @@ input[type="checkbox"] {
   align-self: stretch;
 }
 
+.btn-group {
+  display: inline-flex;
+  align-items: center;
+  position: relative;
+
+  /* Все кнопки внутри группы по умолчанию прямоугольные */
+  .molo-btn {
+    border-radius: 0;
+    margin: 0;
+  }
+
+  /* Схлопывание двойного бордера между соседними кнопками */
+  .molo-btn:not(:first-child) {
+    margin-left: -1px;
+  }
+
+  .molo-btn:not(:first-child):not(:last-child) {
+    border-radius: 0;
+  }
+
+
+  /* Левая кнопка: скругление только слева */
+  .molo-btn:first-child {
+    border-top-left-radius: 6px;
+    border-bottom-left-radius: 6px;
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+  }
+
+  /* Правая кнопка: скругление только справа */
+  .molo-btn:last-child {
+    border-top-right-radius: 6px;
+    border-bottom-right-radius: 6px;
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+  }
+
+  /* Единственная кнопка в группе (если осталась одна) */
+  .molo-btn:first-child:last-child {
+    border-radius: 6px;
+  }
+
+  /* Подъём активной кнопки над соседями при наведении */
+  .molo-btn:hover,
+  .molo-btn:focus,
+  .molo-btn.active {
+    z-index: 2;
+  }
+}
 
 
