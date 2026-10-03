@@ -355,17 +355,30 @@ export function useWindowManager() {
         if (win) win.title = title
     }
 
-    watch(windows, () => {
-        windows.value.forEach(win => {
-            if (!win.key) return
-            const current = JSON.stringify(win.data)
-            const cached = dataCache.get(win.id)
-            if (cached !== current) {
-                dataCache.set(win.id, current)
-                syncDataByWindowKey(win.key, win.data || {})
-            }
-        })
-    }, { deep: true })
+    // Оптимизированный watch: синхронизируем только реальные изменения payload данных
+    watch(
+        () => windows.value.map(w => ({ id: w.id, key: w.key, data: w.data })),
+        (currentWindows) => {
+            currentWindows.forEach(win => {
+                if (!win.key || !win.data) return
+
+                try {
+                    // Исключаем циклические ссылки и служебные timestamp'ы
+                    const { _updated, ...pureData } = win.data
+                    const serialized = JSON.stringify(pureData)
+                    const cached = dataCache.get(win.id)
+
+                    if (cached !== serialized) {
+                        dataCache.set(win.id, serialized)
+                        syncDataByWindowKey(win.key, pureData)
+                    }
+                } catch (err) {
+                    // Защита от DataClone / circular structure
+                }
+            })
+        },
+        { deep: true }
+    )
 
     return {
         windows,

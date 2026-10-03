@@ -69,7 +69,8 @@ export class VirtualFileSystem {
             ts: 'typescript',
             json: 'json',
             css: 'css',
-            html: 'html'
+            html: 'html',
+            py: 'python'
         }
         return map[ext] || 'plaintext'
     }

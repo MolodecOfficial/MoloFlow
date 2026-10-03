@@ -76,6 +76,7 @@ const restoreWindowWithAnimation = (id: string) => {
 .window-manager {
   position: absolute;
   overflow: visible;
+  height: 100%;
 }
 
 .draggable-window {

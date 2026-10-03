@@ -5,11 +5,13 @@ import { useEnterprise } from '~~/app/composables/useEnterprise'
 import lock from '~~/public/lock.svg'
 import tsIcon from '~~/public/ts.png'
 import jsIcon from '~~/public/js.png'
+import pyIcon from '~~/public/py.svg'
 import { useAppStore } from '~~/stores/appStore'
 import { useMenuStore } from '~~/stores/menuStore'
 import { useModulesStore } from '~~/stores/modulesStore'
 import { useWindowManager } from '~~/app/composables/window/useWindowManager'
 import { useModulePrefetch } from '~/composables/compiler/useModulePrefetch'
+import MoloSticker from '~/components/ui/MoloSticker.vue'
 
 const props = defineProps<{ role?: string }>()
 const emit = defineEmits<{
@@ -23,8 +25,7 @@ const appStore = useAppStore()
 const { openWindow } = useWindowManager()
 const { addLog } = useLogger('Меню')
 
-// Извлекаем актуальные реактивные поля из правильных сторов
-const { menuGroups, menuLoaded } = storeToRefs(menuStore)
+const { menuGroups } = storeToRefs(menuStore)
 const { enterpriseModules } = storeToRefs(modulesStore)
 const { prefetchOne } = useModulePrefetch()
 
@@ -66,7 +67,28 @@ const createDynamicItems = () => {
       }))
 }
 
-// Защита от undefined при деструктуризации и объединении
+// Удаление эмодзи из названий для чистого рендеринга
+const cleanTitle = (text: string) => {
+  if (!text) return ''
+  return text.replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '').trim()
+}
+
+// Определение подходящего стикера для группы меню
+const getGroupSticker = (id: string, title: string) => {
+  const t = (title || '').toLowerCase()
+  if (id === 'custom_dynamic_modules' || id === 'custom_modules' || t.includes('модул')) return 'it'
+  if (t.includes('склад') || t.includes('товар') || t.includes('номенклатур')) return 'warehouse'
+  if (t.includes('финанс') || t.includes('бухгалтер') || t.includes('счет')) return 'finance'
+  if (t.includes('банк')) return 'bank'
+  if (t.includes('строит')) return 'construction'
+  if (t.includes('производ')) return 'production'
+  if (t.includes('продаж') || t.includes('магазин')) return 'store'
+  if (t.includes('контрагент') || t.includes('клиент')) return 'counterparties'
+  if (t.includes('доступ') || t.includes('безопасн') || t.includes('руковод')) return 'management'
+  if (t.includes('документ') || t.includes('справочник')) return 'glossary'
+  return 'folder'
+}
+
 const allGroups = computed(() => {
   const groups = Array.isArray(menuGroups.value) ? [...menuGroups.value] : []
   const dynamicItems = createDynamicItems()
@@ -91,6 +113,46 @@ const orbClasses = computed(() => ({
   empty: isLoaded.value === true && allGroups.value.length === 0
 }))
 
+async function runAutoStartScripts(enterpriseId: string) {
+  // Добавляем 'py' к списку автозапускаемых скриптов
+  const scripts = (enterpriseModules.value || []).filter(
+      (m: any) => m && (m.format === 'js' || m.format === 'ts' || m.format === 'py') && m.isActive !== false
+  )
+
+  for (const module of scripts) {
+    try {
+      const typeLabel = module.format === 'py' ? 'Python-бота' : 'фонового скрипта'
+      addLog('info', `Автозапуск ${typeLabel}: ${module.name}`)
+
+      const response = await $fetch<{ logs?: string[] }>(`/api/execute/${module._id}`, {
+        method: 'POST',
+        body: {
+          data: {
+            moduleName: module.name,
+            enterpriseId,
+            isAutoStart: true
+          }
+        }
+      })
+
+      if (response?.logs?.length) {
+        const { addLog: addModuleLog } = useLogger('Модуль')
+        for (const log of response.logs) {
+          let type: 'info' | 'warning' | 'error' | 'success' = 'info'
+          if (log.includes('ERROR')) type = 'error'
+          else if (log.includes('WARN')) type = 'warning'
+          else if (log.includes('SUCCESS') || log.includes('Запущен')) type = 'success'
+          addModuleLog(type, log)
+        }
+      }
+
+      addLog('success', `Модуль "${module.name}" запущен`)
+    } catch (err: any) {
+      addLog('error', `Ошибка автозапуска "${module.name}": ${err?.data?.message || err?.message || err}`)
+    }
+  }
+}
+
 const loadAll = async (force = false) => {
   loading.value = true
   const enterpriseId = appStore.getEnterpriseId()
@@ -101,6 +163,10 @@ const loadAll = async (force = false) => {
       menuStore.loadMenu(role, force),
       enterpriseId ? modulesStore.loadEnterpriseModules(enterpriseId, force) : Promise.resolve()
     ])
+
+    if (enterpriseId) {
+      void runAutoStartScripts(enterpriseId)
+    }
   } catch (e: any) {
     addLog('error', `Ошибка загрузки меню: ${e?.message || e}`)
   } finally {
@@ -131,14 +197,6 @@ watch(
       }
     }
 )
-
-const ACCENT_PALETTE = ['#5b8def', '#8b5cf6', '#33d17a', '#d29922', '#ef5b8d', '#3ecfd6']
-const categoryColor = (title: string) => {
-  let hash = 0
-  const str = title || ''
-  for (let i = 0; i < str.length; i++) hash = str.charCodeAt(i) + ((hash << 5) - hash)
-  return ACCENT_PALETTE[Math.abs(hash) % ACCENT_PALETTE.length]
-}
 
 const activeGroup = computed(() =>
     allGroups.value.find(g => g.id === activeGroupId.value) || allGroups.value[0] || null
@@ -182,27 +240,28 @@ const searchResults = computed(() => {
   const q = searchQuery.value.trim().toLowerCase()
   if (!q) return []
   return flatIndex.value
-      .filter(r => (r.item.title || '').toLowerCase().includes(q))
+      .filter(r => (cleanTitle(r.item.title) || '').toLowerCase().includes(q))
       .slice(0, 40)
 })
 
 const resultPath = (result: any) => {
-  const parts = [result.group.title, ...result.parents.map((p: any) => p.title)]
+  const parts = [cleanTitle(result.group.title), ...result.parents.map((p: any) => cleanTitle(p.title))]
   return parts.filter(Boolean).join(' / ')
 }
 
+// MoloMenu.vue
 const restartModule = async (moduleData: any) => {
   if (!moduleData) return
   const moduleId = moduleData._id
 
   if (executingModules.value.has(moduleId)) {
-    addLog('warning', `Модуль "${moduleData.name}" уже выполняется`)
+    addLog('warning', `Модуль "${moduleData.name}" уже обрабатывается`)
     return
   }
 
   try {
     executingModules.value.add(moduleId)
-    addLog('info', `Перезапуск модуля: ${moduleData.name}`)
+    addLog('info', `Запуск/перезапуск модуля: ${moduleData.name}`)
 
     const enterpriseId = appStore.getEnterpriseId()
     if (!enterpriseId) {
@@ -210,13 +269,14 @@ const restartModule = async (moduleData: any) => {
       return
     }
 
+    // 1. Вызываем запуск
     const response = await $fetch<{ logs?: string[] }>(`/api/execute/${moduleData._id}`, {
       method: 'POST',
       body: {
         data: {
           moduleName: moduleData.name,
-          enterpriseId: enterpriseId,
-          moduleId: moduleId
+          enterpriseId,
+          moduleId
         }
       }
     })
@@ -224,17 +284,32 @@ const restartModule = async (moduleData: any) => {
     if (response.logs && response.logs.length) {
       const { addLog: addModuleLog } = useLogger('Модуль')
       for (const log of response.logs) {
-        let type: 'info' | 'warning' | 'error' | 'success' = 'info'
-        if (log.includes('ERROR')) type = 'error'
-        else if (log.includes('WARN')) type = 'warning'
-        else if (log.includes('SUCCESS')) type = 'success'
-        addModuleLog(type, log)
+        addModuleLog('info', log)
       }
     }
 
-    addLog('success', `Модуль "${moduleData.name}" выполнен успешно`)
+    // 2. Если это Python — опрашиваем статус фонового процесса
+    if (moduleData.format === 'py') {
+      setTimeout(async () => {
+        try {
+          const status = await $fetch<{ running: boolean; pid?: number; logs?: string[] }>('/api/py/daemon', {
+            method: 'POST',
+            body: { action: 'status', moduleId }
+          })
+
+          if (status.running) {
+            addLog('success', `Скрипт запущен! PID: ${status.pid}. Активен в фоне.`)
+          } else {
+            addLog('error', `Процесс скрипта остановился. Проверьте ошибки в консоли.`)
+          }
+        } catch {}
+      }, 1500)
+    } else {
+      addLog('success', `Скрипт "${moduleData.name}" выполнен`)
+    }
+
   } catch (error: any) {
-    addLog('error', `Ошибка при выполнении модуля: ${error.message}`)
+    addLog('error', `Ошибка выполнения: ${error.message}`)
   } finally {
     executingModules.value.delete(moduleId)
   }
@@ -385,24 +460,25 @@ onUnmounted(() => {
                       class="search-row"
                       @click="selectResult(result)"
                   >
-                    <span
-                        class="search-icon"
-                        :style="{ background: result.item.items?.length ? 'transparent' : undefined }"
-                    >
-                      <template v-if="result.item.items?.length">📁</template>
+                    <span class="search-icon">
+                      <MoloSticker
+                          v-if="result.item.items?.length"
+                          name="folder"
+                          :size="18"
+                      />
                       <img v-else-if="result.item.format === 'ts'" :src="tsIcon" alt="" />
                       <img v-else-if="result.item.format === 'js'" :src="jsIcon" alt="" />
                       <span v-else class="vue-badge">V</span>
                     </span>
                     <span class="search-texts">
-                      <span class="search-title">{{ result.item.title }}</span>
+                      <span class="search-title">{{ cleanTitle(result.item.title) }}</span>
                       <span class="search-path">{{ resultPath(result) }}</span>
                     </span>
                     <span class="search-go">↵</span>
                   </button>
                 </div>
                 <div v-else class="empty-block">
-                  <span class="empty-emoji">🛰️</span>
+                  <MoloSticker name="it" :size="36" glow />
                   <span>Ничего не найдено по «{{ searchQuery }}»</span>
                 </div>
               </div>
@@ -416,20 +492,23 @@ onUnmounted(() => {
                       :class="{ active: group.id === activeGroupId }"
                       @click="selectCategory(group)"
                   >
-                    <span class="rail-dot" :style="{ '--dot-color': categoryColor(group.title) }">
-                      {{ (group.title || '?').charAt(0).toUpperCase() }}
+                    <span class="rail-sticker-wrap">
+                      <MoloSticker
+                          :name="getGroupSticker(group.id, group.title)"
+                          :size="16"
+                      />
                     </span>
-                    <span class="rail-label">{{ group.title }}</span>
+                    <span class="rail-label">{{ cleanTitle(group.title) }}</span>
                     <span class="rail-count">{{ itemCount(group) }}</span>
                   </button>
                 </aside>
 
                 <main class="deck-main">
                   <div class="breadcrumb">
-                    <span class="bc-root" @click="jumpBreadcrumb(-1)">~/{{ activeGroup?.title || '' }}</span>
+                    <span class="bc-root" @click="jumpBreadcrumb(-1)">~/{{ cleanTitle(activeGroup?.title || '') }}</span>
                     <template v-for="(crumb, i) in breadcrumbStack" :key="crumb.id || i">
                       <span class="bc-sep">/</span>
-                      <span class="bc-item" @click="jumpBreadcrumb(i)">{{ crumb.title }}</span>
+                      <span class="bc-item" @click="jumpBreadcrumb(i)">{{ cleanTitle(crumb.title) }}</span>
                     </template>
                   </div>
 
@@ -447,16 +526,21 @@ onUnmounted(() => {
                         @mouseenter="item.isModule && item.moduleId && prefetchOne(item.moduleId, appStore.getEnterpriseId() || '')"
                     >
                       <span class="card-icon">
-                        <template v-if="item.items?.length">📁</template>
+                        <MoloSticker
+                            v-if="item.items?.length"
+                            name="folder"
+                            :size="20"
+                        />
                         <img v-else-if="item.format === 'ts'" :src="tsIcon" alt="" />
                         <img v-else-if="item.format === 'js'" :src="jsIcon" alt="" />
+                        <img v-else-if="item.format === 'py'" :src="pyIcon" alt="" />
                         <span v-else class="vue-badge">V</span>
                       </span>
-                      <span class="card-title">{{ item.title }}</span>
+                      <span class="card-title">{{ cleanTitle(item.title) }}</span>
                       <span v-if="item.items?.length" class="card-meta">{{ item.items.length }} пунктов</span>
                       <span v-else-if="item.isScript" class="card-meta">
                         <span v-if="executingModules.has(item.moduleId)" class="executing-indicator">
-                          ⏳ выполняется...
+                          выполняется...
                         </span>
                         <span v-else>скрипт · {{ item.format }}</span>
                       </span>
@@ -469,12 +553,12 @@ onUnmounted(() => {
                           title="Перезапустить"
                           @click.stop="restartModule(item.moduleData)"
                       >
-                        ↻
+                        <MoloSticker name="rotate" :size="12" />
                       </span>
                     </UIMoloButton>
                   </div>
                   <div v-else class="empty-block">
-                    <span class="empty-emoji">📦</span>
+                    <MoloSticker name="warehouse" :size="36" glow />
                     <span>Здесь пока пусто</span>
                   </div>
                 </main>
@@ -644,6 +728,7 @@ onUnmounted(() => {
   max-height: 76vh;
   display: flex;
   flex-direction: column;
+  background: #141419;
   border: 1px solid var(--half_opacity_border);
   border-radius: 20px;
   box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.02) inset;
@@ -732,26 +817,20 @@ onUnmounted(() => {
 
 .rail-item:hover {
   background: rgba(255, 255, 255, 0.05);
-  color: wheat;
+  color: #fff;
 }
 
 .rail-item.active {
-  background: rgba(255, 255, 255, 0.07);
+  background: rgba(91, 141, 239, 0.15);
   color: white;
 }
 
-.rail-dot {
-  --dot-color: #5b8def;
-  width: 22px;
-  height: 22px;
-  border-radius: 7px;
+.rail-sticker-wrap {
+  width: 24px;
+  height: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
-  font-weight: 700;
-  color: #0a0d12;
-  background: var(--dot-color);
   flex-shrink: 0;
 }
 
@@ -770,7 +849,7 @@ onUnmounted(() => {
   background: rgba(255, 255, 255, 0.05);
   border-radius: 4px;
   padding: 1px 6px;
-  color: white;
+  color: #999;
 }
 
 .deck-main {
@@ -863,7 +942,6 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 17px;
   background: rgba(255, 255, 255, 0.05);
 }
 
@@ -881,7 +959,7 @@ onUnmounted(() => {
   justify-content: center;
   font-size: 11px;
   font-weight: 800;
-  color: #3d3d3d;
+  color: #fff;
   background: linear-gradient(135deg, #42b883, #35495e);
 }
 
@@ -920,19 +998,16 @@ onUnmounted(() => {
   justify-content: center;
   background: rgba(255, 255, 255, 0.06);
   color: var(--text-muted);
-  font-size: 13px;
   transition: color 0.2s, transform 0.2s, background 0.2s;
 }
 
 .restart-btn:hover {
-  color: #6ea2ff;
   background: rgba(110, 162, 255, 0.15);
   transform: rotate(180deg);
 }
 
 .restart-btn.spinning {
   animation: spin 1s linear infinite;
-  color: var(--borber-color_main);
 }
 
 @keyframes spin {
@@ -978,7 +1053,6 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   background: rgba(255, 255, 255, 0.05);
-  font-size: 15px;
   flex-shrink: 0;
 }
 
@@ -1025,16 +1099,11 @@ onUnmounted(() => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 10px;
+  gap: 12px;
   padding: 60px 20px;
   font-size: 13px;
   text-align: center;
-  color: white;
-}
-
-.empty-emoji {
-  font-size: 34px;
-  opacity: 0.7;
+  color: #aaa;
 }
 
 .lock-overlay {

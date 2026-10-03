@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import MoloSticker from '~/components/ui/MoloSticker.vue'
 
 const props = defineProps<{
   modelValue?: string
@@ -44,19 +45,27 @@ function printImage() {
 <template>
   <div class="image-viewer-root">
     <div class="image-toolbar">
-
       <div class="toolbar-title">
         <span class="toolbar-badge">IMAGE РИДЕР</span>
-        {{ fileName || 'Изображение' }}</div>
+        {{ fileName || 'Изображение' }}
+      </div>
       <div class="toolbar-controls">
         <section class="btn-group">
-          <UIMoloButton class="small" title="Увеличить" @click="zoomIn">🔍+</UIMoloButton>
-          <UIMoloButton class="small" title="Уменьшить" @click="zoomOut">🔍-</UIMoloButton>
+          <UIMoloButton class="small icon-btn" title="Увеличить" @click="zoomIn">
+            <UIMoloSticker name="zoom-in" :size="18" />
+          </UIMoloButton>
+          <UIMoloButton class="small icon-btn" title="Уменьшить" @click="zoomOut">
+            <UIMoloSticker name="zoom-out" :size="18" />
+          </UIMoloButton>
         </section>
         <UIMoloButton class="small" title="Сбросить масштаб" @click="reset">{{ Math.round(scale * 100) }}%</UIMoloButton>
         <section class="btn-group">
-          <UIMoloButton class="small" title="Повернуть на 90°" @click="rotate">🔄</UIMoloButton>
-          <UIMoloButton class="small" title="Печать" @click="printImage">🖨️</UIMoloButton>
+          <UIMoloButton class="small icon-btn" title="Повернуть на 90°" @click="rotate">
+            <UIMoloSticker name="rotate" :size="18" />
+          </UIMoloButton>
+          <UIMoloButton class="small icon-btn" title="Печать" @click="printImage">
+            <UIMoloSticker name="print" :size="18" />
+          </UIMoloButton>
         </section>
       </div>
     </div>
@@ -94,7 +103,6 @@ function printImage() {
   flex-shrink: 0;
 }
 
-
 .toolbar-badge {
   background: #dc8726;
   color: white;
@@ -113,6 +121,13 @@ function printImage() {
 .toolbar-controls {
   display: flex;
   gap: 6px;
+}
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 6px;
 }
 
 .image-canvas {

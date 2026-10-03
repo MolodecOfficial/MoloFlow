@@ -1,6 +1,8 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
+import { useAppStore } from '~~/stores/appStore'
 import { useModulePrefetch } from '~/composables/compiler/useModulePrefetch'
+import { buildAuthHeaders, resolveUserId } from '~~/server/utils/authContext'
 
 export interface BrowserModule {
     _id: string
@@ -14,6 +16,8 @@ export interface BrowserModule {
 }
 
 export const useModulesStore = defineStore('modules', () => {
+    const appStore = useAppStore()
+
     // ── 1. Модули предприятия ──
     const enterpriseModules = ref<any[]>([])
     const enterpriseModulesLoaded = ref(false)
@@ -52,7 +56,11 @@ export const useModulesStore = defineStore('modules', () => {
     const clientFiles = computed(() => moduleFiles.value.filter(f => !f.isServerFile))
     const serverFiles = computed(() => moduleFiles.value.filter(f => f.isServerFile))
 
-    // Загрузка легкого списка модулей + фоновый прогрев SFC
+    // Единственное объявление: заголовки авторизации (токен + x-user-id)
+    const getAuthHeaders = (): Record<string, string> => {
+        return buildAuthHeaders(appStore.currentUser?._id)
+    }
+
     const loadEnterpriseModules = async (enterpriseId: string, force = false) => {
         if (!enterpriseId) {
             enterpriseModules.value = []
@@ -64,12 +72,12 @@ export const useModulesStore = defineStore('modules', () => {
         enterpriseModulesLoading.value = true
         try {
             const res: any = await $fetch(`/api/enterprises/${enterpriseId}/dynamicModules`, {
-                params: { minimal: '1' }
+                params: { minimal: '1' },
+                headers: getAuthHeaders()
             })
             enterpriseModules.value = res.modules || []
             enterpriseModulesLoaded.value = true
 
-            // Запуск фонового прогрева модулей через requestIdleCallback
             if (import.meta.client && enterpriseModules.value.length > 0) {
                 const { prefetchModules } = useModulePrefetch()
                 void prefetchModules(enterpriseModules.value, enterpriseId)
@@ -91,7 +99,9 @@ export const useModulesStore = defineStore('modules', () => {
                 page: String(browserCurrentPage.value),
                 limit: '12'
             })
-            const data: any = await $fetch(`/api/browser/modules?${params.toString()}`)
+            const data: any = await $fetch(`/api/browser/modules?${params.toString()}`, {
+                headers: getAuthHeaders()
+            })
             browserModules.value = data.modules || []
             browserTotalPages.value = data.pagination?.pages || 1
         } catch {
@@ -104,7 +114,8 @@ export const useModulesStore = defineStore('modules', () => {
     const importBrowserModule = async (moduleId: string, targetEnterpriseId: string) => {
         await $fetch(`/api/browser/modules/${moduleId}/import`, {
             method: 'POST',
-            body: { targetEnterpriseId }
+            body: { targetEnterpriseId },
+            headers: getAuthHeaders()
         })
         await loadEnterpriseModules(targetEnterpriseId, true)
     }
@@ -112,7 +123,9 @@ export const useModulesStore = defineStore('modules', () => {
     const loadModuleFilesById = async (enterpriseId: string, moduleId: string) => {
         loadingFiles.value = true
         try {
-            const response: any = await $fetch(`/api/enterprises/${enterpriseId}/dynamicModules/${moduleId}/files`)
+            const response: any = await $fetch(`/api/enterprises/${enterpriseId}/dynamicModules/${moduleId}/files`, {
+                headers: getAuthHeaders()
+            })
             moduleFiles.value = response.files || []
             if (response.mainFile?.code) {
                 formData.value.code = response.mainFile.code
@@ -141,6 +154,26 @@ export const useModulesStore = defineStore('modules', () => {
         selectedModuleId.value = null
     }
 
+    // ── Удаление модуля ──
+    const deleteModule = async (enterpriseId: string, moduleId: string) => {
+        if (!enterpriseId || !moduleId) return
+
+        appStore.loadUserFromStorage()
+        const currentUserId = resolveUserId(appStore.currentUser?._id)
+
+        await $fetch(`/api/enterprises/${enterpriseId}/dynamicModules/${moduleId}`, {
+            method: 'DELETE',
+            params: { userId: currentUserId || undefined },
+            headers: buildAuthHeaders(currentUserId)
+        })
+
+        await loadEnterpriseModules(enterpriseId, true)
+
+        if (selectedModuleId.value === moduleId) {
+            resetForm()
+        }
+    }
+
     return {
         enterpriseModules,
         enterpriseModulesLoaded,
@@ -164,6 +197,7 @@ export const useModulesStore = defineStore('modules', () => {
         fetchBrowserModules,
         importBrowserModule,
         loadModuleFilesById,
-        resetForm
+        resetForm,
+        deleteModule
     }
 })

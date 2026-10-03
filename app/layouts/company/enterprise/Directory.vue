@@ -1,8 +1,10 @@
 <script lang="ts" setup>
 import { ref, computed, watch, onMounted } from 'vue'
 import { useAppStore } from '~~/stores/appStore'
+import { useDirectoryInterpolator } from '~/composables/useDirectoryInterpolator'
+import MoloSticker from '~/components/ui/MoloSticker.vue'
 
-type FieldType = 'text' | 'number' | 'select' | 'boolean'
+export type FieldType = 'text' | 'number' | 'date' | 'boolean' | 'select'
 
 interface FieldSchema {
   key: string
@@ -17,6 +19,7 @@ interface FieldSchema {
 interface DirectoryMeta {
   label: string
   value: string
+  sticker: string
   codeLabel: string
   codePlaceholder: string
   titleLabel: string
@@ -41,14 +44,15 @@ const props = defineProps<{
 }>()
 
 const appStore = useAppStore()
+const interpolator = useDirectoryInterpolator()
 const { addNotification } = useNotifications('Справочники')
-const { addLog } = useLogger('Справочники')
 
-const DIRECTORY_CONFIG: Record<string, DirectoryMeta> = {
+const STATIC_CONFIG: Record<string, DirectoryMeta> = {
   departments: {
-    label: '👥 Сотрудники и отделы',
+    label: 'Сотрудники и отделы',
     value: 'departments',
-    codeLabel: 'Табельный номер / ID',
+    sticker: 'departments',
+    codeLabel: 'Табельный номер',
     codePlaceholder: 'EMP-01',
     titleLabel: 'ФИО Сотрудника',
     titlePlaceholder: 'Иванов Иван Иванович',
@@ -59,143 +63,81 @@ const DIRECTORY_CONFIG: Record<string, DirectoryMeta> = {
         label: 'Отдел компании',
         type: 'select',
         required: true,
-        span: 1,
         options: [
-          { label: '💻 IT и разработка', value: 'IT и разработка' },
-          { label: '🛡️ Руководство и менеджмент', value: 'Руководство' },
-          { label: '💰 Бухгалтерия и финансы', value: 'Бухгалтерия и финансы' },
-          { label: '📦 Склад и логистика', value: 'Склад и логистика' },
-          { label: '🤝 Отдел продаж', value: 'Отдел продаж' }
+          { label: 'IT и разработка', value: 'IT и разработка' },
+          { label: 'Руководство', value: 'Руководство' },
+          { label: 'Бухгалтерия', value: 'Бухгалтерия' }
         ]
       },
-      {
-        key: 'role',
-        label: 'Роль доступа в системе',
-        type: 'select',
-        required: true,
-        span: 1,
-        options: [
-          { label: 'Администратор', value: 'Администратор' },
-          { label: 'Управляющий', value: 'Управляющий' },
-          { label: 'Программист', value: 'Программист' },
-          { label: 'Бухгалтер', value: 'Бухгалтер' },
-          { label: 'Сотрудник', value: 'Сотрудник' },
-          { label: 'Наблюдатель', value: 'Наблюдатель' }
-        ]
-      },
-      { key: 'phone', label: 'Контактный телефон', placeholder: '+7 (999) 000-00-00', span: 1 },
-      { key: 'email', label: 'Рабочий Email', placeholder: 'emp@company.ru', span: 1 }
-    ]
-  },
-  bank_accounts: {
-    label: '🏛️ Банковские счета',
-    value: 'bank_accounts',
-    codeLabel: 'БИК Банка',
-    codePlaceholder: '044525225',
-    titleLabel: 'Название банка',
-    titlePlaceholder: 'ПАО СБЕРБАНК',
-    groupByKey: 'currency',
-    fields: [
-      { key: 'accountNumber', label: 'Расчётный счёт', placeholder: '40702810...', required: true, span: 2 },
-      { key: 'corrAccount', label: 'Корр. счёт', placeholder: '30101810...', required: true, span: 2 },
-      {
-        key: 'currency',
-        label: 'Валюта счёта',
-        type: 'select',
-        required: true,
-        span: 1,
-        options: [
-          { label: 'RUB (Рубли)', value: 'RUB' },
-          { label: 'USD (Доллары)', value: 'USD' },
-          { label: 'EUR (Евро)', value: 'EUR' },
-          { label: 'CNY (Юани)', value: 'CNY' }
-        ]
-      },
-      { key: 'swift', label: 'SWIFT-код', placeholder: 'SABRRUMM', span: 1 }
+      { key: 'role', label: 'Должность', placeholder: 'Ведущий инженер' },
+      { key: 'phone', label: 'Контактный телефон', placeholder: '+7 (999) 000-00-00' }
     ]
   },
   counterparties: {
-    label: '🤝 Контрагенты',
+    label: 'Контрагенты',
     value: 'counterparties',
+    sticker: 'counterparties',
     codeLabel: 'ИНН',
     codePlaceholder: '10 или 12 цифр',
     titleLabel: 'Наименование / ФИО',
-    titlePlaceholder: 'ООО "Вектор" или ИП Иванов',
-    groupByKey: 'type',
+    titlePlaceholder: 'ООО "Компания"',
     fields: [
-      {
-        key: 'type',
-        label: 'Категория',
-        type: 'select',
-        required: true,
-        span: 1,
-        options: [
-          { label: 'Поставщики', value: 'Поставщики' },
-          { label: 'Клиенты', value: 'Клиенты' },
-          { label: 'Подрядчики', value: 'Подрядчики' }
-        ]
-      },
-      { key: 'kpp', label: 'КПП', placeholder: '770101001', span: 1 },
-      { key: 'ogrn', label: 'ОГРН / ОГРНИП', placeholder: '1027700000000', span: 1 },
-      { key: 'phone', label: 'Телефон', placeholder: '+7 (999) 000-00-00', span: 1 },
-      { key: 'legalAddress', label: 'Юридический адрес', placeholder: 'г. Москва, ул...', span: 2 }
+      { key: 'kpp', label: 'КПП', placeholder: '770101001' },
+      { key: 'phone', label: 'Телефон', placeholder: '+7...' }
+    ]
+  },
+  bank_accounts: {
+    label: 'Банковские реквизиты',
+    value: 'bank_accounts',
+    sticker: 'bank',
+    codeLabel: 'БИК Банка',
+    codePlaceholder: '044525225',
+    titleLabel: 'Наименование банка',
+    titlePlaceholder: 'ПАО СБЕРБАНК',
+    fields: [
+      { key: 'accountNumber', label: 'Расчётный счёт', placeholder: '40702810...', required: true }
     ]
   },
   nomenclature: {
-    label: '📦 Номенклатура и товары',
+    label: 'Номенклатура',
     value: 'nomenclature',
+    sticker: 'nomenclature',
     codeLabel: 'Артикул / SKU',
-    codePlaceholder: 'ART-0042',
+    codePlaceholder: 'ART-01',
     titleLabel: 'Наименование',
-    titlePlaceholder: 'Кабель витая пара UTP Cat5e',
-    groupByKey: 'category',
+    titlePlaceholder: 'Товар',
     fields: [
-      {
-        key: 'category',
-        label: 'Категория',
-        type: 'select',
-        required: true,
-        span: 1,
-        options: [
-          { label: 'Товары', value: 'Товары' },
-          { label: 'Услуги', value: 'Услуги' },
-          { label: 'Оборудование', value: 'Оборудование' }
-        ]
-      },
-      { key: 'unit', label: 'Ед. измерения', placeholder: 'шт, м, ч, кг', required: true, span: 1 },
-      {
-        key: 'vatRate',
-        label: 'Ставка НДС',
-        type: 'select',
-        required: true,
-        span: 1,
-        options: [
-          { label: 'Без НДС', value: '0' },
-          { label: '20%', value: '20' }
-        ]
-      },
-      { key: 'basePrice', label: 'Базовая цена', type: 'number', placeholder: '0.00', span: 1 }
+      { key: 'unit', label: 'Ед. изм.', placeholder: 'шт', required: true }
     ]
   },
   glossary: {
-    label: '📖 Глоссарий и термины',
+    label: 'Глоссарий',
     value: 'glossary',
+    sticker: 'glossary',
     codeLabel: 'Аббревиатура',
     codePlaceholder: 'SLA',
     titleLabel: 'Термин',
     titlePlaceholder: 'Service Level Agreement',
-    fields: [
-      { key: 'category', label: 'Тематика термина', placeholder: 'IT, Финансы...', span: 2 }
-    ]
+    fields: []
   }
 }
 
+const currentType = ref('departments')
+const customDirectories = ref<DirectoryMeta[]>([])
+
+const allConfigs = computed(() => {
+  const map: Record<string, DirectoryMeta> = { ...STATIC_CONFIG }
+  for (const c of customDirectories.value) {
+    map[c.value] = c
+  }
+  return map
+})
+
 const directoryTypes = computed(() =>
-    Object.values(DIRECTORY_CONFIG).map(cfg => ({ label: cfg.label, value: cfg.value }))
+    Object.values(allConfigs.value).map((cfg) => ({ label: cfg.label, value: cfg.value }))
 )
 
-const currentType = ref('departments')
-const currentMeta = computed(() => DIRECTORY_CONFIG[currentType.value] || DIRECTORY_CONFIG.departments)
+const currentMeta = computed(() => allConfigs.value[currentType.value] || STATIC_CONFIG.departments)
 
 const items = ref<DirectoryItem[]>([])
 const loading = ref(false)
@@ -212,7 +154,7 @@ const itemForm = ref({
   code: '',
   title: '',
   description: '',
-  attributes: {} as Record<string, string | number | boolean | null>
+  attributes: {} as Record<string, any>
 })
 
 const deleteModalOpen = ref(false)
@@ -231,6 +173,110 @@ function getEntId(): string {
   return ''
 }
 
+/* Создание нового справочника */
+const createDirModalOpen = ref(false)
+const newDirForm = ref({
+  title: '',
+  slug: '',
+  aliases: '',
+  codeLabel: 'Код / Номер',
+  titleLabel: 'Наименование',
+  fields: [] as FieldSchema[]
+})
+
+function addCustomField() {
+  newDirForm.value.fields.push({
+    key: `field_${Date.now()}`,
+    label: '',
+    type: 'text',
+    span: 1
+  })
+}
+
+function removeCustomField(idx: number) {
+  newDirForm.value.fields.splice(idx, 1)
+}
+
+function openCreateDirectoryModal() {
+  newDirForm.value = {
+    title: '',
+    slug: '',
+    aliases: '',
+    codeLabel: 'Код / Номер',
+    titleLabel: 'ФИО / Наименование',
+    fields: [
+      { key: 'birthDate', label: 'Дата рождения', type: 'date', span: 1 },
+      { key: 'profession', label: 'Должность / Роль', type: 'text', span: 1 }
+    ]
+  }
+  createDirModalOpen.value = true
+}
+
+async function saveNewDirectory() {
+  if (!newDirForm.value.title.trim()) {
+    addNotification('warning', 'Укажите название справочника')
+    return
+  }
+
+  // Генерация slug латиницей, если не указан
+  const generatedSlug =
+      newDirForm.value.slug.trim() ||
+      newDirForm.value.title
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9_]/g, '_')
+          .replace(/_+/g, '_') ||
+      `dir_${Date.now()}`
+
+  // Очистка и нормализация алиасов/синонимов
+  const parsedAliases = newDirForm.value.aliases
+      .split(',')
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean)
+
+  // Добавляем само название справочника в синонимы для 100% срабатывания {@ДеньРождения}
+  parsedAliases.push(newDirForm.value.title.trim().toLowerCase())
+  parsedAliases.push(generatedSlug.toLowerCase())
+
+  const enterpriseId = getEntId()
+  try {
+    await $fetch('/api/directory/definitions', {
+      method: 'POST',
+      body: {
+        enterpriseId,
+        slug: generatedSlug,
+        title: newDirForm.value.title,
+        aliases: Array.from(new Set(parsedAliases)),
+        codeLabel: newDirForm.value.codeLabel,
+        titleLabel: newDirForm.value.titleLabel,
+        fields: newDirForm.value.fields
+      }
+    })
+
+    addNotification('success', `Справочник «${newDirForm.value.title}» создан!`)
+    createDirModalOpen.value = false
+    await loadDefinitions()
+    currentType.value = generatedSlug
+  } catch {
+    addNotification('error', 'Не удалось сохранить справочник')
+  }
+}
+
+async function loadDefinitions() {
+  const list = await interpolator.fetchDefinitions()
+  customDirectories.value = list.map((d) => ({
+    label: d.title,
+    value: d.slug,
+    sticker: 'folder',
+    codeLabel: d.codeLabel || 'Код / Номер',
+    codePlaceholder: '001',
+    titleLabel: d.titleLabel || 'Наименование',
+    titlePlaceholder: 'Введите значение...',
+    groupByKey: d.groupByKey,
+    fields: (d.fields || []) as FieldSchema[]
+  }))
+}
+
 async function loadItems() {
   const enterpriseId = getEntId()
   if (!enterpriseId) return
@@ -247,7 +293,7 @@ async function loadItems() {
     items.value = Array.isArray(data) ? data : []
 
     if (selectedItem.value) {
-      selectedItem.value = items.value.find(i => i._id === selectedItem.value?._id) || items.value[0] || null
+      selectedItem.value = items.value.find((i) => i._id === selectedItem.value?._id) || items.value[0] || null
     } else if (items.value.length > 0) {
       selectedItem.value = items.value[0]
     }
@@ -265,11 +311,9 @@ const groupedSections = computed(() => {
   }
 
   const map = new Map<string, DirectoryItem[]>()
-
   for (const item of items.value) {
     const rawVal = item.attributes?.[groupKey]
-    const sectionName = rawVal ? String(rawVal) : 'Общее / Вне отделов'
-
+    const sectionName = rawVal ? String(rawVal) : 'Общее'
     const list = map.get(sectionName) || []
     list.push(item)
     map.set(sectionName, list)
@@ -281,14 +325,12 @@ const groupedSections = computed(() => {
       result.push({ title, items: list })
     }
   }
-
   return result
 })
 
 const availableSectionTabs = computed(() => {
   const groupKey = currentMeta.value.groupByKey
   if (!groupKey) return []
-
   const set = new Set<string>()
   for (const item of items.value) {
     const rawVal = item.attributes?.[groupKey]
@@ -300,7 +342,13 @@ const availableSectionTabs = computed(() => {
 function initAttributesDefaults(): Record<string, any> {
   const attrs: Record<string, any> = {}
   for (const field of currentMeta.value.fields) {
-    attrs[field.key] = field.type === 'select' && field.options?.length ? field.options[0].value : ''
+    if (field.type === 'select' && field.options?.length) {
+      attrs[field.key] = field.options[0].value
+    } else if (field.type === 'boolean') {
+      attrs[field.key] = false
+    } else {
+      attrs[field.key] = ''
+    }
   }
   return attrs
 }
@@ -370,9 +418,10 @@ async function saveItem() {
           ...itemForm.value
         }
       })
-      addNotification('success', 'Сотрудник добавлен')
+      addNotification('success', 'Запись сохранена')
     }
     itemModalOpen.value = false
+    interpolator.invalidateCache(currentType.value)
     await loadItems()
   } catch {
     addNotification('error', 'Ошибка сохранения записи')
@@ -385,10 +434,10 @@ async function syncEnterpriseData() {
 
   syncing.value = true
   try {
-    const res = await $fetch<{ success: boolean; importedCount: number }>(
-        '/api/directory/enterprise-sync',
-        { method: 'POST', body: { enterpriseId } }
-    )
+    const res = await $fetch<{ success: boolean; importedCount: number }>('/api/directory/enterprise-sync', {
+      method: 'POST',
+      body: { enterpriseId }
+    })
     addNotification('success', `Синхронизировано: ${res.importedCount}`)
     await loadItems()
   } catch {
@@ -412,6 +461,7 @@ async function confirmDelete() {
     if (selectedItem.value?._id === itemToDelete.value._id) {
       selectedItem.value = null
     }
+    interpolator.invalidateCache(currentType.value)
     itemToDelete.value = null
     await loadItems()
   } catch {
@@ -434,8 +484,9 @@ watch(currentType, () => {
   loadItems()
 })
 
-onMounted(() => {
-  loadItems()
+onMounted(async () => {
+  await loadDefinitions()
+  await loadItems()
 })
 </script>
 
@@ -443,6 +494,7 @@ onMounted(() => {
   <div class="directory-app">
     <header class="directory-header">
       <div class="header-left">
+        <MoloSticker :name="currentMeta.sticker" :size="16" glow />
         <span class="header-title">Справочник:</span>
         <div class="type-select-wrap">
           <UIMoloSelect
@@ -453,6 +505,9 @@ onMounted(() => {
               valueKey="value"
           />
         </div>
+        <UIMoloButton class="small confirm" title="Создать новый справочник" @click="openCreateDirectoryModal">
+          Справочник
+        </UIMoloButton>
       </div>
 
       <div class="header-right">
@@ -465,10 +520,11 @@ onMounted(() => {
         </div>
         <section class="btn-group">
           <UIMoloButton
+              v-if="currentType === 'departments' || currentType === 'bank_accounts'"
               class="small"
               :disabled="syncing"
-              @click="syncEnterpriseData"
               :loading="syncing"
+              @click="syncEnterpriseData"
           >
             {{ syncing ? 'Синхронизация...' : 'Синхронизировать' }}
           </UIMoloButton>
@@ -479,14 +535,14 @@ onMounted(() => {
       </div>
     </header>
 
-    <!-- Полоса фильтрации по отделам -->
+    <!-- Полоса фильтрации -->
     <div v-if="availableSectionTabs.length > 1" class="sections-filter-bar">
       <button
           class="section-tab-btn"
           :class="{ active: selectedSectionFilter === 'all' }"
           @click="selectedSectionFilter = 'all'"
       >
-        Все отделы ({{ items.length }})
+        Все категории ({{ items.length }})
       </button>
       <button
           v-for="tab in availableSectionTabs"
@@ -500,14 +556,14 @@ onMounted(() => {
     </div>
 
     <main class="directory-body">
-      <!-- Список секций -->
       <section class="items-list-pane">
         <UIMoloLoaders v-if="loading" wndLoader />
 
         <div v-else-if="items.length === 0" class="empty-placeholder">
-          <span>Сотрудники еще не добавлены в отделы</span>
+          <MoloSticker :name="currentMeta.sticker || 'folder'" :size="36" glow />
+          <span>В справочнике «{{ currentMeta.label }}» еще нет записей</span>
           <UIMoloButton class="small confirm" @click="openCreateModal()">
-            Добавить первого сотрудника
+            Добавить первую запись
           </UIMoloButton>
         </div>
 
@@ -517,22 +573,20 @@ onMounted(() => {
               :key="section.title"
               class="directory-section-block"
           >
-            <!-- Шапка отдела -->
             <div class="section-header-row">
               <div class="section-title-wrap">
                 <span class="section-title">{{ section.title }}</span>
-                <span class="section-badge">{{ section.items.length }} чел.</span>
+                <span class="section-badge">{{ section.items.length }}</span>
               </div>
               <button
                   class="section-quick-add"
-                  title="Добавить сотрудника в этот отдел"
+                  title="Добавить в эту группу"
                   @click="openCreateModal(section.title)"
               >
-                + добавить сотрудника
+                + добавить запись
               </button>
             </div>
 
-            <!-- Карточки сотрудников отдела -->
             <div class="items-grid">
               <div
                   v-for="item in section.items"
@@ -547,22 +601,30 @@ onMounted(() => {
                     <div class="user-dot">{{ (item.title || 'С')[0].toUpperCase() }}</div>
                     <span class="item-title" :title="item.title">{{ item.title }}</span>
                   </div>
-                  <span v-if="item.attributes?.role" class="item-role-tag">
-                    {{ item.attributes.role }}
-                  </span>
+                  <span v-if="item.code" class="badge-pill">ID: {{ item.code }}</span>
                 </div>
 
-                <!-- Контакты и табельный номер -->
+                <!-- Вывод атрибутов (даты, телефоны, значения) -->
                 <div class="card-badges">
-                  <span v-if="item.code" class="badge-pill">ID: {{ item.code }}</span>
-                  <span v-if="item.attributes?.phone" class="badge-pill">📞 {{ item.attributes.phone }}</span>
+                  <span
+                      v-for="field in currentMeta.fields.slice(0, 3)"
+                      :key="field.key"
+                      class="badge-pill contact-pill"
+                  >
+                    <small>{{ field.label }}:</small>
+                    {{ item.attributes?.[field.key] || '—' }}
+                  </span>
                 </div>
 
                 <p v-if="item.description" class="item-desc">{{ item.description }}</p>
 
-                <div class="btn-group">
-                  <UIMoloButton class="small" title="Редактировать" @click.stop="openEditModal(item)">Изменить</UIMoloButton>
-                  <UIMoloButton class="small close" title="Удалить" @click.stop="requestDelete(item)">Удалить</UIMoloButton>
+                <div class="card-actions">
+                  <UIMoloButton class="small icon-action-btn" title="Редактировать" @click.stop="openEditModal(item)">
+                    <MoloSticker name="edit" :size="12" />
+                  </UIMoloButton>
+                  <UIMoloButton class="small close icon-action-btn" title="Удалить" @click.stop="requestDelete(item)">
+                    <MoloSticker name="trash" :size="12" />
+                  </UIMoloButton>
                 </div>
               </div>
             </div>
@@ -570,11 +632,11 @@ onMounted(() => {
         </div>
       </section>
 
-      <!-- Детализация -->
+      <!-- Детализация справа -->
       <aside class="item-detail-pane">
         <UIMoloSection>
           <template #header>
-            <strong>Карточка сотрудника</strong>
+            <strong>Карточка: {{ currentMeta.label }}</strong>
           </template>
           <template #main>
             <div v-if="selectedItem" class="detail-content">
@@ -596,32 +658,37 @@ onMounted(() => {
                 >
                   <span class="field-label">{{ field.label }}</span>
                   <span class="field-value">
-                    {{ selectedItem.attributes?.[field.key] ?? '—' }}
+                    <template v-if="field.type === 'boolean'">
+                      {{ selectedItem.attributes?.[field.key] ? 'Да' : 'Нет' }}
+                    </template>
+                    <template v-else>
+                      {{ selectedItem.attributes?.[field.key] ?? '—' }}
+                    </template>
                   </span>
                 </div>
               </div>
 
               <div class="field-preview">
-                <span class="field-label">Дополнительно</span>
+                <span class="field-label">Примечание</span>
                 <p class="field-text">{{ selectedItem.description || 'Нет примечаний' }}</p>
               </div>
 
               <div class="action-row">
                 <UIMoloButton class="small confirm full" @click="openEditModal(selectedItem)">
-                  Редактировать данные
+                  Редактировать запись
                 </UIMoloButton>
               </div>
             </div>
 
             <div v-else class="no-selection">
-              <span>Выберите сотрудника слева</span>
+              <span>Выберите запись слева для просмотра</span>
             </div>
           </template>
         </UIMoloSection>
       </aside>
     </main>
 
-    <!-- Модалка -->
+    <!-- Модалка создания/редактирования элемента -->
     <UIMoloModal
         v-model="itemModalOpen"
         :title="isEditing ? `Редактирование: ${currentMeta.label}` : `Добавление: ${currentMeta.label}`"
@@ -651,12 +718,14 @@ onMounted(() => {
               />
             </div>
 
+            <!-- Динамические поля с поддержкой Date, Select, Number, Boolean -->
             <div
                 v-for="field in currentMeta.fields"
                 :key="field.key"
                 class="grid-col"
                 :class="`col-${field.span || 1}`"
             >
+              <!-- Выпадающий список -->
               <UIMoloSelect
                   v-if="field.type === 'select'"
                   v-model="itemForm.attributes[field.key]"
@@ -666,6 +735,29 @@ onMounted(() => {
                   children="label"
                   valueKey="value"
               />
+
+              <!-- Поле даты -->
+              <div v-else-if="field.type === 'date'" class="custom-field-group">
+                <label class="field-sublabel">{{ field.label }}</label>
+                <input
+                    v-model="itemForm.attributes[field.key]"
+                    type="date"
+                    class="native-date-input"
+                />
+              </div>
+
+              <!-- Чекбокс / Логическое -->
+              <div v-else-if="field.type === 'boolean'" class="custom-field-group-check">
+                <label class="checkbox-inline">
+                  <input
+                      v-model="itemForm.attributes[field.key]"
+                      type="checkbox"
+                  />
+                  <span>{{ field.label }}</span>
+                </label>
+              </div>
+
+              <!-- Текст / Число -->
               <UIMoloInput
                   v-else
                   v-model="itemForm.attributes[field.key]"
@@ -682,7 +774,7 @@ onMounted(() => {
                   v-model="itemForm.description"
                   compact
                   tLabel="Примечание / Дополнительно"
-                  placeholder="Заметки по сотруднику..."
+                  placeholder="Заметки по записи..."
               />
             </div>
           </div>
@@ -693,13 +785,74 @@ onMounted(() => {
     <!-- Модалка удаления -->
     <UIMoloModal
         v-model="deleteModalOpen"
-        title="Удаление сотрудника"
-        :modal-text="`Удалить запись «${itemToDelete?.title}» из справочника?`"
+        title="Удаление записи"
+        :modal-text="`Удалить «${itemToDelete?.title}» из справочника?`"
         confirm-text="Удалить"
         cancel-text="Отмена"
         @confirm="confirmDelete"
         @cancel="itemToDelete = null"
     />
+
+    <!-- Конструктор нового справочника -->
+    <UIMoloModal
+        v-model="createDirModalOpen"
+        title="Создать свой справочник"
+        confirm-text="Создать"
+        cancel-text="Отмена"
+        width="720px"
+        @confirm="saveNewDirectory"
+    >
+      <template #body>
+        <div class="custom-dir-form">
+          <div class="form-grid">
+            <div class="grid-col col-2">
+              <UIMoloInput
+                  v-model="newDirForm.title"
+                  compact
+                  lRequired
+                  tLabel="Название справочника"
+                  placeholder="Например: Дни рождения, Оборудование, Склады"
+              />
+            </div>
+            <div class="grid-col col-1">
+              <UIMoloInput
+                  v-model="newDirForm.slug"
+                  compact
+                  tLabel="Код/Slug латиницей"
+                  placeholder="birthdays"
+              />
+            </div>
+            <div class="grid-col col-1">
+              <UIMoloInput
+                  v-model="newDirForm.aliases"
+                  compact
+                  tLabel="Синонимы для {@} через запятую"
+                  placeholder="ДР, ДеньРождения, Рождение"
+              />
+            </div>
+          </div>
+
+          <div class="fields-builder-section">
+            <div class="builder-head">
+              <strong>Атрибуты (колонки) справочника</strong>
+              <button class="add-field-link" @click="addCustomField">+ Добавить колонку</button>
+            </div>
+
+            <div v-for="(field, idx) in newDirForm.fields" :key="field.key" class="builder-row">
+              <UIMoloInput compact v-model="field.label" placeholder="Название (Дата рождения, Должность)" />
+              <UIMoloInput compact v-model="field.key" placeholder="birthDate" />
+              <select v-model="field.type" class="inline-select">
+                <option value="text">Текст</option>
+                <option value="number">Число</option>
+                <option value="date">Дата</option>
+                <option value="boolean">Флаг (Да/Нет)</option>
+              </select>
+              <UIMoloButton class="close small" @click="removeCustomField(idx)">✕</UIMoloButton>
+            </div>
+          </div>
+        </div>
+      </template>
+    </UIMoloModal>
   </div>
 </template>
 
@@ -726,7 +879,8 @@ onMounted(() => {
   flex-shrink: 0;
 }
 
-.header-left, .header-right {
+.header-left,
+.header-right {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -786,6 +940,7 @@ onMounted(() => {
 .btn-group {
   display: flex;
   justify-content: end;
+  gap: 6px;
 }
 
 .directory-body {
@@ -925,16 +1080,6 @@ onMounted(() => {
   text-overflow: ellipsis;
 }
 
-.item-role-tag {
-  font-size: 10px;
-  padding: 2px 6px;
-  border-radius: 4px;
-  background: rgba(56, 114, 239, 0.2);
-  color: #8fb1ff;
-  border: 1px solid rgba(56, 114, 239, 0.3);
-  flex-shrink: 0;
-}
-
 .card-badges {
   display: flex;
   flex-wrap: wrap;
@@ -947,6 +1092,11 @@ onMounted(() => {
   padding: 2px 6px;
   border-radius: 4px;
   color: #9cb3d9;
+}
+
+.badge-pill small {
+  color: #6e84a3;
+  margin-right: 3px;
 }
 
 .item-desc {
@@ -962,8 +1112,15 @@ onMounted(() => {
 .card-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 4px;
+  gap: 6px;
   margin-top: auto;
+}
+
+.icon-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 6px;
 }
 
 .item-detail-pane {
@@ -1055,6 +1212,92 @@ onMounted(() => {
 
 .grid-col.col-2 {
   grid-column: span 2;
+}
+
+.custom-field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.field-sublabel {
+  font-size: 12px;
+  color: #8c8c9e;
+}
+
+.native-date-input {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--half_opacity_border);
+  color: #fff;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  outline: none;
+}
+
+.native-date-input:focus {
+  border-color: #6496ff;
+}
+
+.custom-field-group-check {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  padding-top: 18px;
+}
+
+.checkbox-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #ddd;
+}
+
+.custom-dir-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.fields-builder-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  padding-top: 12px;
+}
+
+.builder-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  color: #a0a0b0;
+}
+
+.add-field-link {
+  background: none;
+  border: none;
+  color: #6496ff;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.builder-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.inline-select {
+  background: #222;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  padding: 6px 10px;
+  border-radius: 4px;
+  color: #fff;
+  font-size: 13px;
 }
 
 .full {

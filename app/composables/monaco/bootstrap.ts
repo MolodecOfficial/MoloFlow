@@ -7,6 +7,7 @@ import { registerCompletionProviders } from './completions'
 import { registerIntelliSense } from './intelliSense'
 import { setupTypeSystem, syncExtraLibs } from './typeSystem'
 import { defineMoloTheme } from './theme'
+import { registerPythonSupport, attachPythonDiagnostics } from './python'
 import './workers'
 
 export type MonacoContext = {
@@ -157,6 +158,11 @@ export function createMonaco(el: HTMLElement, options?: {
     // Регистрируем провайдеры (для .vue — кастомные, для .ts/.js реальный TS-сервис уже работает сам)
     registerCompletionProviders(monaco, fs)
     registerIntelliSense(monaco, vfs)
+    // Python: сниппеты, автодополнение из файлов модуля, hover (провайдеры регистрируются один раз)
+    registerPythonSupport(monaco)
+    // Подчёркивание синтаксических ошибок — на каждый экземпляр редактора
+    const pythonDiagnostics = attachPythonDiagnostics(monaco, editor)
+    editor.onDidDispose(() => pythonDiagnostics.dispose())
 
     // Регистрируем команды и горячие клавиши
     registerApiCommands(editor, monaco, api, fs, vfs)

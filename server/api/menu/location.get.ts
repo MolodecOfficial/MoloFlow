@@ -1,8 +1,8 @@
-// server/api/menu/location.get.ts
 import { defineEventHandler, getQuery, createError } from 'h3'
 import { Types } from 'mongoose'
 import { Menu } from '~~/server/models/menu.model'
 import { checkEnterpriseAccess } from '~~/server/utils/enterpriseAuth'
+import { PERMISSIONS } from '~/types/permissions'
 
 export default defineEventHandler(async (event) => {
     const query = getQuery(event)
@@ -12,8 +12,10 @@ export default defineEventHandler(async (event) => {
         throw createError({ statusCode: 400, statusMessage: 'Некорректный enterpriseId' })
     }
 
-    // Проверяем доступ к предприятию (поддерживает headers, query.userId и токены)
-    await checkEnterpriseAccess(event, enterpriseId, ['Администратор', 'Управляющий', 'Программист', 'Сотрудник'])
+    // Получать дерево мест для привязки модулей разрешено тем, кто имеет право MODULES_DEV
+    await checkEnterpriseAccess(event, enterpriseId, {
+        requiredPermission: PERMISSIONS.MODULES_DEV
+    })
 
     const groups = await Menu.find({ isActive: { $ne: false } })
         .select('_id id title placeName type order items')

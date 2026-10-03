@@ -1,6 +1,6 @@
 <!-- components/apps/molo/MoloDocument.vue -->
 <script lang="ts" setup>
-import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { EditorContent, useEditor } from '@tiptap/vue-3'
 import { Extension } from '@tiptap/core'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
@@ -30,6 +30,8 @@ import {
 import { saveAs } from 'file-saver'
 import mammoth from 'mammoth'
 import wordIcon from '~~/app/assets/icons/word.svg'
+import { useDirectoryInterpolator, type DirectoryLookupItem } from '~/composables/useDirectoryInterpolator'
+import DirectorySuggestDropdown from '~/components/directory/DirectorySuggestDropdown.vue'
 
 const props = defineProps<{
   modelValue?: string
@@ -41,15 +43,31 @@ const emit = defineEmits<{
   (e: 'resolve-variable', payload: { rawExpression: string; apply: (replacement: string) => void }): void
 }>()
 
+const interpolator = useDirectoryInterpolator()
+
+// Геометрия листа А4 (210x297мм при 96dpi = 794x1123px)
 const PAGE_W = 794
 const PAGE_H = 1123
-const MARGIN_V = 96
+const MARGIN_V = 72
 const PAGE_GAP = 24
 const CONTENT_H = PAGE_H - MARGIN_V * 2
 
 const pageCount = ref(1)
 const wordCount = ref(0)
 const charCount = ref(0)
+
+/* ── Состояние плавающего окна саджеста ── */
+const suggestDropdownRef = ref<InstanceType<typeof DirectorySuggestDropdown> | null>(null)
+const suggestVisible = ref(false)
+const suggestCoords = reactive({ x: 0, y: 0 })
+const suggestQuery = ref('')
+const allDirectoryItems = ref<DirectoryLookupItem[]>([])
+let mentionActiveRange: { from: number; to: number } | null = null
+
+onMounted(async () => {
+  await interpolator.fetchDefinitions()
+  allDirectoryItems.value = await interpolator.fetchAllDirectories()
+})
 
 /* ───────────────────────── Плагин перехвата {@...} в тексте ───────────────────────── */
 const directoryMentionKey = new PluginKey('directoryMention')
@@ -61,14 +79,21 @@ const DirectoryMention = Extension.create({
       new Plugin({
         key: directoryMentionKey,
         props: {
+          handleKeyDown(view, event) {
+            if (!suggestVisible.value) return false
+            if (['ArrowDown', 'ArrowUp', 'Enter', 'Tab', 'Escape'].includes(event.key)) {
+              suggestDropdownRef.value?.handleKeyDown(event)
+              return true
+            }
+            return false
+          },
           handleTextInput(view, from, to, text) {
-            // Реагируем на закрывающую фигурную скобку '}'
             if (text === '}') {
+              suggestVisible.value = false
               const { state } = view
               const $from = state.doc.resolve(from)
               const textBefore = $from.parent.textBetween(0, $from.parentOffset, undefined, '\ufffc') + text
 
-              // Ищем последнее совпадение паттерна {@Раздел.Фильтр}
               const match = textBefore.match(/\{@[^}]+}$/)
               if (match) {
                 const rawExpr = match[0]
@@ -90,70 +115,104 @@ const DirectoryMention = Extension.create({
             }
             return false
           }
+        },
+        view() {
+          return {
+            update(view) {
+              const { state } = view
+              const { selection } = state
+              if (!selection.empty) {
+                suggestVisible.value = false
+                return
+              }
+
+              const $pos = selection.$from
+              const textBefore = $pos.parent.textBetween(0, $pos.parentOffset, undefined, '\ufffc')
+
+              const match = textBefore.match(/\{@([^}]*)$/)
+              if (match) {
+                mentionActiveRange = {
+                  from: $pos.start() + match.index!,
+                  to: $pos.pos
+                }
+                suggestQuery.value = match[1] || ''
+
+                const coords = view.coordsAtPos($pos.pos)
+                suggestCoords.x = coords.left
+                suggestCoords.y = coords.bottom
+                suggestVisible.value = true
+              } else {
+                suggestVisible.value = false
+                mentionActiveRange = null
+              }
+            }
+          }
         }
       })
     ]
   }
 })
 
+function handleSuggestSelect(item: DirectoryLookupItem, fieldValue?: string) {
+  if (!editor.value || !mentionActiveRange) return
+
+  const { from, to } = mentionActiveRange
+  const view = editor.value.view
+
+  const textToInsert = fieldValue || item.title
+
+  const tr = view.state.tr.replaceWith(
+      from,
+      to,
+      view.state.schema.text(textToInsert)
+  )
+  view.dispatch(tr)
+
+  suggestVisible.value = false
+  mentionActiveRange = null
+  view.focus()
+}
+
 const FontSize = Extension.create({
   name: 'fontSize',
-  addOptions() {
-    return { types: ['textStyle'] }
-  },
+  addOptions() { return { types: ['textStyle'] } },
   addGlobalAttributes() {
-    return [
-      {
-        types: this.options.types,
-        attributes: {
-          fontSize: {
-            default: null,
-            parseHTML: (element: HTMLElement) => element.style.fontSize || null,
-            renderHTML: (attributes: Record<string, any>) => {
-              if (!attributes.fontSize) return {}
-              return { style: `font-size: ${attributes.fontSize}` }
-            },
-          },
+    return [{
+      types: this.options.types,
+      attributes: {
+        fontSize: {
+          default: null,
+          parseHTML: (el: HTMLElement) => el.style.fontSize || null,
+          renderHTML: (attrs: Record<string, any>) => attrs.fontSize ? { style: `font-size: ${attrs.fontSize}` } : {},
         },
       },
-    ]
+    }]
   },
   addCommands() {
     return {
-      setFontSize: (size: string) => ({ chain }: any) => {
-        return chain().setMark('textStyle', { fontSize: size }).run()
-      },
-      unsetFontSize: () => ({ chain }: any) => {
-        return chain().setMark('textStyle', { fontSize: null }).removeEmptyTextStyle().run()
-      },
+      setFontSize: (size: string) => ({ chain }: any) => chain().setMark('textStyle', { fontSize: size }).run(),
+      unsetFontSize: () => ({ chain }: any) => chain().setMark('textStyle', { fontSize: null }).removeEmptyTextStyle().run(),
     } as any
   },
 })
 
 const Indent = Extension.create({
   name: 'indent',
-  addOptions() {
-    return { types: ['paragraph', 'heading'], min: 0, max: 8, stepPx: 24 }
-  },
+  addOptions() { return { types: ['paragraph', 'heading'], min: 0, max: 8, stepPx: 24 } },
   addGlobalAttributes() {
-    return [
-      {
-        types: this.options.types,
-        attributes: {
-          indent: {
-            default: 0,
-            parseHTML: (element: HTMLElement) => {
-              const px = parseInt(element.style.marginLeft || '0', 10)
-              return px ? Math.round(px / this.options.stepPx) : 0
-            },
-            renderHTML: (attributes: Record<string, any>) => {
-              if (!attributes.indent) return {}
-              return { style: `margin-left: ${attributes.indent * this.options.stepPx}px` }
-            },
+    return [{
+      types: this.options.types,
+      attributes: {
+        indent: {
+          default: 0,
+          parseHTML: (el: HTMLElement) => {
+            const px = parseInt(el.style.marginLeft || '0', 10)
+            return px ? Math.round(px / this.options.stepPx) : 0
           },
+          renderHTML: (attrs: Record<string, any>) => attrs.indent ? { style: `margin-left: ${attrs.indent * this.options.stepPx}px` } : {},
         },
       },
-    ]
+    }]
   },
   addCommands() {
     const applyDelta = (delta: number) => ({ tr, state, dispatch }: any) => {
@@ -179,6 +238,7 @@ const Indent = Extension.create({
   },
 })
 
+/* ───────────────────────── Прецизионный плагин пагинации ───────────────────────── */
 const pagerKey = new PluginKey<{ deco: DecorationSet; sig: string }>('moloPager')
 
 const Pagination = Extension.create<{ onPages: (n: number) => void }>({
@@ -189,12 +249,13 @@ const Pagination = Extension.create<{ onPages: (n: number) => void }>({
   addProseMirrorPlugins() {
     const onPages = this.options.onPages
 
-    const breakEl = (height: number, bandTop: number, hide: number) => () => {
+    const breakEl = (height: number, bandTop: number) => () => {
       const el = document.createElement('div')
       el.className = 'molo-pb'
       el.setAttribute('contenteditable', 'false')
       el.style.height = `${height}px`
-      el.style.marginBottom = `${-hide}px`
+      el.style.pointerEvents = 'none'
+
       const band = document.createElement('div')
       band.className = 'molo-pb-band'
       band.style.top = `${bandTop}px`
@@ -202,11 +263,13 @@ const Pagination = Extension.create<{ onPages: (n: number) => void }>({
       el.appendChild(band)
       return el
     }
+
     const fillerEl = (height: number) => () => {
       const el = document.createElement('div')
       el.className = 'molo-pb-end'
       el.setAttribute('contenteditable', 'false')
       el.style.height = `${height}px`
+      el.style.pointerEvents = 'none'
       return el
     }
 
@@ -233,89 +296,105 @@ const Pagination = Extension.create<{ onPages: (n: number) => void }>({
             if (view.isDestroyed || !dom.isConnected || dom.offsetParent === null) return
 
             const { doc } = view.state
-            const domTop = dom.getBoundingClientRect().top
 
-            const blocks: { offset: number; el: HTMLElement; heading: boolean }[] = []
+            interface UnitInfo {
+              offset: number
+              el: HTMLElement
+              isHeading: boolean
+            }
+
+            const units: UnitInfo[] = []
             doc.forEach((node, offset) => {
               const el = view.nodeDOM(offset) as HTMLElement | null
-              if (el && el.nodeType === 1) blocks.push({ offset, el, heading: node.type.name === 'heading' })
+              if (el && el.nodeType === 1) {
+                units.push({
+                  offset,
+                  el,
+                  isHeading: node.type.name === 'heading'
+                })
+              }
             })
 
-            const shiftBefore = new Map<Element, number>()
-            let shift = 0
-            for (const child of Array.from(dom.children) as HTMLElement[]) {
-              if (child.classList.contains('molo-pb')) {
-                shift += child.getBoundingClientRect().height + (parseFloat(getComputedStyle(child).marginBottom) || 0)
-              } else {
-                shiftBefore.set(child, shift)
-              }
+            if (!units.length) {
+              onPages(1)
+              return
             }
 
-            let pageStart = 0
+            let currentBudget = CONTENT_H
             let pages = 1
-            let first = true
-            let endNat = 0
-            const breaks: { offset: number; height: number; bandTop: number; hide: number }[] = []
+            const breaks: { offset: number; height: number; bandTop: number }[] = []
+            let prevMarginBottom = 0
 
-            for (const b of blocks) {
-              const rect = b.el.getBoundingClientRect()
-              const cs = getComputedStyle(b.el)
-              const top = rect.top - domTop - (shiftBefore.get(b.el) ?? 0)
-              const bottom = top + rect.height
+            for (let i = 0; i < units.length; i++) {
+              const unit = units[i]
+              const cs = window.getComputedStyle(unit.el)
               const mt = parseFloat(cs.marginTop) || 0
+              const mb = parseFloat(cs.marginBottom) || 0
 
-              const need = bottom + (b.heading ? 48 : 0)
-              if (!first && need > pageStart + CONTENT_H + 1) {
-                const room = pageStart + CONTENT_H - (top - mt)
+              const effectiveMarginTop = i === 0 ? mt : Math.max(mt, prevMarginBottom)
+              const selfHeight = unit.el.getBoundingClientRect().height
+              const blockTotalHeight = Math.round(selfHeight + effectiveMarginTop)
+              prevMarginBottom = mb
+
+              let requiredSpace = blockTotalHeight
+              if (unit.isHeading && i < units.length - 1) {
+                requiredSpace += 40
+              }
+
+              if (i > 0 && requiredSpace > currentBudget) {
+                const remainingSpace = Math.max(0, Math.round(currentBudget))
+                const breakHeight = remainingSpace + MARGIN_V + PAGE_GAP + MARGIN_V
+
                 breaks.push({
-                  offset: b.offset,
-                  height: Math.round(room + MARGIN_V + PAGE_GAP + MARGIN_V),
-                  bandTop: Math.round(MARGIN_V + room),
-                  hide: Math.round(mt),
+                  offset: unit.offset,
+                  height: breakHeight,
+                  bandTop: MARGIN_V + remainingSpace
                 })
-                pageStart = top
+
                 pages++
+                currentBudget = CONTENT_H - Math.round(selfHeight)
+                prevMarginBottom = mb
+              } else {
+                currentBudget -= blockTotalHeight
               }
-              if (bottom > pageStart + CONTENT_H + 1) {
-                const extra = Math.floor((bottom - pageStart) / CONTENT_H)
-                if (extra > 0) {
-                  pageStart += extra * CONTENT_H
-                  pages += extra
-                }
-              }
-              first = false
-              endNat = bottom + (parseFloat(cs.marginBottom) || 0)
             }
 
-            const filler = blocks.length ? Math.max(0, Math.round(pageStart + CONTENT_H - endNat)) : 0
-            const sig = `${breaks.map(b => `${b.offset}:${b.height}:${b.bandTop}:${b.hide}`).join('|')}#${filler}#${pages}`
+            const filler = Math.max(0, Math.round(currentBudget))
+            const sig = `${breaks.map(b => `${b.offset}:${b.height}`).join('|')}#${filler}#${pages}`
+
             if (pagerKey.getState(view.state)?.sig === sig) return
 
-            const decos = breaks.map(b =>
-                Decoration.widget(b.offset, breakEl(b.height, b.bandTop, b.hide), {
+            const decos = breaks.map((b, idx) =>
+                Decoration.widget(b.offset, breakEl(b.height, b.bandTop), {
                   side: -1,
-                  key: `pb${b.height}_${b.bandTop}_${b.hide}`,
+                  key: `pb_${idx}_${b.height}`,
                   ignoreSelection: true,
                 })
             )
+
             if (filler > 0) {
-              decos.push(Decoration.widget(doc.content.size, fillerEl(filler), {
-                side: 1,
-                key: `pf${filler}`,
-                ignoreSelection: true,
-              }))
+              decos.push(
+                  Decoration.widget(doc.content.size, fillerEl(filler), {
+                    side: 1,
+                    key: `pf_${filler}`,
+                    ignoreSelection: true,
+                  })
+              )
             }
+
             view.dispatch(
                 view.state.tr
                     .setMeta(pagerKey, { deco: DecorationSet.create(doc, decos), sig })
                     .setMeta('addToHistory', false)
             )
+
             onPages(pages)
           }
 
           const schedule = () => {
             if (!raf) raf = requestAnimationFrame(run)
           }
+
           const ro = new ResizeObserver(schedule)
           ro.observe(view.dom)
           schedule()
@@ -336,34 +415,26 @@ const Pagination = Extension.create<{ onPages: (n: number) => void }>({
 const PX_PER_CM = PAGE_W / 21
 const CM_COUNT = 21
 
-const margins = reactive({ left: 96, right: 96 })
+const margins = reactive({ left: 70, right: 70 })
 const rulerTicks = Array.from({ length: CM_COUNT + 1 }, (_, i) => i)
 
 let dragging: 'left' | 'right' | null = null
 let rulerEl: HTMLElement | null = null
 
-function setRulerEl(el: Element | null) {
-  rulerEl = el as HTMLElement | null
-}
-
+function setRulerEl(el: Element | null) { rulerEl = el as HTMLElement | null }
 function startDrag(side: 'left' | 'right', ev: MouseEvent) {
   dragging = side
   window.addEventListener('mousemove', onDrag)
   window.addEventListener('mouseup', stopDrag)
   ev.preventDefault()
 }
-
 function onDrag(ev: MouseEvent) {
   if (!dragging || !rulerEl) return
   const rect = rulerEl.getBoundingClientRect()
   const x = ev.clientX - rect.left
-  if (dragging === 'left') {
-    margins.left = Math.round(Math.min(300, Math.max(24, x)))
-  } else {
-    margins.right = Math.round(Math.min(300, Math.max(24, PAGE_W - x)))
-  }
+  if (dragging === 'left') margins.left = Math.round(Math.min(250, Math.max(24, x)))
+  else margins.right = Math.round(Math.min(250, Math.max(24, PAGE_W - x)))
 }
-
 function stopDrag() {
   dragging = null
   window.removeEventListener('mousemove', onDrag)
@@ -380,22 +451,30 @@ const pageStyle = computed(() => ({
 }))
 
 /* ───────────────────────── Экспорт в DOCX ───────────────────────── */
+interface InlineStyleState {
+  bold?: boolean
+  italics?: boolean
+  underline?: boolean
+  strike?: boolean
+  color?: string
+}
 
-function parseInlineRuns(element: Node): TextRun[] {
+function parseInlineRuns(element: Node, defaultOverrides?: { size?: number; color?: string; bold?: boolean }): TextRun[] {
   const runs: TextRun[] = []
 
-  function walk(node: Node, state: { bold?: boolean; italics?: boolean; underline?: boolean; strike?: boolean }) {
+  function walk(node: Node, state: InlineStyleState) {
     if (node.nodeType === Node.TEXT_NODE) {
       const text = node.textContent || ''
       if (text) {
         runs.push(new TextRun({
           text,
-          bold: state.bold,
+          bold: defaultOverrides?.bold ?? state.bold,
           italics: state.italics,
           underline: state.underline ? {} : undefined,
           strike: state.strike,
           font: 'Arial',
-          size: 21,
+          size: defaultOverrides?.size ?? 21,
+          color: defaultOverrides?.color ?? state.color ?? '111111'
         }))
       }
       return
@@ -405,7 +484,7 @@ function parseInlineRuns(element: Node): TextRun[] {
       const el = node as HTMLElement
       const tag = el.tagName.toLowerCase()
 
-      const nextState = { ...state }
+      const nextState: InlineStyleState = { ...state }
       if (tag === 'b' || tag === 'strong' || el.style.fontWeight === 'bold' || parseInt(el.style.fontWeight, 10) >= 600) {
         nextState.bold = true
       }
@@ -418,13 +497,17 @@ function parseInlineRuns(element: Node): TextRun[] {
       if (tag === 's' || tag === 'strike' || el.style.textDecoration?.includes('line-through')) {
         nextState.strike = true
       }
+      if (el.style.color) {
+        const hex = el.style.color.replace('#', '')
+        if (hex.length === 6) nextState.color = hex
+      }
 
       el.childNodes.forEach(child => walk(child, nextState))
     }
   }
 
   walk(element, {})
-  return runs.length ? runs : [new TextRun('')]
+  return runs.length ? runs : [new TextRun({ text: '', size: defaultOverrides?.size ?? 21 })]
 }
 
 function htmlToDocxElements(bodyEl: HTMLElement): (Paragraph | Table)[] {
@@ -434,30 +517,63 @@ function htmlToDocxElements(bodyEl: HTMLElement): (Paragraph | Table)[] {
     const el = child as HTMLElement
     const tag = el.tagName.toLowerCase()
 
-    if (tag === 'p' || tag.startsWith('h') || tag === 'blockquote') {
-      let headingLevel: any = undefined
-      if (tag === 'h1') headingLevel = 'Heading1'
-      if (tag === 'h2') headingLevel = 'Heading2'
-      if (tag === 'h3') headingLevel = 'Heading3'
+    let alignment = AlignmentType.LEFT
+    const align = el.style.textAlign
+    if (align === 'center') alignment = AlignmentType.CENTER
+    if (align === 'right') alignment = AlignmentType.RIGHT
+    if (align === 'justify') alignment = AlignmentType.JUSTIFIED
 
-      let alignment = AlignmentType.LEFT
-      const align = el.style.textAlign
-      if (align === 'center') alignment = AlignmentType.CENTER
-      if (align === 'right') alignment = AlignmentType.RIGHT
-      if (align === 'justify') alignment = AlignmentType.JUSTIFIED
-
+    if (tag === 'h1') {
+      elements.push(new Paragraph({
+        children: parseInlineRuns(el, { size: 44, bold: true, color: '000000' }),
+        alignment,
+        spacing: { before: 240, after: 100 }
+      }))
+    } else if (tag === 'h2') {
+      elements.push(new Paragraph({
+        children: parseInlineRuns(el, { size: 32, bold: true, color: '000000' }),
+        alignment,
+        spacing: { before: 200, after: 60 }
+      }))
+    } else if (tag === 'h3') {
+      elements.push(new Paragraph({
+        children: parseInlineRuns(el, { size: 26, bold: true, color: '000000' }),
+        alignment,
+        spacing: { before: 160, after: 50 }
+      }))
+    } else if (tag === 'blockquote') {
+      elements.push(new Paragraph({
+        children: parseInlineRuns(el, { size: 21, color: '555555' }),
+        alignment,
+        indent: { left: 400 },
+        borders: {
+          left: { style: BorderStyle.SINGLE, size: 24, color: '2B7DE9', space: 12 }
+        },
+        spacing: { before: 120, after: 120 }
+      }))
+    } else if (tag === 'p') {
       elements.push(new Paragraph({
         children: parseInlineRuns(el),
-        heading: headingLevel,
         alignment,
-        spacing: { after: 120 }
+        spacing: { after: 70 }
       }))
-    } else if (tag === 'ul' || tag === 'ol') {
+    } else if (tag === 'ul') {
       Array.from(el.children).forEach(li => {
         elements.push(new Paragraph({
           children: parseInlineRuns(li),
-          bullet: tag === 'ul' ? { level: 0 } : undefined,
-          spacing: { after: 60 }
+          bullet: { level: 0 },
+          spacing: { after: 35 }
+        }))
+      })
+    } else if (tag === 'ol') {
+      Array.from(el.children).forEach((li, idx) => {
+        elements.push(new Paragraph({
+          children: [
+            new TextRun({ text: `${idx + 1}. `, bold: true, font: 'Arial', size: 21, color: '111111' }),
+            ...parseInlineRuns(li)
+          ],
+          indent: { left: 360 },
+          spacing: { after: 35 }
         }))
       })
     } else if (tag === 'table') {
@@ -472,17 +588,14 @@ function htmlToDocxElements(bodyEl: HTMLElement): (Paragraph | Table)[] {
           const rowSpan = parseInt(cell.getAttribute('rowspan') || '1', 10)
 
           let widthPct = 25
-          if (colSpan >= 3) {
-            widthPct = 100
-          } else if (cellIdx === 1) {
-            widthPct = 50
-          }
+          if (colSpan >= 3) widthPct = 100
+          else if (cellIdx === 1) widthPct = 50
 
           cells.push(new TableCell({
             children: [
               new Paragraph({
                 children: parseInlineRuns(cell),
-                spacing: { after: 40, before: 40 }
+                spacing: { after: 30, before: 30 }
               })
             ],
             columnSpan: colSpan > 1 ? colSpan : undefined,
@@ -495,7 +608,7 @@ function htmlToDocxElements(bodyEl: HTMLElement): (Paragraph | Table)[] {
               left: { style: BorderStyle.SINGLE, size: 1, color: '777777' },
               right: { style: BorderStyle.SINGLE, size: 1, color: '777777' },
             },
-            margins: { top: 120, bottom: 120, left: 160, right: 160 },
+            margins: { top: 100, bottom: 100, left: 140, right: 140 },
           }))
         })
 
@@ -509,7 +622,7 @@ function htmlToDocxElements(bodyEl: HTMLElement): (Paragraph | Table)[] {
           width: { size: 100, type: WidthType.PERCENTAGE },
           rows,
         }))
-        elements.push(new Paragraph({ spacing: { after: 120 } }))
+        elements.push(new Paragraph({ spacing: { after: 80 } }))
       }
     }
   })
@@ -530,7 +643,7 @@ async function exportToDocx() {
       sections: [{
         properties: {
           page: {
-            margin: { top: 1440, bottom: 1440, left: 1440, right: 1440 },
+            margin: { top: 1020, bottom: 1020, left: 1020, right: 1020 },
           },
         },
         children: docChildren,
@@ -616,7 +729,7 @@ const editor = useEditor({
     FontSize,
     Indent,
     Pagination.configure({ onPages: (n: number) => { pageCount.value = n } }),
-    DirectoryMention, // <-- Подключаем плагин перехвата выражений справочников
+    DirectoryMention,
   ],
   onUpdate: () => {
     updateStats()
@@ -638,37 +751,25 @@ watch(() => props.modelValue, (val) => {
   lastEmitted = val ?? ''
 })
 
-function chain() {
-  return (editor.value as any)?.chain().focus()
-}
-
+function chain() { return (editor.value as any)?.chain().focus() }
 function exec(cmd: string, arg?: any) {
   const c = chain()
   if (!c) return
   if (arg !== undefined) c[cmd]?.(arg).run()
   else c[cmd]?.().run()
 }
-
 function isActive(name: string, attrs?: Record<string, any>) {
   return editor.value?.isActive(name, attrs) ?? false
 }
 
 const currentFontFamily = computed({
   get: () => editor.value?.getAttributes('textStyle').fontFamily || '',
-  set: (val: string) => {
-    if (!val) exec('unsetFontFamily')
-    else exec('setFontFamily', val)
-  },
+  set: (val: string) => { if (!val) exec('unsetFontFamily'); else exec('setFontFamily', val) },
 })
-
 const currentFontSize = computed({
   get: () => editor.value?.getAttributes('textStyle').fontSize || '',
-  set: (val: string) => {
-    if (!val) exec('unsetFontSize')
-    else exec('setFontSize', val)
-  },
+  set: (val: string) => { if (!val) exec('unsetFontSize'); else exec('setFontSize', val) },
 })
-
 const currentBlockType = computed({
   get: () => {
     if (isActive('heading', { level: 1 })) return 'h1'
@@ -684,43 +785,11 @@ const currentBlockType = computed({
   },
 })
 
-function setTextColor(e: Event) {
-  const color = (e.target as HTMLInputElement).value
-  exec('setColor', color)
-}
-
-function setHighlight(e: Event) {
-  const color = (e.target as HTMLInputElement).value
-  exec('toggleHighlight', { color })
-}
-
-function setAlign(align: string) {
-  chain()?.setTextAlign(align).run()
-}
-
-function insertTable() {
-  chain()?.insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
-}
-
-function insertImage() {
-  const input = document.createElement('input')
-  input.type = 'file'
-  input.accept = 'image/*'
-  input.onchange = () => {
-    const file = input.files?.[0]
-    if (!file) return
-    const reader = new FileReader()
-    reader.onload = () => {
-      exec('setImage', { src: reader.result as string })
-    }
-    reader.readAsDataURL(file)
-  }
-  input.click()
-}
-
-function clearFormatting() {
-  chain()?.clearNodes().unsetAllMarks().run()
-}
+function setTextColor(e: Event) { exec('setColor', (e.target as HTMLInputElement).value) }
+function setHighlight(e: Event) { exec('toggleHighlight', { color: (e.target as HTMLInputElement).value }) }
+function setAlign(align: string) { chain()?.setTextAlign(align).run() }
+function insertTable() { chain()?.insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run() }
+function clearFormatting() { chain()?.clearNodes().unsetAllMarks().run() }
 
 onBeforeUnmount(() => {
   if (saveTimeout) emitNow()
@@ -732,13 +801,25 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="molo-editor-root">
+    <DirectorySuggestDropdown
+        ref="suggestDropdownRef"
+        :visible="suggestVisible"
+        :x="suggestCoords.x"
+        :y="suggestCoords.y"
+        :query="suggestQuery"
+        :items="allDirectoryItems"
+        :definitions="interpolator.customDefs.value"
+        @select="handleSuggestSelect"
+        @close="suggestVisible = false"
+    />
+
     <div class="sheet-toolbar">
       <div class="btn-group">
         <UIMoloButton class="small" title="Экспорт в Word (.docx)" @click="exportToDocx">
           <img :src="wordIcon" alt="" style="width: 12px">
         </UIMoloButton>
         <UIMoloButton class="small" title="Импорт из Word (.docx)" @click="triggerWordImport">
-          <span class="toolbar-icon">📂</span>
+          <UIMoloSticker name="folder"/>
         </UIMoloButton>
       </div>
       <div class="toolbar-sep"/>
@@ -751,57 +832,49 @@ onBeforeUnmount(() => {
 
     <div class="molo-ribbon" v-if="editor">
       <div class="ribbon-group">
-        <button title="Отменить (Ctrl+Z)" @click="exec('undo')">↶</button>
-        <button title="Повторить (Ctrl+Y)" @click="exec('redo')">↷</button>
+        <button title="Отменить" @click="exec('undo')">↶</button>
+        <button title="Повторить" @click="exec('redo')">↷</button>
       </div>
       <div class="ribbon-sep"/>
       <div class="ribbon-group">
-        <select class="ribbon-select wide" title="Стиль абзаца" v-model="currentBlockType">
+        <select class="ribbon-select wide" v-model="currentBlockType">
           <option value="p">Обычный текст</option>
           <option value="h1">Заголовок 1</option>
           <option value="h2">Заголовок 2</option>
           <option value="h3">Заголовок 3</option>
           <option value="quote">Цитата</option>
         </select>
-        <select class="ribbon-select wide" title="Шрифт" v-model="currentFontFamily">
+        <select class="ribbon-select wide" v-model="currentFontFamily">
           <option value="">Шрифт по умолчанию</option>
           <option value="Arial">Arial</option>
           <option value="'Times New Roman', serif">Times New Roman</option>
           <option value="Georgia, serif">Georgia</option>
-          <option value="Courier New, monospace">Courier New</option>
         </select>
-        <select class="ribbon-select" title="Размер шрифта" v-model="currentFontSize">
+        <select class="ribbon-select" v-model="currentFontSize">
           <option value="">—</option>
-          <option v-for="s in [8,9,10,11,12,14,16,18,20,24,28,32,36,48]" :key="s" :value="`${s}pt`">
-            {{ s }}
-          </option>
+          <option v-for="s in [10,11,12,14,16,18,20,24,28,32]" :key="s" :value="`${s}pt`">{{ s }}</option>
         </select>
       </div>
       <div class="ribbon-sep"/>
       <div class="ribbon-group">
-        <button title="Жирный" :class="{ active: isActive('bold') }" @click="exec('toggleBold')"><b>Ж</b></button>
-        <button title="Курсив" :class="{ active: isActive('italic') }" @click="exec('toggleItalic')"><i>К</i></button>
-        <button title="Подчёркнутый" :class="{ active: isActive('underline') }" @click="exec('toggleUnderline')"><u>Ч</u></button>
-        <button title="Зачёркнутый" :class="{ active: isActive('strike') }" @click="exec('toggleStrike')"><s>ЗЧ</s></button>
-        <button title="Нижний индекс" :class="{ active: isActive('subscript') }" @click="exec('toggleSubscript')">X<sub>2</sub></button>
-        <button title="Верхний индекс" :class="{ active: isActive('superscript') }" @click="exec('toggleSuperscript')">X<sup>2</sup></button>
-        <label class="color-swatch" title="Цвет текста">A<input type="color" @input="setTextColor"/></label>
-        <label class="color-swatch" title="Маркер">▧<input type="color" @input="setHighlight"/></label>
-        <button title="Очистить стили" @click="clearFormatting">Очистить</button>
+        <button :class="{ active: isActive('bold') }" @click="exec('toggleBold')"><b>Ж</b></button>
+        <button :class="{ active: isActive('italic') }" @click="exec('toggleItalic')"><i>К</i></button>
+        <button :class="{ active: isActive('underline') }" @click="exec('toggleUnderline')"><u>Ч</u></button>
+        <label class="color-swatch">A<input type="color" @input="setTextColor"/></label>
+        <label class="color-swatch">▧<input type="color" @input="setHighlight"/></label>
+        <button @click="clearFormatting">Очистить</button>
       </div>
       <div class="ribbon-sep"/>
       <div class="ribbon-group">
-        <button title="По левому краю" :class="{ active: isActive('paragraph', { textAlign: 'left' }) }" @click="setAlign('left')">⯇</button>
-        <button title="По центру" :class="{ active: isActive('paragraph', { textAlign: 'center' }) }" @click="setAlign('center')">≡</button>
-        <button title="По правому краю" :class="{ active: isActive('paragraph', { textAlign: 'right' }) }" @click="setAlign('right')">⯈</button>
-        <button title="По ширине" :class="{ active: isActive('paragraph', { textAlign: 'justify' }) }" @click="setAlign('justify')">☰</button>
+        <button :class="{ active: isActive('paragraph', { textAlign: 'left' }) }" @click="setAlign('left')">⯇</button>
+        <button :class="{ active: isActive('paragraph', { textAlign: 'center' }) }" @click="setAlign('center')">≡</button>
+        <button :class="{ active: isActive('paragraph', { textAlign: 'right' }) }" @click="setAlign('right')">⯈</button>
       </div>
       <div class="ribbon-sep"/>
       <div class="ribbon-group">
-        <button title="Маркированный список" :class="{ active: isActive('bulletList') }" @click="exec('toggleBulletList')">• Список</button>
-        <button title="Нумерованный список" :class="{ active: isActive('orderedList') }" @click="exec('toggleOrderedList')">1. Список</button>
-        <button title="Таблица" @click="insertTable">Таблица</button>
-        <button title="Картинка" @click="insertImage">Картинка</button>
+        <button :class="{ active: isActive('bulletList') }" @click="exec('toggleBulletList')">• Список</button>
+        <button :class="{ active: isActive('orderedList') }" @click="exec('toggleOrderedList')">1. Список</button>
+        <button @click="insertTable">Таблица</button>
       </div>
     </div>
 
@@ -832,6 +905,7 @@ onBeforeUnmount(() => {
   height: 100%;
   min-height: 0;
   background: #eef0f3;
+  position: relative;
 }
 
 .sheet-toolbar {
@@ -983,13 +1057,8 @@ onBeforeUnmount(() => {
   background: #e7eaee;
 }
 
-.ruler-margin-shade.left {
-  left: 0;
-}
-
-.ruler-margin-shade.right {
-  right: 0;
-}
+.ruler-margin-shade.left { left: 0; }
+.ruler-margin-shade.right { right: 0; }
 
 .ruler-tick {
   position: absolute;
@@ -1043,7 +1112,7 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   font-family: Arial, 'Liberation Sans', Helvetica, sans-serif;
-  font-size: 11pt;
+  font-size: 10.5pt;
   line-height: 1.15;
   word-wrap: break-word;
   overflow-wrap: break-word;
@@ -1053,43 +1122,48 @@ onBeforeUnmount(() => {
   flex: none;
   min-width: 0;
   max-width: 100%;
-  margin: 0 0 8px;
+  margin: 0 0 3px;
 }
 
 .molo-page :deep(.ProseMirror > ul),
 .molo-page :deep(.ProseMirror > ol) {
-  margin-bottom: 0;
-  padding-left: 48px;
+  margin-top: 1px;
+  margin-bottom: 2px;
+  padding-left: 24px;
+}
+
+.molo-page :deep(.ProseMirror li) {
+  margin-bottom: 1px;
 }
 
 .molo-page :deep(.ProseMirror p) {
-  margin: 0 0 8px;
+  margin: 0 0 2px;
 }
 
 .molo-page :deep(.ProseMirror blockquote) {
   border-left: 3px solid #2b7de9;
-  padding-left: 12px;
-  margin-left: 0;
+  padding-left: 10px;
+  margin: 4px 0;
   color: #555;
   font-style: italic;
 }
 
 .molo-page :deep(.ProseMirror > h1) {
-  font-size: 24pt;
+  font-size: 19pt;
   font-weight: 700;
-  margin: 32px 0 8px;
+  margin: 10px 0 3px;
 }
 
 .molo-page :deep(.ProseMirror > h2) {
-  font-size: 18pt;
+  font-size: 13.5pt;
   font-weight: 700;
-  margin: 24px 0 5px;
+  margin: 8px 0 2px;
 }
 
 .molo-page :deep(.ProseMirror > h3) {
-  font-size: 14pt;
+  font-size: 11.5pt;
   font-weight: 700;
-  margin: 19px 0 5px;
+  margin: 6px 0 2px;
 }
 
 .molo-page :deep(.tableWrapper) {
@@ -1106,7 +1180,7 @@ onBeforeUnmount(() => {
 
 .molo-page :deep(td), .molo-page :deep(th) {
   border: 1px solid #ccc;
-  padding: 4px 8px;
+  padding: 3px 6px;
   word-wrap: break-word;
   overflow-wrap: break-word;
   vertical-align: top;
@@ -1120,35 +1194,22 @@ onBeforeUnmount(() => {
 .molo-page :deep(.molo-pb) {
   position: relative;
   margin-top: 0 !important;
+  margin-bottom: 0 !important;
   pointer-events: none;
   user-select: none;
 }
 
 .molo-page :deep(.molo-pb-band) {
   position: absolute;
-  left: calc(-1 * var(--ml) - 24px);
-  right: calc(-1 * var(--mr) - 24px);
+  left: calc(-1 * var(--ml));
+  right: calc(-1 * var(--mr));
   background: #eef0f3;
-  box-shadow: inset 0 8px 8px -8px rgba(0, 0, 0, 0.3), inset 0 -8px 8px -8px rgba(0, 0, 0, 0.3);
+  box-shadow: inset 0 8px 8px -8px rgba(0, 0, 0, 0.25), inset 0 -8px 8px -8px rgba(0, 0, 0, 0.25);
 }
 
 .molo-page :deep(.molo-pb-end) {
   margin: 0 !important;
   pointer-events: none;
   user-select: none;
-}
-
-@media print {
-  .sheet-toolbar, .molo-ribbon, .molo-ruler {
-    display: none !important;
-  }
-  .molo-editor-canvas {
-    padding: 0 !important;
-    background: transparent !important;
-  }
-  .molo-page {
-    box-shadow: none !important;
-    width: 100% !important;
-  }
 }
 </style>

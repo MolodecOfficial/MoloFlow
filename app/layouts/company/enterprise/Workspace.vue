@@ -1,5 +1,6 @@
 <script lang="ts" setup>
-import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { storeToRefs } from 'pinia'
 import excelIcon from '~~/app/assets/icons/excel.svg'
 import wordIcon from '~~/app/assets/icons/word.svg'
 import primaryIcon from '~~/app/assets/icons/forms.svg'
@@ -7,11 +8,9 @@ import pdfIcon from '~~/app/assets/icons/pdf.svg'
 import imageIcon from '~~/app/assets/icons/image.svg'
 import { useDirectoryInterpolator, type DirectoryLookupItem } from '~/composables/useDirectoryInterpolator'
 import DirectoryResolutionModal from '~/components/directory/DirectoryResolutionModal.vue'
+import { useWorkspaceStore, type DocType, type DocData, type SpaceFolder, type SpaceDocument, type DocVersionMeta } from '~~/stores/workspaceStore'
+import MoloSticker from '~/components/ui/MoloSticker.vue'
 import mammoth from 'mammoth'
-
-type DocType = 'excel' | 'word' | 'pdf' | 'primary' | 'image'
-type DocData = Record<string, any> | string
-type LoadState = 'idle' | 'loading' | 'loaded' | 'error'
 
 const props = defineProps<{
   enterpriseId?: string
@@ -21,6 +20,8 @@ const props = defineProps<{
   uniqueWindowId?: string
 }>()
 
+const emit = defineEmits(['close'])
+
 const DOC_ICONS: Record<DocType, string> = {
   excel: excelIcon,
   word: wordIcon,
@@ -29,38 +30,24 @@ const DOC_ICONS: Record<DocType, string> = {
   image: imageIcon
 }
 
-const emit = defineEmits(['close'])
+const workspaceStore = useWorkspaceStore()
+const {
+  folders,
+  documents,
+  activeFolderId,
+  openIds,
+  activeId,
+  activeDocument,
+  openDocuments,
+  saveState,
+  lastSavedAt,
+  isLoading,
+  loadError
+} = storeToRefs(workspaceStore)
+
 const { resolveVariable } = useDirectoryInterpolator()
 const { addNotification } = useNotifications('Пространство')
 const { addLog } = useLogger('Пространство')
-
-interface DocVersionMeta {
-  id: string
-  createdAt: number
-  comment: string
-  size: number
-}
-
-interface SpaceFolder {
-  id: string
-  name: string
-  parentId: string | null
-}
-
-interface DocMeta {
-  id: string
-  folderId: string | null
-  name: string
-  type: DocType
-  size: number
-  createdAt: number
-  updatedAt: number
-}
-
-interface SpaceDocument extends DocMeta {
-  data: DocData
-  loadState: LoadState
-}
 
 type TreeItem =
     | { kind: 'folder'; folder: SpaceFolder; depth: number; hasChildren: boolean; isExpanded: boolean }
@@ -68,22 +55,15 @@ type TreeItem =
 
 const workspaceRoot = ref<HTMLElement | null>(null)
 const isFullscreen = ref(false)
-const documents = shallowRef<SpaceDocument[]>([])
-const folders = ref<SpaceFolder[]>([])
-const activeFolderId = ref<string | null>(null)
 const expandedFolderIds = ref<Set<string>>(new Set())
 const searchQuery = ref('')
-const isLoading = ref(false)
-const loadError = ref<string | null>(null)
 const sidebarListMode = ref<'folder' | 'all'>('folder')
 
 const resolutionModalOpen = ref(false)
 const candidateList = ref<DirectoryLookupItem[]>()
 const pendingVariableCallback = ref<((resolved: string) => void) | null>(null)
 
-const openIds = ref<string[]>([])
 const createMenuOpen = ref(false)
-const activeId = ref<string | null>(null)
 const renamingId = ref<string | null>(null)
 const renameValue = ref('')
 const renamingFolderId = ref<string | null>(null)
@@ -114,7 +94,14 @@ const deleteModalText = computed(() =>
         : 'Вы действительно хотите удалить документ? Это действие необратимо.'
 )
 
-const activeDocument = computed(() => documents.value.find(d => d.id === activeId.value))
+const saveStatusText = computed(() => {
+  if (saveState.value === 'saving') return 'Сохранение…'
+  if (saveState.value === 'error') return 'Не удалось сохранить'
+  if (saveState.value === 'saved' && lastSavedAt.value) {
+    return 'Сохранено в ' + new Date(lastSavedAt.value).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+  }
+  return ''
+})
 
 const vFocus = {
   mounted: (el: HTMLInputElement) => {
@@ -122,18 +109,13 @@ const vFocus = {
       el.focus()
       el.select()
     })
-  },
+  }
 }
 
 async function handleTextInterpolation(rawExpression: string): Promise<string> {
   const result = await resolveVariable(rawExpression)
+  if (result.directValue) return result.directValue
 
-  // 1. Если значение однозначно определено — возвращаем строку
-  if (result.directValue) {
-    return result.directValue
-  }
-
-  // 2. Если кандидатов несколько — открываем модалку выбора
   if (result.candidates && result.candidates.length > 0) {
     candidateList.value = result.candidates
     resolutionModalOpen.value = true
@@ -144,7 +126,6 @@ async function handleTextInterpolation(rawExpression: string): Promise<string> {
       }
     })
   }
-
   return rawExpression
 }
 
@@ -155,7 +136,7 @@ function handleCandidateSelect(item: DirectoryLookupItem) {
   }
 }
 
-/* ───────────────────────── Построение дерева ───────────────────────── */
+/* ───────────────────────── Дерево папок ───────────────────────── */
 
 const folderChildrenMap = computed(() => {
   const map = new Map<string | null, SpaceFolder[]>()
@@ -206,11 +187,7 @@ const explorerTree = computed<TreeItem[]>(() => {
 
     if (parentId !== null) {
       for (const doc of subDocs) {
-        items.push({
-          kind: 'file',
-          doc,
-          depth
-        })
+        items.push({ kind: 'file', doc, depth })
       }
     }
   }
@@ -265,24 +242,26 @@ async function onFolderDrop(e: DragEvent, targetFolderId: string | null) {
   dragOverFolderId.value = null
   isRootDragOver.value = false
 
-  // 1. Внутреннее перемещение документа между папками
   if (draggedDocId.value) {
     const docId = draggedDocId.value
     draggedDocId.value = null
     const doc = documents.value.find(d => d.id === docId)
     if (!doc || doc.folderId === targetFolderId) return
 
-    patchDoc(docId, { folderId: targetFolderId })
     try {
-      await api(`/documents/${docId}`, { method: 'PATCH', body: { folderId: targetFolderId } })
+      await $fetch(`/api/workspace/documents/${docId}`, {
+        method: 'PATCH',
+        query: { enterpriseId: props.enterpriseId },
+        body: { folderId: targetFolderId }
+      })
+      doc.folderId = targetFolderId
       addNotification('success', 'Документ перемещён')
-    } catch (err) {
-      notifyError(err, 'Не удалось переместить документ')
+    } catch {
+      addNotification('error', 'Не удалось переместить документ')
     }
     return
   }
 
-  // 2. Сброс внешних файлов с рабочего стола компьютера
   if (e.dataTransfer?.files?.length) {
     await handleExternalFilesDrop(e.dataTransfer.files, targetFolderId)
   }
@@ -305,7 +284,6 @@ async function handleExternalFilesDrop(fileList: FileList, folderId: string | nu
 
     try {
       let documentContent = ''
-
       if (docType === 'pdf' || docType === 'image') {
         documentContent = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader()
@@ -314,20 +292,18 @@ async function handleExternalFilesDrop(fileList: FileList, folderId: string | nu
           reader.readAsDataURL(file)
         })
       } else if (name.endsWith('.docx')) {
-        // DOCX конвертируем через mammoth в HTML для TipTap
         const arrayBuffer = await file.arrayBuffer()
         const options = {
           styleMap: ['u => u'],
           convertImage: (mammoth as any).images?.imgElement((image: any) => {
             return image.read('base64').then((imageBuffer: string) => ({
-              src: `data:${image.contentType};base64,${imageBuffer}`,
+              src: `data:${image.contentType};base64,${imageBuffer}`
             }))
-          }),
+          })
         }
         const result = await mammoth.convertToHtml({ arrayBuffer }, options as any)
         documentContent = result.value || '<p></p>'
       } else {
-        // Текстовые документы и разметка
         documentContent = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader()
           reader.onload = () => resolve(reader.result as string)
@@ -336,294 +312,33 @@ async function handleExternalFilesDrop(fileList: FileList, folderId: string | nu
         })
       }
 
-      const meta = await api<DocMeta>('/documents', {
+      const meta = await $fetch<any>('/api/workspace/documents', {
         method: 'POST',
+        query: { enterpriseId: props.enterpriseId },
         body: {
           type: docType,
           name: name.replace(/\.[^/.]+$/, ''),
           folderId,
-          data: documentContent,
-        },
+          data: documentContent
+        }
       })
 
-      const clientDoc = toClientDoc(meta, documentContent)
-      documents.value = [clientDoc, ...documents.value]
-      openDocument(clientDoc.id)
-      addNotification('success', `Файл «${file.name}» успешно загружен`)
-    } catch (err) {
-      addLog("error", `Не удалось обработать «${file.name}»`)
-    }
-  }
-}
-
-/* ───────────────────────── API ───────────────────────── */
-
-const API = '/api/workspace'
-let currentEnt = ''
-
-interface ApiOptions {
-  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE'
-  body?: Record<string, any>
-  query?: Record<string, any>
-}
-
-function api<T>(path: string, options: ApiOptions = {}, ent = currentEnt) {
-  return $fetch<T>(API + path, {
-    method: options.method,
-    body: options.body,
-    query: { ...options.query, enterpriseId: ent },
-  })
-}
-
-function statusOf(e: any): number | undefined {
-  return e?.statusCode ?? e?.status ?? e?.response?.status
-}
-
-function errMessage(e: any, fallback: string): string {
-  return e?.data?.message || e?.data?.statusMessage || fallback
-}
-
-function notifyError(e: any, fallback: string) {
-  console.error(fallback, e)
-  addNotification('error', errMessage(e, fallback))
-}
-
-function onDocumentVariableTrigger(payload: { rawExpression: string; apply: (replacement: string) => void }) {
-  handleTextInterpolation(payload.rawExpression).then((resolvedText) => {
-    payload.apply(resolvedText)
-  })
-}
-
-/* ───────────────────────── Автосохранение ───────────────────────── */
-
-const dirty = new Set<string>()
-const inflight = new Map<string, Promise<void>>()
-
-const saveState = ref<'idle' | 'saving' | 'saved' | 'error'>('idle')
-const lastSavedAt = ref<number | null>(null)
-const lastSaveError = ref<string | null>(null)
-let persistTimeout: ReturnType<typeof setTimeout> | null = null
-
-const saveStatusText = computed(() => {
-  if (saveState.value === 'saving') return 'Сохранение…'
-  if (saveState.value === 'error') return lastSaveError.value || 'Не удалось сохранить'
-  if (saveState.value === 'saved' && lastSavedAt.value) {
-    return 'Сохранено в ' + new Date(lastSavedAt.value).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
-  }
-  return ''
-})
-
-function hasUnsaved() {
-  return dirty.size > 0 || inflight.size > 0
-}
-
-function runSave(id: string): Promise<void> {
-  const running = inflight.get(id)
-  if (running) return running
-
-  const ent = currentEnt
-  const task = (async () => {
-    try {
-      while (dirty.has(id)) {
-        const doc = documents.value.find(d => d.id === id)
-        dirty.delete(id)
-        if (!doc || doc.loadState !== 'loaded') break
-        try {
-          await api(`/documents/${id}`, { method: 'PATCH', body: { data: doc.data } }, ent)
-        } catch (e) {
-          if (statusOf(e) === 404) break
-          dirty.add(id)
-          throw e
-        }
+      const clientDoc: SpaceDocument = {
+        ...meta,
+        data: documentContent,
+        loadState: 'loaded'
       }
-    } finally {
-      inflight.delete(id)
+
+      documents.value = [clientDoc, ...documents.value]
+      workspaceStore.openDoc(clientDoc.id)
+      addNotification('success', `Файл «${file.name}» загружен`)
+    } catch {
+      addLog('error', `Не удалось обработать «${file.name}»`)
     }
-  })()
-  inflight.set(id, task)
-  return task
-}
-
-async function flushAll(): Promise<boolean> {
-  if (persistTimeout) {
-    clearTimeout(persistTimeout)
-    persistTimeout = null
-  }
-  const ids = new Set([...dirty, ...inflight.keys()])
-  if (!ids.size) return true
-
-  saveState.value = 'saving'
-  const results = await Promise.allSettled([...ids].map(runSave))
-  const failed = results.find((r): r is PromiseRejectedResult => r.status === 'rejected')
-
-  if (failed) {
-    console.error('Не удалось сохранить документы пространства', failed.reason)
-    saveState.value = 'error'
-    lastSaveError.value = errMessage(failed.reason, 'Не удалось сохранить — проверьте соединение, повторим автоматически')
-    schedulePersist(5000)
-    return false
-  }
-
-  saveState.value = dirty.size ? 'saving' : 'saved'
-  if (!dirty.size) {
-    lastSavedAt.value = Date.now()
-    lastSaveError.value = null
-  }
-  return true
-}
-
-function schedulePersist(delay = 600) {
-  if (persistTimeout) clearTimeout(persistTimeout)
-  persistTimeout = setTimeout(() => {
-    persistTimeout = null
-    void flushAll()
-  }, delay)
-}
-
-function markDirty(id: string) {
-  dirty.add(id)
-  saveState.value = 'saving'
-  schedulePersist()
-}
-
-function flushKeepalive() {
-  for (const id of dirty) {
-    const doc = documents.value.find(d => d.id === id)
-    if (!doc || doc.loadState !== 'loaded') continue
-    try {
-      void fetch(`${API}/documents/${id}?enterpriseId=${encodeURIComponent(currentEnt)}`, {
-        method: 'PATCH',
-        keepalive: true,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ data: doc.data }),
-      }).catch(() => {})
-    } catch { /* ignore */ }
   }
 }
 
-function handleBeforeUnload(e: BeforeUnloadEvent) {
-  if (!hasUnsaved()) return
-  flushKeepalive()
-  e.preventDefault()
-  e.returnValue = ''
-}
-
-/* ───────────────────────── Нормализация ───────────────────────── */
-
-function normalizeData(type: DocType, data: unknown): DocData {
-  if (type === 'word' || type === 'pdf' || type === 'image') return typeof data === 'string' ? data : ''
-  return data && typeof data === 'object' && !Array.isArray(data) ? (data as Record<string, any>) : {}
-}
-
-function emptyData(type: DocType): DocData {
-  return type === 'word' || type === 'pdf' || type === 'image' ? '' : {}
-}
-
-function toClientDoc(meta: DocMeta, data?: DocData): SpaceDocument {
-  return {
-    ...meta,
-    data: data === undefined ? emptyData(meta.type) : data,
-    loadState: data === undefined ? 'idle' : 'loaded',
-  }
-}
-
-function patchDoc(id: string, patch: Partial<SpaceDocument>) {
-  documents.value = documents.value.map(d => (d.id === id ? { ...d, ...patch } : d))
-}
-
-async function loadDocumentData(id: string) {
-  const doc = documents.value.find(d => d.id === id)
-  if (!doc || doc.loadState === 'loading' || doc.loadState === 'loaded') return
-
-  const ent = currentEnt
-  patchDoc(id, { loadState: 'loading' })
-  try {
-    const res = await api<DocMeta & { data: DocData }>(`/documents/${id}`)
-    if (ent !== currentEnt) return
-    const cur = documents.value.find(d => d.id === id)
-    if (!cur) return
-    patchDoc(id, { data: normalizeData(cur.type, res.data), loadState: 'loaded' })
-  } catch (e) {
-    if (ent !== currentEnt) return
-    patchDoc(id, { loadState: 'error' })
-    notifyError(e, 'Не удалось загрузить документ')
-  }
-}
-
-/* ───────────────────────── Загрузка списков ───────────────────────── */
-
-let loadToken = 0
-
-async function loadDocuments() {
-  if (currentEnt && hasUnsaved()) {
-    if (!(await flushAll())) addNotification('error', 'Часть правок не удалось сохранить перед переключением')
-  }
-
-  const token = ++loadToken
-  currentEnt = props.enterpriseId || 'default'
-  const ent = currentEnt
-
-  dirty.clear()
-  openIds.value = []
-  activeId.value = null
-  activeFolderId.value = null
-  documents.value = []
-  folders.value = []
-  loadError.value = null
-  isLoading.value = true
-
-  try {
-    const [folderList, docList] = await Promise.all([
-      api<SpaceFolder[]>('/folders', {}, ent),
-      api<DocMeta[]>('/documents', {}, ent),
-    ])
-    if (token !== loadToken) return
-    folders.value = folderList
-    documents.value = docList.map(meta => toClientDoc(meta))
-    expandedFolderIds.value = new Set(folderList.filter(f => !f.parentId).map(f => f.id))
-  } catch (e) {
-    if (token !== loadToken) return
-    console.error('Не удалось загрузить документы пространства', e)
-    loadError.value = errMessage(e, 'Не удалось загрузить документы')
-  } finally {
-    if (token === loadToken) isLoading.value = false
-  }
-}
-
-async function reloadFoldersOnly() {
-  const ent = props.enterpriseId || currentEnt || 'default'
-  try {
-    folders.value = await api<SpaceFolder[]>('/folders', {}, ent)
-  } catch (e) {
-    console.error('Не удалось обновить список папок', e)
-  }
-}
-
-/* ───────────────────────── Поиск и фильтрация ───────────────────────── */
-
-const searchMatchIds = ref<Set<string> | null>(null)
-let searchTimer: ReturnType<typeof setTimeout> | null = null
-let searchSeq = 0
-
-watch(searchQuery, (value) => {
-  if (searchTimer) clearTimeout(searchTimer)
-  searchMatchIds.value = null
-  const q = value.trim()
-  if (!q) {
-    searchSeq++
-    return
-  }
-  searchTimer = setTimeout(async () => {
-    const seq = ++searchSeq
-    try {
-      if (dirty.size) await flushAll()
-      const found = await api<DocMeta[]>('/documents', { query: { q } })
-      if (seq === searchSeq) searchMatchIds.value = new Set(found.map(d => d.id))
-    } catch (e) {
-      console.error('Ошибка поиска', e)
-    }
-  }, 300)
-})
+/* ───────────────────────── Фильтрация и поиск ───────────────────────── */
 
 const filteredBottomDocuments = computed(() => {
   let list = documents.value
@@ -634,8 +349,7 @@ const filteredBottomDocuments = computed(() => {
 
   const q = searchQuery.value.trim().toLowerCase()
   if (q) {
-    const ids = searchMatchIds.value
-    list = list.filter(d => (ids ? ids.has(d.id) : d.name.toLowerCase().includes(q)))
+    list = list.filter(d => d.name.toLowerCase().includes(q))
   }
 
   return [...list].sort((a, b) => b.updatedAt - a.updatedAt)
@@ -646,14 +360,16 @@ const currentFolderName = computed(() => {
   return folders.value.find(f => f.id === activeFolderId.value)?.name || 'Выбранная папка'
 })
 
-/* ───────────────────────── Версионирование (UI) ───────────────────────── */
+/* ───────────────────────── Версионирование ───────────────────────── */
 
 async function loadVersions(docId: string) {
   versionsLoading.value = true
   try {
-    versions.value = await api<DocVersionMeta[]>(`/documents/${docId}/versions`)
-  } catch (e) {
-    notifyError(e, 'Не удалось загрузить историю версий')
+    versions.value = await $fetch<DocVersionMeta[]>(`/api/workspace/documents/${docId}/versions`, {
+      query: { enterpriseId: props.enterpriseId }
+    })
+  } catch {
+    addNotification('error', 'Не удалось загрузить историю версий')
   } finally {
     versionsLoading.value = false
   }
@@ -672,16 +388,17 @@ async function createManualSnapshot() {
   const comment = prompt('Укажите комментарий к снимку:', 'Контрольная точка')?.trim()
   if (!comment) return
 
-  await flushAll()
+  await workspaceStore.flushAll()
   try {
-    const version = await api<DocVersionMeta>(`/documents/${activeId.value}/versions`, {
+    const version = await $fetch<DocVersionMeta>(`/api/workspace/documents/${activeId.value}/versions`, {
       method: 'POST',
-      body: { comment },
+      query: { enterpriseId: props.enterpriseId },
+      body: { comment }
     })
     versions.value = [version, ...versions.value]
     addNotification('success', 'Снимок успешно сохранён')
-  } catch (e) {
-    notifyError(e, 'Не удалось сохранить версию')
+  } catch {
+    addNotification('error', 'Не удалось сохранить версию')
   }
 }
 
@@ -698,21 +415,22 @@ async function confirmRestoreVersion() {
 
   if (!ver || !docId) return
 
-  await flushAll()
+  await workspaceStore.flushAll()
   try {
-    const res = await api<DocMeta & { data: DocData }>(`/documents/${docId}/versions/${ver.id}/restore`, {
+    const res = await $fetch<any>(`/api/workspace/documents/${docId}/versions/${ver.id}/restore`, {
       method: 'POST',
+      query: { enterpriseId: props.enterpriseId }
     })
-    patchDoc(docId, {
-      data: normalizeData(res.type, res.data),
-      updatedAt: res.updatedAt,
-      size: res.size,
-      loadState: 'loaded',
-    })
+    const doc = documents.value.find(d => d.id === docId)
+    if (doc) {
+      doc.data = res.data
+      doc.updatedAt = res.updatedAt
+      doc.loadState = 'loaded'
+    }
     await loadVersions(docId)
-    addNotification('success', `Документ откачен к версии от ${formatDate(ver.createdAt)}`)
-  } catch (e) {
-    notifyError(e, 'Не удалось восстановить версию')
+    addNotification('success', 'Версия успешно восстановлена')
+  } catch {
+    addNotification('error', 'Не удалось восстановить версию')
   }
 }
 
@@ -722,17 +440,18 @@ async function createFolder() {
   const name = prompt('Введите название папки:')?.trim()
   if (!name) return
   try {
-    const folder = await api<SpaceFolder>('/folders', {
+    const folder = await $fetch<SpaceFolder>('/api/workspace/folders', {
       method: 'POST',
-      body: { name, parentId: activeFolderId.value },
+      query: { enterpriseId: props.enterpriseId },
+      body: { name, parentId: activeFolderId.value }
     })
     folders.value.push(folder)
     if (activeFolderId.value) {
       expandedFolderIds.value.add(activeFolderId.value)
     }
     addNotification('success', 'Папка создана')
-  } catch (e) {
-    notifyError(e, 'Не удалось создать папку')
+  } catch {
+    addNotification('error', 'Не удалось создать папку')
   }
 }
 
@@ -752,10 +471,14 @@ async function confirmFolderRename() {
   const prev = folder.name
   folder.name = name
   try {
-    await api(`/folders/${id}`, { method: 'PATCH', body: { name } })
-  } catch (e) {
+    await $fetch(`/api/workspace/folders/${id}`, {
+      method: 'PATCH',
+      query: { enterpriseId: props.enterpriseId },
+      body: { name }
+    })
+  } catch {
     folder.name = prev
-    notifyError(e, 'Не удалось переименовать папку')
+    addNotification('error', 'Не удалось переименовать папку')
   }
 }
 
@@ -773,12 +496,13 @@ async function removeFolder(id: string) {
   const folder = folders.value.find(f => f.id === id)
   if (!folder) return
   try {
-    await api(`/folders/${id}`, { method: 'DELETE' })
-  } catch (e) {
-    if (statusOf(e) !== 404) {
-      notifyError(e, 'Не удалось удалить папку')
-      return
-    }
+    await $fetch(`/api/workspace/folders/${id}`, {
+      method: 'DELETE',
+      query: { enterpriseId: props.enterpriseId }
+    })
+  } catch {
+    addNotification('error', 'Не удалось удалить папку')
+    return
   }
   const parent = folder.parentId
   folders.value = folders.value
@@ -807,34 +531,13 @@ function toggleFullscreen() {
   }
 }
 
-const openDocuments = computed(() =>
-    openIds.value
-        .map(id => documents.value.find(d => d.id === id))
-        .filter((d): d is SpaceDocument => !!d)
-)
-
 async function createDocument(type: DocType) {
   createMenuOpen.value = false
 
-  // Если выбран PDF — открываем выбор файла с диска
-  if (type === 'pdf') {
+  if (type === 'pdf' || type === 'image') {
     const input = document.createElement('input')
     input.type = 'file'
-    input.accept = 'application/pdf'
-    input.onchange = async () => {
-      const file = input.files?.[0]
-      if (file) {
-        await handleExternalFilesDrop([file] as unknown as FileList, activeFolderId.value)
-      }
-    }
-    input.click()
-    return
-  }
-
-  if (type === 'image') {
-    const input = document.createElement('input')
-    input.type = 'file'
-    input.accept = 'image/*'
+    input.accept = type === 'pdf' ? 'application/pdf' : 'image/*'
     input.onchange = async () => {
       const file = input.files?.[0]
       if (file) await handleExternalFilesDrop([file] as unknown as FileList, activeFolderId.value)
@@ -843,50 +546,37 @@ async function createDocument(type: DocType) {
     return
   }
 
-  const data = emptyData(type)
   try {
-    const meta = await api<DocMeta>('/documents', {
+    const meta = await $fetch<any>('/api/workspace/documents', {
       method: 'POST',
+      query: { enterpriseId: props.enterpriseId },
       body: {
         type,
         name: type === 'excel' ? 'Новая таблица' : (type === 'primary' ? 'Новая накладная' : 'Новый документ'),
         folderId: activeFolderId.value,
-        data,
-      },
+        data: type === 'word' ? '' : {}
+      }
     })
-    const doc = toClientDoc(meta, data)
+
+    const doc: SpaceDocument = {
+      ...meta,
+      data: type === 'word' ? '' : {},
+      loadState: 'loaded'
+    }
+
     documents.value = [doc, ...documents.value]
     if (activeFolderId.value) {
       expandedFolderIds.value.add(activeFolderId.value)
     }
-    openDocument(doc.id)
-    addLog('info', `Создан новый документ`)
-  } catch (e) {
-    notifyError(e, 'Не удалось создать документ')
-  }
-}
-
-function openDocument(id: string) {
-  if (!openIds.value.includes(id)) openIds.value.push(id)
-  activeId.value = id
-  void loadDocumentData(id)
-  if (isVersionPanelOpen.value) {
-    void loadVersions(id)
+    workspaceStore.openDoc(doc.id)
+    addLog('info', 'Создан новый документ')
+  } catch {
+    addNotification('error', 'Не удалось создать документ')
   }
 }
 
 function closeTab(id: string) {
-  const idx = openIds.value.indexOf(id)
-  if (idx === -1) return
-  openIds.value.splice(idx, 1)
-  if (activeId.value === id) {
-    activeId.value = openIds.value[openIds.value.length - 1] || null
-    if (activeId.value && isVersionPanelOpen.value) {
-      void loadVersions(activeId.value)
-    } else if (!activeId.value) {
-      isVersionPanelOpen.value = false
-    }
-  }
+  workspaceStore.closeDoc(id)
 }
 
 function requestRemove(id: string) {
@@ -895,16 +585,14 @@ function requestRemove(id: string) {
 }
 
 async function removeDocument(id: string) {
-  if (!documents.value.some(d => d.id === id)) return
-  const wasDirty = dirty.delete(id)
   try {
-    await api(`/documents/${id}`, { method: 'DELETE' })
-  } catch (e) {
-    if (statusOf(e) !== 404) {
-      if (wasDirty) dirty.add(id)
-      notifyError(e, 'Не удалось удалить документ')
-      return
-    }
+    await $fetch(`/api/workspace/documents/${id}`, {
+      method: 'DELETE',
+      query: { enterpriseId: props.enterpriseId }
+    })
+  } catch {
+    addNotification('error', 'Не удалось удалить документ')
+    return
   }
   documents.value = documents.value.filter(d => d.id !== id)
   closeTab(id)
@@ -952,13 +640,18 @@ async function confirmRename() {
   const doc = documents.value.find(d => d.id === id)
   if (!name || !doc || doc.name === name) return
 
-  const prev = { name: doc.name, updatedAt: doc.updatedAt }
-  patchDoc(id, { name, updatedAt: Date.now() })
+  const prev = doc.name
+  doc.name = name
+  doc.updatedAt = Date.now()
   try {
-    await api(`/documents/${id}`, { method: 'PATCH', body: { name } })
-  } catch (e) {
-    patchDoc(id, prev)
-    notifyError(e, 'Не удалось переименовать документ')
+    await $fetch(`/api/workspace/documents/${id}`, {
+      method: 'PATCH',
+      query: { enterpriseId: props.enterpriseId },
+      body: { name }
+    })
+  } catch {
+    doc.name = prev
+    addNotification('error', 'Не удалось переименовать документ')
   }
 }
 
@@ -968,11 +661,7 @@ function cancelRename() {
 }
 
 function updateDocData(id: string, data: DocData) {
-  const doc = documents.value.find(d => d.id === id)
-  if (!doc) return
-  if (typeof data === 'string' && data === doc.data) return
-  patchDoc(id, { data, updatedAt: Date.now() })
-  markDirty(id)
+  workspaceStore.updateDocData(id, data)
 }
 
 function formatDate(ts: number): string {
@@ -999,41 +688,43 @@ function handleClickOutside(e: MouseEvent) {
   }
 }
 
-function handleWorkspaceSync(e: CustomEvent<{ enterpriseId?: string }>) {
-  if (!e.detail?.enterpriseId || e.detail.enterpriseId === currentEnt) {
-    void reloadFoldersOnly()
-  }
+function onDocumentVariableTrigger(payload: { rawExpression: string; apply: (replacement: string) => void }) {
+  handleTextInterpolation(payload.rawExpression).then((resolvedText) => {
+    payload.apply(resolvedText)
+  })
+}
+
+function handleBeforeUnload(e: BeforeUnloadEvent) {
+  workspaceStore.flushKeepalive()
 }
 
 watch(activeId, async (newId) => {
   await nextTick()
   requestAnimationFrame(() => {
     window.dispatchEvent(new Event('resize'))
-    setTimeout(() => window.dispatchEvent(new Event('resize')), 60)
   })
   if (isVersionPanelOpen.value && newId) {
     void loadVersions(newId)
   }
 })
 
-watch(() => props.enterpriseId, loadDocuments)
+watch(() => props.enterpriseId, () => {
+  workspaceStore.loadWorkspace(true)
+})
 
 onMounted(() => {
-  void loadDocuments()
-  window.addEventListener('beforeunload', handleBeforeUnload)
+  workspaceStore.loadWorkspace()
   window.addEventListener('click', handleClickOutside)
-  window.addEventListener('workspace:folders-updated' as any, handleWorkspaceSync)
+  window.addEventListener('beforeunload', handleBeforeUnload)
   document.addEventListener('fullscreenchange', () => {
     isFullscreen.value = !!document.fullscreenElement
   })
 })
 
 onUnmounted(() => {
-  window.removeEventListener('beforeunload', handleBeforeUnload)
   window.removeEventListener('click', handleClickOutside)
-  window.removeEventListener('workspace:folders-updated' as any, handleWorkspaceSync)
-  if (searchTimer) clearTimeout(searchTimer)
-  if (hasUnsaved()) void flushAll()
+  window.removeEventListener('beforeunload', handleBeforeUnload)
+  void workspaceStore.flushAll()
 })
 </script>
 
@@ -1044,7 +735,7 @@ onUnmounted(() => {
       <div class="workspace-title">
         <UIMoloInput
             v-model="searchQuery"
-            placeholder="Поиск по названию и содержимому..."
+            placeholder="Поиск по названию документов..."
         />
       </div>
 
@@ -1054,24 +745,25 @@ onUnmounted(() => {
             class="save-status"
             :class="{ error: saveState === 'error' }"
         >{{ saveStatusText }}</span>
+
         <UIMoloButton
             v-if="activeId"
-            class="small"
+            class="small icon-action-btn"
             :class="{ confirm: isVersionPanelOpen }"
             title="История версий и точек отката"
             @click="toggleVersionPanel"
         >
-          ⏱️
+          <UIMoloSticker name="history" :size="18" />
         </UIMoloButton>
-        <!-- Кнопка Истории версий активного документа -->
-        <section class="btn-group">
-          <UIMoloButton class="small" @click="createFolder">📁</UIMoloButton>
 
-          <UIMoloButton class="small" @click="toggleFullscreen">
-            {{ isFullscreen ? '🗗 ' : '🗖' }}
+        <section class="btn-group">
+          <UIMoloButton class="small icon-action-btn" title="Создать папку" @click="createFolder">
+            <UIMoloSticker name="folder" :size="18" />
+          </UIMoloButton>
+          <UIMoloButton class="small icon-action-btn" title="На весь экран" @click="toggleFullscreen">
+            <UIMoloSticker :name="isFullscreen ? 'fullscreen-exit' : 'fullscreen'" :size="18" />
           </UIMoloButton>
         </section>
-
 
         <div class="create-menu-wrap">
           <UIMoloButton class="confirm" @click.stop="createMenuOpen = !createMenuOpen">
@@ -1115,20 +807,20 @@ onUnmounted(() => {
           </div>
 
           <div class="folders-tree">
-            <!-- Корневой узел "Все документы" (Зона сброса в корень) -->
+            <!-- Корневой узел "Все документы" -->
             <div
                 class="tree-node root-node"
                 :class="{
-                  active: activeFolderId === null,
-                  'drag-over': isRootDragOver
-                }"
+                active: activeFolderId === null,
+                'drag-over': isRootDragOver
+              }"
                 @click="handleFolderClick(null)"
                 @dragover="onFolderDragOver($event, null)"
                 @dragleave="onFolderDragLeave"
                 @drop="onFolderDrop($event, null)"
             >
               <span class="tree-chevron invisible">▾</span>
-              <span class="tree-icon">📂</span>
+              <MoloSticker name="folder-open" :size="16" class="tree-icon" />
               <span class="node-title">Все документы</span>
             </div>
 
@@ -1139,9 +831,9 @@ onUnmounted(() => {
                   v-if="item.kind === 'folder'"
                   class="tree-node folder-node"
                   :class="{
-                    active: activeFolderId === item.folder.id,
-                    'drag-over': dragOverFolderId === item.folder.id
-                  }"
+                  active: activeFolderId === item.folder.id,
+                  'drag-over': dragOverFolderId === item.folder.id
+                }"
                   :style="{ paddingLeft: `${item.depth * 14 + 6}px` }"
                   @click="handleFolderClick(item.folder.id)"
                   @dblclick.stop="startFolderRename(item.folder)"
@@ -1158,7 +850,11 @@ onUnmounted(() => {
                   ▸
                 </button>
 
-                <span class="tree-icon">{{ item.isExpanded ? '📂' : '📁' }}</span>
+                <MoloSticker
+                    :name="item.isExpanded ? 'folder-open' : 'folder'"
+                    :size="16"
+                    class="tree-icon"
+                />
 
                 <input
                     v-if="renamingFolderId === item.folder.id"
@@ -1166,8 +862,6 @@ onUnmounted(() => {
                     v-focus
                     class="rename-input"
                     @click.stop
-                    @mousedown.stop
-                    @dblclick.stop
                     @keydown.enter="confirmFolderRename"
                     @keydown.esc="cancelFolderRename"
                     @blur="confirmFolderRename"
@@ -1180,17 +874,21 @@ onUnmounted(() => {
                         class="icon-btn"
                         title="Переименовать"
                         @click.stop="startFolderRename(item.folder)"
-                    >✏️</UIMoloButton>
+                    >
+                      <MoloSticker name="edit" :size="12" />
+                    </UIMoloButton>
                     <UIMoloButton
                         class="icon-btn"
                         title="Удалить папку"
                         @click.stop="requestRemoveFolder(item.folder.id)"
-                    >🗑️</UIMoloButton>
+                    >
+                      <MoloSticker name="trash" :size="12" />
+                    </UIMoloButton>
                   </div>
                 </template>
               </div>
 
-              <!-- Узел: Документ прямо в дереве (Перетаскиваемый) -->
+              <!-- Узел: Документ прямо в дереве -->
               <div
                   v-else-if="item.kind === 'file'"
                   class="tree-node file-node"
@@ -1198,27 +896,22 @@ onUnmounted(() => {
                   :style="{ paddingLeft: `${item.depth * 14 + 22}px` }"
                   draggable="true"
                   @dragstart="onDocDragStart($event, item.doc.id)"
-                  @click="openDocument(item.doc.id)"
+                  @click="workspaceStore.openDoc(item.doc.id)"
                   @dblclick.stop="startRename(item.doc)"
               >
                 <img class="tree-file-icon" :src="docIcon(item.doc.type)" alt="" draggable="false" />
 
-                <!-- Инпут при переименовании в дереве -->
                 <input
                     v-if="renamingId === item.doc.id"
                     v-model="renameValue"
                     v-focus
                     class="rename-input"
                     @click.stop
-                    @mousedown.stop
-                    @mouseup.stop
-                    @dblclick.stop
                     @keydown.enter="confirmRename"
                     @keydown.esc="cancelRename"
                     @blur="handleInputBlur"
                 />
 
-                <!-- Название и кнопки действий -->
                 <template v-else>
                   <span class="node-title">{{ item.doc.name }}</span>
                   <div class="item-actions" @click.stop>
@@ -1226,12 +919,16 @@ onUnmounted(() => {
                         class="icon-btn"
                         title="Переименовать"
                         @click.stop="startRename(item.doc)"
-                    >✏️</UIMoloButton>
+                    >
+                      <MoloSticker name="edit" :size="12" />
+                    </UIMoloButton>
                     <UIMoloButton
                         class="icon-btn"
                         title="Удалить"
                         @click.stop="requestRemove(item.doc.id)"
-                    >🗑️</UIMoloButton>
+                    >
+                      <MoloSticker name="trash" :size="12" />
+                    </UIMoloButton>
                   </div>
                 </template>
               </div>
@@ -1239,7 +936,7 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <!-- Нижняя плашка со списком файлов -->
+        <!-- Нижняя панель файлов -->
         <div
             class="bottom-files-section"
             @dragover="onFolderDragOver($event, activeFolderId)"
@@ -1257,7 +954,7 @@ onUnmounted(() => {
             <button
                 type="button"
                 class="mode-toggle-btn"
-                :title="sidebarListMode === 'folder' ? 'Показать вообще все файлы' : 'Показать файлы выбранной папки'"
+                :title="sidebarListMode === 'folder' ? 'Показать все файлы' : 'Показать файлы папки'"
                 @click="sidebarListMode = sidebarListMode === 'folder' ? 'all' : 'folder'"
             >
               {{ sidebarListMode === 'folder' ? 'Все' : 'В папке' }}
@@ -1270,7 +967,7 @@ onUnmounted(() => {
 
           <div v-else-if="loadError" class="sidebar-empty">
             <span>{{ loadError }}</span>
-            <UIMoloButton class="small" @click="loadDocuments">Повторить</UIMoloButton>
+            <UIMoloButton class="small" @click="workspaceStore.loadWorkspace(true)">Повторить</UIMoloButton>
           </div>
 
           <div v-else-if="filteredBottomDocuments.length === 0" class="sidebar-empty">
@@ -1285,7 +982,7 @@ onUnmounted(() => {
                 :class="{ active: doc.id === activeId }"
                 draggable="true"
                 @dragstart="onDocDragStart($event, doc.id)"
-                @click="openDocument(doc.id)"
+                @click="workspaceStore.openDoc(doc.id)"
             >
               <img class="sidebar-item-icon" :src="docIcon(doc.type)" alt="" draggable="false" />
 
@@ -1296,9 +993,6 @@ onUnmounted(() => {
                     v-focus
                     class="rename-input"
                     @click.stop
-                    @mousedown.stop
-                    @mouseup.stop
-                    @dblclick.stop
                     @keydown.enter="confirmRename"
                     @keydown.esc="cancelRename"
                     @blur="handleInputBlur"
@@ -1308,7 +1002,6 @@ onUnmounted(() => {
                       class="sidebar-item-name"
                       @dblclick.stop="startRename(doc)"
                   >{{ doc.name }}</span>
-
                   <span class="sidebar-item-meta">{{ formatDate(doc.updatedAt) }}</span>
                 </template>
               </div>
@@ -1319,24 +1012,28 @@ onUnmounted(() => {
                     class="icon-btn"
                     title="Переименовать"
                     @click.stop="startRename(doc)"
-                >✏️</UIMoloButton>
+                >
+                  <MoloSticker name="edit" :size="12" />
+                </UIMoloButton>
                 <UIMoloButton
                     v-if="renamingId !== doc.id"
                     class="icon-btn"
                     title="Удалить"
                     @click.stop="requestRemove(doc.id)"
-                >🗑️</UIMoloButton>
+                >
+                  <MoloSticker name="trash" :size="12" />
+                </UIMoloButton>
               </div>
             </div>
           </div>
         </div>
       </aside>
 
-      <!-- Main Document Area -->
+      <!-- Основная область редактирования -->
       <section class="workspace-main">
         <div v-if="openDocuments.length === 0" class="empty-state">
           <div class="empty-icon-wrap">
-            <span class="empty-icon">🗂️</span>
+            <MoloSticker name="folder-open" :size="36" glow />
           </div>
 
           <h3>Рабочая область свободна</h3>
@@ -1348,7 +1045,6 @@ onUnmounted(() => {
             <span class="formats-title">Поддерживаемые форматы и документы:</span>
 
             <div class="formats-grid">
-              <!-- Таблицы Excel -->
               <div class="format-card" @click="createDocument('excel')">
                 <img class="format-icon" :src="docIcon('excel')" alt="Excel" draggable="false" />
                 <div class="format-info">
@@ -1357,7 +1053,6 @@ onUnmounted(() => {
                 </div>
               </div>
 
-              <!-- Текстовые документы Word -->
               <div class="format-card" @click="createDocument('word')">
                 <img class="format-icon" :src="docIcon('word')" alt="Word" draggable="false" />
                 <div class="format-info">
@@ -1366,7 +1061,6 @@ onUnmounted(() => {
                 </div>
               </div>
 
-              <!-- PDF файлы -->
               <div class="format-card" @click="createDocument('pdf')">
                 <img class="format-icon" :src="docIcon('pdf')" alt="PDF" draggable="false" />
                 <div class="format-info">
@@ -1375,7 +1069,6 @@ onUnmounted(() => {
                 </div>
               </div>
 
-              <!-- Первичные документы / Бланки -->
               <div class="format-card" @click="createDocument('primary')">
                 <img class="format-icon" :src="docIcon('primary')" alt="Бланки" draggable="false" />
                 <div class="format-info">
@@ -1394,6 +1087,7 @@ onUnmounted(() => {
             </div>
           </div>
         </div>
+
         <template v-else>
           <div class="tabs-bar">
             <div
@@ -1415,7 +1109,6 @@ onUnmounted(() => {
                   @blur="handleInputBlur"
                   @keydown.enter="confirmRename"
                   @click.stop
-                  @mousedown.stop
               />
               <span v-else class="tab-name">{{ doc.name }}</span>
 
@@ -1432,19 +1125,17 @@ onUnmounted(() => {
             >
               <div v-if="doc.loadState === 'error'" class="doc-status error">
                 <span>Не удалось загрузить документ</span>
-                <UIMoloButton class="small" @click="loadDocumentData(doc.id)">Повторить</UIMoloButton>
+                <UIMoloButton class="small" @click="workspaceStore.loadDocumentContent(doc.id)">Повторить</UIMoloButton>
               </div>
               <div v-else-if="doc.loadState !== 'loaded'" class="doc-status">
                 <span>Загрузка…</span>
               </div>
               <template v-else>
-                <!-- Таблица Excel -->
                 <AppsMoloTable
                     v-if="doc.type === 'excel'"
                     :model-value="doc.data"
                     @update:model-value="(val) => updateDocData(doc.id, val)"
                 />
-                <!-- Текстовый документ Word -->
                 <AppsMoloDocument
                     v-else-if="doc.type === 'word'"
                     :model-value="doc.data"
@@ -1452,20 +1143,17 @@ onUnmounted(() => {
                     @update:model-value="(val) => updateDocData(doc.id, val)"
                     @resolve-variable="onDocumentVariableTrigger"
                 />
-                <!-- Первичные бланки ТОРГ -->
                 <AppsMoloPrimaryDoc
                     v-else-if="doc.type === 'primary'"
                     :model-value="doc.data"
                     @update:model-value="(val) => updateDocData(doc.id, val)"
                 />
-                <!-- PDF-ридер -->
                 <AppsMoloPDFReader
                     v-else-if="doc.type === 'pdf'"
                     :model-value="doc.data"
                     :file-name="doc.name"
                     @update:model-value="(val) => updateDocData(doc.id, val)"
                 />
-                <!-- Читатель изображений -->
                 <AppsMoloImageViewer
                     v-else-if="doc.type === 'image'"
                     :model-value="doc.data"
@@ -1477,7 +1165,7 @@ onUnmounted(() => {
         </template>
       </section>
 
-      <!-- Правая боковая панель: История версий -->
+      <!-- Правая панель истории версий -->
       <transition name="slide-panel">
         <aside v-if="isVersionPanelOpen && activeDocument" class="version-sidebar">
           <div class="version-header">
@@ -1499,7 +1187,7 @@ onUnmounted(() => {
           </div>
 
           <div v-else-if="versions.length === 0" class="version-empty">
-            <span>История пока пуста. При правках или по кнопке выше здесь появятся снимки документа.</span>
+            <span>История пока пуста. При сохранении снимков они появятся здесь.</span>
           </div>
 
           <div v-else class="version-list">
@@ -1510,14 +1198,14 @@ onUnmounted(() => {
             >
               <div class="version-card-main">
                 <div class="version-date">{{ formatDate(ver.createdAt) }}</div>
-                <div class="version-comment">{{ ver.comment || 'Автосохранение' }}</div>
+                <div class="version-comment">{{ ver.comment || 'Контрольная точка' }}</div>
                 <div class="version-size">{{ formatSize(ver.size) }}</div>
               </div>
 
               <div class="version-card-actions">
                 <UIMoloButton
                     class="small"
-                    title="Откатить документ к этому состоянию"
+                    title="Откатить документ к этой версии"
                     @click="requestRestoreVersion(ver)"
                 >
                   Восстановить
@@ -1530,7 +1218,6 @@ onUnmounted(() => {
     </div>
   </div>
 
-  <!-- Модальное окно подтверждения удаления -->
   <UIMoloModal
       v-model="isModalOpen"
       :title="deleteModalTitle"
@@ -1541,18 +1228,16 @@ onUnmounted(() => {
       @cancel="cancelRemove"
   />
 
-  <!-- Модальное окно подтверждения восстановления версии -->
   <UIMoloModal
       v-model="isRestoreModalOpen"
       title="Восстановить версию?"
-      modal-text="Текущее состояние документа автоматически сохранится как отдельная точка восстановления, а документ будет возвращён к выбранной версии."
+      modal-text="Текущее состояние будет сохранено как снимок, а документ откатится к выбранной версии."
       cancel-text="Отмена"
       confirm-text="Восстановить"
       @confirm="confirmRestoreVersion"
       @cancel="pendingRestore = null"
   />
 
-  <!-- Модальное окно разрешения переменных из справочников -->
   <DirectoryResolutionModal
       v-model="resolutionModalOpen"
       :candidates="candidateList || []"
@@ -1584,7 +1269,6 @@ onUnmounted(() => {
 
 .workspace-header {
   display: flex;
-  text-align: center;
   align-items: center;
   justify-content: space-between;
   padding: 6px 14px;
@@ -1594,7 +1278,6 @@ onUnmounted(() => {
 
 .workspace-title {
   display: flex;
-  flex-direction: row;
   align-items: center;
   gap: 10px;
   font-size: 18px;
@@ -1606,6 +1289,19 @@ onUnmounted(() => {
   align-items: center;
   gap: 10px;
   position: relative;
+}
+
+.icon-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 8px;
+}
+
+.screen-glyph {
+  width: 14px;
+  height: 14px;
+  color: #b0b0c0;
 }
 
 .save-status {
@@ -1670,7 +1366,6 @@ onUnmounted(() => {
   position: relative;
 }
 
-/* Сайдбар */
 .workspace-sidebar {
   width: 280px;
   flex-shrink: 0;
@@ -1731,7 +1426,6 @@ onUnmounted(() => {
   font-weight: 500;
 }
 
-/* Подсветка зоны сброса Drag and Drop */
 .tree-node.drag-over {
   background: rgba(59, 130, 246, 0.25) !important;
   outline: 1px dashed #3b82f6;
@@ -1766,8 +1460,6 @@ onUnmounted(() => {
 }
 
 .tree-icon {
-  font-size: 15px;
-  line-height: 1;
   flex-shrink: 0;
 }
 
@@ -1794,7 +1486,6 @@ onUnmounted(() => {
   color: #ffffff;
 }
 
-/* Нижняя панель файлов */
 .bottom-files-section {
   flex: 1 1 60%;
   display: flex;
@@ -1908,7 +1599,6 @@ onUnmounted(() => {
   color: #6e6e7e;
 }
 
-/* Действия для узлов дерева и элементов списка */
 .item-actions {
   display: flex;
   align-items: center;
@@ -1917,7 +1607,6 @@ onUnmounted(() => {
   transition: opacity 0.15s;
 }
 
-/* Показ кнопок при наведении */
 .tree-node:hover .item-actions,
 .file-node:hover .item-actions,
 .sidebar-item:hover .item-actions {
@@ -1928,9 +1617,11 @@ onUnmounted(() => {
   background: none;
   border: none;
   cursor: pointer;
-  font-size: 11px;
   padding: 2px 4px;
   border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .icon-btn:hover {
@@ -1947,7 +1638,6 @@ onUnmounted(() => {
   width: 100%;
 }
 
-/* Основная рабочая область */
 .workspace-main {
   flex: 1 1 0%;
   min-width: 0;
@@ -1987,12 +1677,6 @@ onUnmounted(() => {
   justify-content: center;
   margin-bottom: 16px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
-}
-
-.empty-icon {
-  font-size: 38px;
-  line-height: 1;
-  opacity: 0.85;
 }
 
 .empty-state h3 {
@@ -2081,7 +1765,6 @@ onUnmounted(() => {
   text-overflow: ellipsis;
 }
 
-/* Адаптив для карточек при узком окне */
 @media (max-width: 900px) {
   .formats-grid {
     grid-template-columns: repeat(2, 1fr);
@@ -2092,11 +1775,6 @@ onUnmounted(() => {
   .formats-grid {
     grid-template-columns: 1fr;
   }
-}
-
-.empty-icon {
-  font-size: 42px;
-  opacity: 0.5;
 }
 
 .doc-status {
@@ -2200,7 +1878,6 @@ onUnmounted(() => {
   height: 100%;
 }
 
-/* Боковая панель истории версий */
 .version-sidebar {
   width: 320px;
   flex-shrink: 0;
@@ -2238,19 +1915,6 @@ onUnmounted(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.panel-close-btn {
-  background: none;
-  border: none;
-  color: #8e8e9e;
-  font-size: 14px;
-  cursor: pointer;
-  padding: 4px;
-}
-
-.panel-close-btn:hover {
-  color: #fff;
 }
 
 .version-actions-bar {
@@ -2318,7 +1982,6 @@ onUnmounted(() => {
   justify-content: flex-end;
 }
 
-/* Анимация выдвижения панели */
 .slide-panel-enter-active,
 .slide-panel-leave-active {
   transition: transform 0.25s ease, opacity 0.2s ease;

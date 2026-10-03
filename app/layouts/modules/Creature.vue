@@ -6,10 +6,12 @@ import { useAppStore } from '~~/stores/appStore'
 import { useMenuStore } from '~~/stores/menuStore'
 import { useModulesStore } from '~~/stores/modulesStore'
 import { useWindowManager } from '~~/app/composables/window/useWindowManager'
+import MoloSticker from '~/components/UI/MoloSticker.vue'
 
-import jsIcon from '~~/public/js.png'
-import tsIcon from '~~/public/ts.png'
-import vueIcon from '~~/public/vue.png'
+import jsIcon from '~~/app/assets/icons/js.svg'
+import tsIcon from '~~/app/assets/icons/ts.svg'
+import vueIcon from '~~/app/assets/icons/vue.svg'
+import pyIcon from '~~/app/assets/icons/py.svg'
 
 defineOptions({
   inheritAttrs: false
@@ -58,6 +60,17 @@ const adding = ref(false)
 const creating = ref(false)
 const clearingCache = ref(false)
 const loading = ref(false)
+const isDeletingModule = ref(false)
+const showDeleteConfirm = ref(false)
+
+// Python: консоль под редактором
+const pyConsoleRef = ref<InstanceType<typeof PythonConsole> | null>(null)
+const showPyConsole = ref(false)
+const runPython = async () => {
+  showPyConsole.value = true
+  await nextTick()
+  pyConsoleRef.value?.run()
+}
 
 const activeMainTab = ref<'code' | 'files' | 'deps'>('code')
 
@@ -65,7 +78,7 @@ const showFileEditor = ref(false)
 const fileForm = ref({
   name: '',
   path: '',
-  format: 'vue' as 'vue' | 'js' | 'ts',
+  format: 'vue' as 'vue' | 'js' | 'ts' | 'py' | 'json',
   code: '',
   isServer: false
 })
@@ -75,16 +88,18 @@ const activeDepTab = ref<'dependencies' | 'devDependencies'>('dependencies')
 const tagsInput = ref('')
 const composablesInput = ref('')
 
-const fileFormats = [
-  { label: '.vue', value: 'vue' },
-  { label: '.js', value: 'js' },
-  { label: '.ts', value: 'ts' }
-]
 const availableFormats = [
   { label: '.vue', value: 'vue' },
   { label: '.js', value: 'js' },
-  { label: '.ts', value: 'ts' }
+  { label: '.ts', value: 'ts' },
+  { label: '.py', value: 'py' }
 ]
+// Допфайлы зависят от формата главного: Python-модулю нужны .py (для import) и .json (данные)
+const fileFormats = computed(() =>
+    formData.value.format === 'py'
+        ? [{ label: '.py', value: 'py' }, { label: '.json', value: 'json' }]
+        : [{ label: '.vue', value: 'vue' }, { label: '.js', value: 'js' }, { label: '.ts', value: 'ts' }]
+)
 
 const modalLocationForm = ref({
   title: '',
@@ -128,7 +143,7 @@ const collectFolderItems = (items: any[], groupId: string, level = 0): any[] => 
       result.push({
         id: item.id || item._id,
         groupId,
-        title: `${indent}📂 ${item.title}`,
+        title: `${indent}📁 ${item.title.replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '').trim()}`,
         level,
         type: 'folder'
       })
@@ -141,15 +156,16 @@ const collectFolderItems = (items: any[], groupId: string, level = 0): any[] => 
 
 const parentLocationOptions = computed(() => {
   const options: { id: string | null; groupId: string | null; title: string; level: number; type: string }[] = [
-    { id: null, groupId: null, title: '📁 Корень меню (верхний уровень)', level: 0, type: 'root' }
+    { id: null, groupId: null, title: 'Корень меню (верхний уровень)', level: 0, type: 'root' }
   ]
   for (const group of (tree.value || [])) {
     const gId = group.id || group.groupId || group._id
     if (gId && group.title) {
+      const cleanGroupTitle = group.title.replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '').trim()
       options.push({
         id: gId,
         groupId: gId,
-        title: `📁 ГРУППА: ${group.title}`,
+        title: `ГРУППА: ${cleanGroupTitle}`,
         level: 0,
         type: 'group'
       })
@@ -187,6 +203,16 @@ const handleClick = () => {
 }
 </style>`
   }
+  if (formData.value.format === 'py') {
+    return `# Python-модуль. Выполняется в браузере (Pyodide).
+# Кнопка «Запуск» вызывает main(context); print() попадает в консоль.
+
+def main(context):
+    name = context.get("name", "мир")
+    print(f"Привет, {name}!")
+    return {"greeting": f"Привет, {name}!"}
+`
+  }
   if (formData.value.format === 'ts') {
     return `// TypeScript module
 export function main(): string {
@@ -212,6 +238,15 @@ const getFilePlaceholder = (format: string) => {
     <h2>Новый компонент</h2>
   </div>
 </template>
+`
+  }
+  if (format === 'py') {
+    return `def example(value):
+    return value
+`
+  }
+  if (format === 'json') {
+    return `{}
 `
   }
   if (format === 'ts') {
@@ -416,7 +451,13 @@ const openFileEditor = (file?: any) => {
     }
     editingFilePath.value = file.path || null
   } else {
-    fileForm.value = { name: '', path: '', format: 'vue', code: '', isServer: false }
+    fileForm.value = {
+      name: '',
+      path: '',
+      format: formData.value.format === 'py' ? 'py' : 'vue',
+      code: '',
+      isServer: false
+    }
     editingFilePath.value = null
   }
   showFileEditor.value = true
@@ -430,8 +471,10 @@ const closeFileEditor = () => {
 const addDependency = async () => {
   const enterpriseId = appStore.getEnterpriseId()
   if (!newDepName.value || !selectedModuleId.value || !enterpriseId) return
+
   loadingDEP.value = true
   try {
+    // 1. Сохраняем зависимость в базу предприятия
     await $fetch(`/api/enterprises/${enterpriseId}/dynamicModules/${selectedModuleId.value}/dependencies`, {
       method: 'POST',
       body: {
@@ -441,14 +484,28 @@ const addDependency = async () => {
         packageType: activeDepTab.value
       }
     })
+
+    // 2. Если это Python-модуль — сразу накатываем pip-пакет на сервер
+    if (formData.value.format === 'py') {
+      await $fetch('/api/pip/install', {
+        method: 'POST',
+        body: {
+          moduleId: selectedModuleId.value,
+          enterpriseId
+        }
+      })
+    }
+
+    // 3. Обновляем локальный стейт зависимостей
     const res: any = await $fetch(`/api/enterprises/${enterpriseId}/dynamicModules/${selectedModuleId.value}/dependencies`)
     formData.value.dependencies = res.dependencies || {}
     formData.value.devDependencies = res.devDependencies || {}
-    addNotification('info', 'Зависимость добавлена')
+
+    addNotification('info', `Пакет ${newDepName.value} успешно установлен!`)
     newDepName.value = ''
     newDepVersion.value = ''
   } catch (error: any) {
-    addNotification('error', 'Ошибка добавления зависимости')
+    addNotification('error', error?.data?.message || error?.message || 'Ошибка установки пакета')
   } finally {
     loadingDEP.value = false
   }
@@ -475,22 +532,36 @@ const removeDependency = async (packageName: string) => {
   }
 }
 
+// Creature.vue
 const clearModuleCache = async () => {
   const enterpriseId = appStore.getEnterpriseId()
   if (!selectedModuleId.value || !enterpriseId) return
+
   try {
     clearingCache.value = true
-    await $fetch('/api/npm/install', {
+
+    // Ветвление: если открыт Python — вызываем pip, если Vue/TS/JS — npm
+    const endpoint = formData.value.format === 'py'
+        ? '/api/pip/install'
+        : '/api/npm/install'
+
+    await $fetch(endpoint, {
       method: 'POST',
-      body: { moduleId: selectedModuleId.value, enterpriseId, forceReinstall: true }
+      body: {
+        moduleId: selectedModuleId.value,
+        enterpriseId,
+        forceReinstall: true
+      }
     })
-    addNotification('info', 'Кеш модуля очищен')
+
+    addNotification('info', formData.value.format === 'py' ? 'Кеш pip обновлен' : 'Кеш npm очищен')
   } catch (error: any) {
-    addNotification('error', error?.data?.message || 'Ошибка очистки кеша')
+    addNotification('error', error?.data?.message || error?.message || 'Ошибка очистки кеша')
   } finally {
     clearingCache.value = false
   }
 }
+
 
 function openCreateLocationModal() {
   modalLocationForm.value = {
@@ -563,7 +634,6 @@ async function handleSaveLocation() {
     await menuStore.loadLocations()
     await menuStore.loadTree()
 
-    // Сразу выбираем созданное место в селекте
     if (groupId) {
       selectedGroupId.value = groupId
       selectedParentId.value = createdId || null
@@ -634,6 +704,26 @@ const removePreview = () => {
   formData.value.previewImage = null
 }
 
+const handleDeleteModule = async () => {
+  const enterpriseId = appStore.getEnterpriseId()
+  if (!selectedModuleId.value || !enterpriseId) return
+
+  isDeletingModule.value = true
+  try {
+    await modulesStore.deleteModule(enterpriseId, selectedModuleId.value)
+    await menuStore.loadTree()
+    window.dispatchEvent(new CustomEvent('modules-updated'))
+
+    addNotification('info', 'Модуль успешно удалён')
+    addLog('success', `Модуль "${formData.value.name}" удалён`)
+    showDeleteConfirm.value = false
+  } catch (error: any) {
+    addNotification('error', error?.data?.message || error?.message || 'Ошибка удаления модуля')
+  } finally {
+    isDeletingModule.value = false
+  }
+}
+
 const openDocumentation = () => {
   openWindow('documentation', null, {
     width: 1200,
@@ -684,8 +774,8 @@ onMounted(async () => {
   if (!enterpriseId) return
   await Promise.all([
     modulesStore.loadEnterpriseModules(enterpriseId),
-    menuStore.loadLocations(enterpriseId),
-    menuStore.loadTree(enterpriseId)
+    menuStore.loadLocations(),
+    menuStore.loadTree()
   ])
   if (props.initialModuleId) {
     await selectModule(props.initialModuleId)
@@ -708,7 +798,7 @@ onUnmounted(() => {
     <header class="top-nav-bar">
       <div class="nav-left">
         <div class="badge-title">
-          <span class="icon">⚡</span>
+          <MoloSticker name="it" :size="15" glow />
           <span>{{ isEditing ? formData.name || 'Модуль' : 'Новый модуль' }}</span>
         </div>
 
@@ -730,6 +820,15 @@ onUnmounted(() => {
             >
               Запуск
             </UIMoloButton>
+
+            <UIMoloButton
+                v-else-if="formData.format === 'py'"
+                class="small confirm"
+                title="Запустить Python-код"
+                @click="runPython"
+            >
+              Запуск
+            </UIMoloButton>
           </section>
 
           <UIMoloButton
@@ -737,7 +836,8 @@ onUnmounted(() => {
               title="Справочные материалы"
               @click="openDocumentation"
           >
-            📚 Документация
+            <MoloSticker name="glossary" :size="14" style="margin-right: 5px;" />
+            Документация
           </UIMoloButton>
         </div>
       </div>
@@ -766,6 +866,18 @@ onUnmounted(() => {
             <span v-else>Очистить кеш</span>
           </UIMoloButton>
 
+          <!-- КНОПКА УДАЛЕНИЯ -->
+          <UIMoloButton
+              v-if="selectedModuleId"
+              class="small close"
+              :disabled="isDeletingModule"
+              title="Удалить модуль"
+              @click="showDeleteConfirm = true"
+          >
+            <UIMoloLoaders v-if="isDeletingModule" btnLoader />
+            <span v-else>Удалить</span>
+          </UIMoloButton>
+
           <UIMoloButton
               :loading="loading"
               class="small confirm save-btn"
@@ -785,7 +897,7 @@ onUnmounted(() => {
               :class="{ active: activeMainTab === 'code' }"
               @click="activeMainTab = 'code'"
           >
-            <span class="tab-icon">📄</span>
+            <MoloSticker name="edit" :size="13" class="tab-sticker" />
             <span>Основной код ({{ formData.fileName || 'index' }}.{{ formData.format }})</span>
           </button>
 
@@ -794,7 +906,7 @@ onUnmounted(() => {
               :class="{ active: activeMainTab === 'files' }"
               @click="activeMainTab = 'files'"
           >
-            <span class="tab-icon">📁</span>
+            <MoloSticker name="folder" :size="13" class="tab-sticker" />
             <span>Файлы компонента</span>
             <span class="tab-count">{{ moduleFiles.length }}</span>
           </button>
@@ -804,8 +916,8 @@ onUnmounted(() => {
               :class="{ active: activeMainTab === 'deps' }"
               @click="activeMainTab = 'deps'"
           >
-            <span class="tab-icon">📦</span>
-            <span>Зависимости (NPM)</span>
+            <MoloSticker name="nomenclature" :size="13" class="tab-sticker" />
+            <span>{{ formData.format === 'py' ? 'Зависимости (pip)' : 'Зависимости (NPM)' }}</span>
             <span class="tab-count">{{ Object.keys(formData.dependencies || {}).length }}</span>
           </button>
         </div>
@@ -828,7 +940,7 @@ onUnmounted(() => {
             <div class="subview-header">
               <span class="view-title">Файлы текущего модуля</span>
               <UIMoloButton class="small confirm" @click="openFileEditor()">
-                + Добавить файл
+                Добавить файл
               </UIMoloButton>
             </div>
 
@@ -855,6 +967,7 @@ onUnmounted(() => {
                       class="ext-icon"
                       alt=""
                   />
+                  <img v-else-if="file.format === 'py'" :src="pyIcon" class="ext-icon" alt="" />
                   <img v-else :src="jsIcon" class="ext-icon" alt="" />
 
                   <span class="file-name">{{ file.name }}</span>
@@ -901,7 +1014,7 @@ onUnmounted(() => {
                   <UIMoloInput
                       v-model="newDepName"
                       compact
-                      placeholder="Имя пакета (напр. lodash)"
+                      :placeholder="formData.format === 'py' ? 'Имя пакета (напр. numpy)' : 'Имя пакета (напр. lodash)'"
                   />
                   <UIMoloInput
                       v-model="newDepVersion"
@@ -931,7 +1044,10 @@ onUnmounted(() => {
                     :key="pkg"
                     class="dep-row-item"
                 >
-                  <span class="pkg-name">📦 {{ pkg }}</span>
+                  <span class="pkg-name">
+                    <MoloSticker name="nomenclature" :size="13" class="pkg-sticker" />
+                    {{ pkg }}
+                  </span>
                   <span class="pkg-ver">{{ version }}</span>
                   <button class="dep-del-btn" title="Удалить пакет" @click="removeDependency(pkg as string)">
                     ✕
@@ -944,6 +1060,17 @@ onUnmounted(() => {
               </div>
             </div>
           </div>
+        </div>
+
+        <div v-if="formData.format === 'py' && showPyConsole" class="py-console-dock">
+          <UIMoloPythonConsole
+              ref="pyConsoleRef"
+              :code="formData.code"
+              :file-name="formData.fileName"
+              :files="moduleFiles"
+              :dependencies="formData.dependencies"
+              :module-name="formData.name || 'Python'"
+          />
         </div>
 
         <footer class="ide-status-bar">
@@ -1183,6 +1310,18 @@ onUnmounted(() => {
         </div>
       </template>
     </UIMoloModal>
+
+    <UIMoloModal
+        v-model="showDeleteConfirm"
+        title="Удаление модуля"
+        :modal-text="`Вы уверены, что хотите безвозвратно удалить модуль «${formData.name || formData.fileName}»? Он также будет автоматически удалён из всех привязанных пунктов меню.`"
+        confirm-text="Удалить"
+        cancel-text="Отмена"
+        width="480px"
+        :loading="isDeletingModule"
+        @confirm="handleDeleteModule"
+        @cancel="showDeleteConfirm = false"
+    />
   </div>
 </template>
 
@@ -1218,7 +1357,7 @@ onUnmounted(() => {
 .badge-title {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   font-size: 14px;
   font-weight: 700;
   color: #fff;
@@ -1293,6 +1432,11 @@ onUnmounted(() => {
   border-bottom: 2px solid #6496ff;
 }
 
+.tab-sticker {
+  display: inline-flex;
+  vertical-align: middle;
+}
+
 .tab-count {
   background: rgba(255, 255, 255, 0.08);
   padding: 1px 6px;
@@ -1312,6 +1456,14 @@ onUnmounted(() => {
 .monaco-full-height {
   width: 100%;
   height: 100%;
+}
+
+.py-console-dock {
+  height: 280px;
+  flex-shrink: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .files-view-wrap,
@@ -1442,8 +1594,15 @@ onUnmounted(() => {
 }
 
 .pkg-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-weight: 500;
   font-family: monospace;
+}
+
+.pkg-sticker {
+  flex-shrink: 0;
 }
 
 .pkg-ver {

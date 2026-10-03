@@ -1,5 +1,6 @@
+<!-- components/apps/molo/MoloTable.vue -->
 <script lang="ts" setup>
-import { nextTick, onBeforeUnmount, onMounted, ref, toRaw, watch } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, reactive, ref, toRaw, watch } from 'vue'
 import type { FUniver, Univer } from '@univerjs/presets'
 import { createUniver, LocaleType, mergeLocales } from '@univerjs/presets'
 import { UniverSheetsCorePreset } from '@univerjs/preset-sheets-core'
@@ -7,6 +8,8 @@ import UniverPresetSheetsCoreRuRU from '@univerjs/preset-sheets-core/locales/ru-
 import excelIcon from '~~/app/assets/icons/excel.svg'
 import '@univerjs/preset-sheets-core/lib/index.css'
 import * as XLSX from 'xlsx'
+import { useDirectoryInterpolator, type DirectoryLookupItem } from '~/composables/useDirectoryInterpolator'
+import DirectorySuggestDropdown from '~/components/directory/DirectorySuggestDropdown.vue'
 
 const props = defineProps<{
   modelValue?: Record<string, any>
@@ -14,9 +17,14 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'update:modelValue', data: Record<string, any>): void
+  // Разрешение {@...} делает Workspace (там живёт DirectoryResolutionModal) — как и для MoloDocument
+  (e: 'resolve-variable', payload: { rawExpression: string; apply: (replacement: string) => void }): void
 }>()
 
+const { fetchAllDirectories } = useDirectoryInterpolator()
+
 const containerEl = ref<HTMLElement | null>(null)
+const suggestDropdownRef = ref<InstanceType<typeof DirectorySuggestDropdown> | null>(null)
 
 let univerInstance: Univer | null = null
 let univerAPIInstance: FUniver | null = null
@@ -24,6 +32,17 @@ let saveTimeout: ReturnType<typeof setTimeout> | null = null
 let commandUnsub: (() => void) | null = null
 let resizeObserver: ResizeObserver | null = null
 let lastEmitted: any = null
+
+/* ── Состояние подсказчика ── */
+const suggestVisible = ref(false)
+const suggestCoords = reactive({ x: 0, y: 0 })
+const suggestQuery = ref('')
+const allDirectoryItems = ref<DirectoryLookupItem[]>([])
+
+// Текущее состояние редактируемой ячейки (приходит из событий Univer, а не из DOM)
+let editCtx: { row: number; col: number; text: string } | null = null
+let lastResolveKey = ''
+let editDisposables: Array<{ dispose: () => void } | (() => void)> = []
 
 const IMPORT_DEFAULT_ROW_H = 20
 const IMPORT_DEFAULT_COL_W = 64
@@ -139,10 +158,45 @@ function exportToXlsx() {
   XLSX.writeFile(wb, `${fileName}.xlsx`)
 }
 
+function triggerExcelImport() {
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = '.xlsx,.xls,.csv,.ods'
+  input.onchange = async () => {
+    const file = input.files?.[0]
+    if (!file || !univerAPIInstance) return
+
+    try {
+      const buf = await file.arrayBuffer()
+      const wb = XLSX.read(buf, { type: 'array', cellStyles: true })
+
+      const sheets: Record<string, any> = {}
+      const sheetOrder: string[] = []
+      wb.SheetNames.forEach((sheetName, i) => {
+        const id = `sheet_${i + 1}`
+        sheets[id] = wsToSheet(wb.Sheets[sheetName], id, sheetName)
+        sheetOrder.push(id)
+      })
+
+      const workbook = replaceWorkbook({
+        id: `wb_${Date.now()}`,
+        name: file.name.replace(/\.[^.]+$/, ''),
+        sheetOrder,
+        sheets,
+      })
+      flushEmit(workbook)
+    } catch (e) {
+      console.error('Ошибка импорта таблицы', e)
+      alert('Не удалось прочитать файл. Проверьте, что это валидная таблица (.xlsx, .xls, .csv)')
+    }
+  }
+  input.click()
+}
+
 function wsToSheet(ws: XLSX.WorkSheet, id: string, name: string) {
   const range = XLSX.utils.decode_range(ws['!ref'] || 'A1:A1')
-
   const cellData: Record<number, Record<number, any>> = {}
+
   for (const addr of Object.keys(ws)) {
     if (addr[0] === '!') continue
     const cell = ws[addr] as XLSX.CellObject
@@ -203,39 +257,123 @@ function wsToSheet(ws: XLSX.WorkSheet, id: string, name: string) {
   }
 }
 
-function triggerExcelImport() {
-  const input = document.createElement('input')
-  input.type = 'file'
-  input.accept = '.xlsx,.xls,.csv,.ods'
-  input.onchange = async () => {
-    const file = input.files?.[0]
-    if (!file || !univerAPIInstance) return
+/* ───────────────────────── Перехват {@...} через события редактора Univer ─────────────────────────
+   Текст читаем из самого редактора Univer (SheetEditChanging), а не из DOM: ячейка рисуется на canvas,
+   а скрытый contenteditable не хранит весь набранный текст. */
 
-    try {
-      const buf = await file.arrayBuffer()
-      const wb = XLSX.read(buf, { type: 'array', cellStyles: true })
-
-      const sheets: Record<string, any> = {}
-      const sheetOrder: string[] = []
-      wb.SheetNames.forEach((sheetName, i) => {
-        const id = `sheet_${i + 1}`
-        sheets[id] = wsToSheet(wb.Sheets[sheetName], id, sheetName)
-        sheetOrder.push(id)
-      })
-
-      const workbook = replaceWorkbook({
-        id: `wb_${Date.now()}`,
-        name: file.name.replace(/\.[^.]+$/, ''),
-        sheetOrder,
-        sheets,
-      })
-      flushEmit(workbook)
-    } catch (e) {
-      console.error('Ошибка импорта таблицы', e)
-      alert('Не удалось прочитать файл. Проверьте, что это валидная таблица (.xlsx, .xls, .csv)')
+function placeSuggest() {
+  const root = containerEl.value
+  const active = document.activeElement as HTMLElement | null
+  const candidates: (Element | null | undefined)[] = [
+    active && root?.contains(active) ? active : null,
+    root?.querySelector('.univer-editor-container'),
+    root?.querySelector('.univer-formula-editor'),
+    document.querySelector('.univer-cell-editor'),
+  ]
+  for (const el of candidates) {
+    const rect = el?.getBoundingClientRect()
+    if (rect && rect.width > 0 && rect.height > 0) {
+      suggestCoords.x = Math.max(16, rect.left)
+      suggestCoords.y = rect.bottom
+      return
     }
   }
-  input.click()
+  const cRect = root?.getBoundingClientRect()
+  if (cRect) {
+    suggestCoords.x = cRect.left + 80
+    suggestCoords.y = cRect.top + 70
+  }
+}
+
+function onEditText(row: number, col: number, rawText: string) {
+  if (!containerEl.value || containerEl.value.offsetWidth === 0) {
+    suggestVisible.value = false
+    return
+  }
+  const text = (rawText || '').replace(/[\u200B-\u200D\uFEFF]/g, '')
+  editCtx = { row, col, text }
+
+  // 1. Закрытое выражение {@...} -> отдаём Workspace (он покажет DirectoryResolutionModal)
+  const exactMatch = text.match(/\{@[^}]+}/)
+  if (exactMatch) {
+    suggestVisible.value = false
+    const key = `${row}:${col}:${text}`
+    if (key === lastResolveKey) return // то же самое выражение уже в обработке
+    lastResolveKey = key
+
+    emit('resolve-variable', {
+      rawExpression: exactMatch[0],
+      apply: (replacement: string) => {
+        lastResolveKey = ''
+        void commitToCell(row, col, text.replace(exactMatch[0], replacement))
+      },
+    })
+    return
+  }
+  lastResolveKey = ''
+
+  // 2. Незакрытое {@ -> живой список подсказок
+  const match = text.match(/\{@([^}]*)$/)
+  if (match) {
+    suggestQuery.value = match[1] || ''
+    placeSuggest()
+    suggestVisible.value = true
+  } else {
+    suggestVisible.value = false
+  }
+}
+
+function bindEditorEvents(api: any) {
+  const ev = api.Event
+  const add = (name: string, cb: (p: any) => void) => {
+    if (!name) return
+    const d = api.addEvent(name, cb)
+    if (d) editDisposables.push(d)
+  }
+  add(ev?.SheetEditStarted, (p) => { editCtx = { row: p.row, col: p.column, text: '' } })
+  add(ev?.SheetEditChanging, (p) => onEditText(p.row, p.column, p.value?.toPlainText?.() ?? ''))
+  add(ev?.SheetEditEnded, () => {
+    suggestVisible.value = false
+    editCtx = null
+  })
+}
+
+function handleGlobalKeyDown(e: KeyboardEvent) {
+  if (!containerEl.value || containerEl.value.offsetWidth === 0) return
+  if (!suggestVisible.value) return
+
+  if (['ArrowDown', 'ArrowUp', 'Enter', 'Tab', 'Escape'].includes(e.key)) {
+    suggestDropdownRef.value?.handleKeyDown(e)
+  }
+}
+
+function writeToUniverCell(row: number, col: number, text: string) {
+  if (!univerAPIInstance) return
+  const sheet = univerAPIInstance.getActiveWorkbook()?.getActiveSheet()
+  const range = sheet?.getRange(row, col)
+  if (range) {
+    range.setValue(text)
+    scheduleEmit()
+  }
+}
+
+// Сначала закрываем редактор ячейки без сохранения (иначе он перезапишет результат текстом «{@...}»), затем пишем значение
+async function commitToCell(row: number, col: number, text: string) {
+  try {
+    await (univerAPIInstance?.getActiveWorkbook() as any)?.endEditingAsync?.(false)
+  } catch (e) {
+    console.warn('Univer endEditing:', e)
+  }
+  setTimeout(() => writeToUniverCell(row, col, text), 50)
+}
+
+function handleSuggestSelect(item: DirectoryLookupItem, fieldValue?: string) {
+  const ctx = editCtx
+  suggestVisible.value = false
+  if (!ctx) return
+
+  const textToInsert = fieldValue || item.title
+  void commitToCell(ctx.row, ctx.col, ctx.text.replace(/\{@[^}]*$/, textToInsert))
 }
 
 function resizeUniver() {
@@ -246,11 +384,9 @@ function resizeUniver() {
     if (w <= 0 || h <= 0) return
 
     const api: any = univerAPIInstance
-
     api.resize?.()
     const wb: any = api.getActiveWorkbook?.()
     wb?.resize?.()
-
     window.dispatchEvent(new Event('resize'))
   } catch (e) {
     console.warn('Univer resize:', e)
@@ -258,6 +394,7 @@ function resizeUniver() {
 }
 
 onMounted(async () => {
+  allDirectoryItems.value = await fetchAllDirectories()
   if (!containerEl.value) return
   await nextTick()
 
@@ -280,6 +417,9 @@ onMounted(async () => {
   const workbook = univerAPI.createWorkbook(hasData ? props.modelValue! : { name: 'Новая таблица' })
   lastEmitted = hasData ? toRaw(props.modelValue) : null
 
+  bindEditorEvents(univerAPI)
+  window.addEventListener('keydown', handleGlobalKeyDown, true)
+
   const sub: any = univerAPI.onCommandExecuted((command: any) => {
     if (command?.type === 2) scheduleEmit()
   })
@@ -295,7 +435,6 @@ onMounted(async () => {
     resizeUniver()
     setTimeout(resizeUniver, 50)
     setTimeout(resizeUniver, 150)
-    setTimeout(resizeUniver, 300)
   })
 })
 
@@ -308,22 +447,15 @@ watch(() => props.modelValue, (val) => {
 
 onBeforeUnmount(() => {
   if (saveTimeout) flushEmit()
-  try {
-    resizeObserver?.disconnect()
-  } catch { /* noop */ }
+  editDisposables.forEach(d => { try { typeof d === 'function' ? d() : d.dispose() } catch {} })
+  editDisposables = []
+  window.removeEventListener('keydown', handleGlobalKeyDown, true)
+  resizeObserver?.disconnect()
   resizeObserver = null
-  try {
-    commandUnsub?.()
-  } catch { /* noop */ }
+  commandUnsub?.()
   commandUnsub = null
-  try {
-    univerAPIInstance?.dispose()
-  } catch (e) {
-    console.warn('Univer API dispose:', e)
-  }
-  try {
-    univerInstance?.dispose()
-  } catch { /* noop */ }
+  try { univerAPIInstance?.dispose() } catch {}
+  try { univerInstance?.dispose() } catch {}
   univerAPIInstance = null
   univerInstance = null
 })
@@ -331,18 +463,31 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="molo-sheet-wrapper">
+    <!-- Выпадающий список прямо у ячейки -->
+    <DirectorySuggestDropdown
+        ref="suggestDropdownRef"
+        :visible="suggestVisible"
+        :x="suggestCoords.x"
+        :y="suggestCoords.y"
+        :query="suggestQuery"
+        :items="allDirectoryItems"
+        @select="handleSuggestSelect"
+        @close="suggestVisible = false"
+    />
+
+    <!-- components/apps/molo/MoloTable.vue -->
     <div class="sheet-toolbar">
       <div class="btn-group">
         <UIMoloButton class="small" title="Экспорт в Excel (.xlsx)" @click="exportToXlsx">
           <img :src="excelIcon" alt="" style="width: 12px;">
         </UIMoloButton>
         <UIMoloButton class="small" title="Импорт из Excel" @click="triggerExcelImport">
-          <span class="toolbar-icon">📂</span>
+          <UIMoloSticker name="folder"/>
         </UIMoloButton>
       </div>
       <div class="toolbar-sep"/>
       <div class="toolbar-group">
-        <span class="toolbar-hint">Поддерживаются форматы: <b>.xlsx, .xls, .csv</b></span>
+        <span class="toolbar-hint">Поддерживаются форматы: <b>.xlsx, .xls, .csv</b> · Для автоподстановки введите <b>{@</b> в ячейку</span>
       </div>
     </div>
     <div ref="containerEl" class="molo-sheet-root"/>
@@ -386,46 +531,21 @@ onBeforeUnmount(() => {
   margin: 2px 8px;
 }
 
-.toolbar-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 30px;
-  padding: 0 10px;
-  background: #f8f9fa;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  color: #1f2328;
-  font-size: 13px;
-  cursor: pointer;
-  transition: background 0.12s;
-  white-space: nowrap;
-}
-
-.toolbar-btn:hover {
-  background: #eef3ff;
-  border-color: #a9c6ff;
-}
-
 .toolbar-hint {
   font-size: 11px;
   color: #6b7280;
 }
 
-/* Контейнер Univer: забирает всё оставшееся место.
-   Никаких position:absolute — Univer сам выставляет обёртки. */
 .molo-sheet-root {
   flex: 1 1 auto;
   width: 100%;
-  height: 100vh;
+  height: 100%;
   min-width: 0;
   min-height: 0;
   position: relative;
   overflow: hidden;
 }
 
-/* Только верхнеуровневые обёртки Univer растягиваем на контейнер.
-   Внутренние canvas НЕ трогаем — иначе ломается сетка и оверлеи. */
 .molo-sheet-root :deep(> .univer),
 .molo-sheet-root :deep(> .univer-app),
 .molo-sheet-root :deep(> .univer-container),

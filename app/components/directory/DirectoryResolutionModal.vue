@@ -1,3 +1,4 @@
+<!-- app/components/directory/DirectoryResolutionModal.vue -->
 <script setup lang="ts">
 import { ref } from 'vue'
 import type { DirectoryLookupItem } from '~/composables/useDirectoryInterpolator'
@@ -10,26 +11,32 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'update:modelValue', value: boolean): void
-  (e: 'select', item: DirectoryLookupItem): void
+  (e: 'select', item: DirectoryLookupItem, selectedValue?: string): void
 }>()
 
 const selectedId = ref<string | null>(null)
+const selectedProp = ref<string | null>(null)
 
 const handleConfirm = () => {
   const found = props.candidates.find((c) => c.id === selectedId.value)
   if (found) {
-    emit('select', found)
+    emit('select', found, selectedProp.value || found.title)
     emit('update:modelValue', false)
   }
+}
+
+function selectCandidate(item: DirectoryLookupItem, propVal?: string) {
+  selectedId.value = item.id
+  selectedProp.value = propVal || null
 }
 </script>
 
 <template>
   <UIMoloModal
       :model-value="modelValue"
-      :title="title || 'Найдено несколько вариантов'"
-      width="540px"
-      confirm-text="Вставить"
+      :title="title || 'Найдено несколько совпадений'"
+      width="680px"
+      confirm-text="Вставить значение"
       cancel-text="Отмена"
       @update:model-value="(val) => emit('update:modelValue', val)"
       @confirm="handleConfirm"
@@ -37,38 +44,56 @@ const handleConfirm = () => {
     <template #body>
       <div class="resolution-container">
         <p class="resolution-subtitle">
-          По вашему запросу найдено несколько записей. Выберите нужную для подстановки:
+          Выберите нужную запись. Вы можете вставить название целиком либо кликнуть на конкретный реквизит:
         </p>
 
         <div class="candidate-list">
           <div
               v-for="item in candidates"
               :key="item.id"
-              class="candidate-row"
+              class="candidate-card"
               :class="{ selected: selectedId === item.id }"
-              @click="selectedId = item.id"
+              @click="selectCandidate(item)"
               @dblclick="handleConfirm"
           >
-            <div class="candidate-avatar">
-              {{ (item.title || 'С')[0].toUpperCase() }}
-            </div>
+            <div class="card-header-line">
+              <div class="candidate-avatar">
+                {{ (item.title || 'С')[0].toUpperCase() }}
+              </div>
 
-            <div class="candidate-meta">
-              <strong class="candidate-name">{{ item.title }}</strong>
-              <div class="candidate-sub">
-                <span v-if="item.role" class="badge-role">{{ item.role }}</span>
-                <span v-if="item.phone">📞 {{ item.phone }}</span>
-                <span v-if="item.code" class="code-tag">ID: {{ item.code }}</span>
+              <div class="candidate-meta">
+                <strong class="candidate-name">{{ item.title }}</strong>
+                <div class="candidate-sub">
+                  <span v-if="item.role" class="badge-role">{{ item.role }}</span>
+                  <span v-if="item.inn" class="code-tag">ИНН: {{ item.inn }}</span>
+                  <span v-if="item.code" class="code-tag">Код: {{ item.code }}</span>
+                  <span v-if="item.phone">📞 {{ item.phone }}</span>
+                </div>
+              </div>
+
+              <div class="select-radio">
+                <input
+                    type="radio"
+                    :checked="selectedId === item.id"
+                    name="candidate_select"
+                    @change="selectCandidate(item)"
+                />
               </div>
             </div>
 
-            <div class="select-radio">
-              <input
-                  type="radio"
-                  :checked="selectedId === item.id"
-                  name="candidate_select"
-                  @change="selectedId = item.id"
-              />
+            <!-- Доступные реквизиты сущности для выборочной вставки -->
+            <div class="entity-props-chips">
+              <button
+                  v-for="field in item.availableFields"
+                  :key="field.key"
+                  type="button"
+                  class="chip-btn"
+                  :class="{ active: selectedId === item.id && selectedProp === field.value }"
+                  @click.stop="selectCandidate(item, field.value)"
+              >
+                <span class="chip-k">{{ field.label }}:</span>
+                <span class="chip-v">{{ field.value }}</span>
+              </button>
             </div>
           </div>
         </div>
@@ -93,16 +118,17 @@ const handleConfirm = () => {
 .candidate-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  max-height: 320px;
+  gap: 10px;
+  max-height: 400px;
   overflow-y: auto;
+  padding-right: 4px;
 }
 
-.candidate-row {
+.candidate-card {
   display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 14px;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
   background: rgba(255, 255, 255, 0.025);
   border: 1px solid var(--half_opacity_border);
   border-radius: 8px;
@@ -110,23 +136,29 @@ const handleConfirm = () => {
   transition: all 0.15s ease;
 }
 
-.candidate-row:hover {
-  background: rgba(255, 255, 255, 0.06);
+.candidate-card:hover {
+  background: rgba(255, 255, 255, 0.05);
   border-color: rgba(100, 150, 255, 0.4);
 }
 
-.candidate-row.selected {
-  background: rgba(100, 150, 255, 0.14);
+.candidate-card.selected {
+  background: rgba(100, 150, 255, 0.12);
   border-color: #6496ff;
 }
 
+.card-header-line {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .candidate-avatar {
-  width: 34px;
-  height: 34px;
+  width: 36px;
+  height: 36px;
   border-radius: 6px;
   background: #3872ef;
   color: #fff;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
   display: flex;
   align-items: center;
@@ -143,7 +175,7 @@ const handleConfirm = () => {
 }
 
 .candidate-name {
-  font-size: 13.5px;
+  font-size: 14px;
   color: #fff;
   white-space: nowrap;
   overflow: hidden;
@@ -154,7 +186,7 @@ const handleConfirm = () => {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 11px;
+  font-size: 11.5px;
   color: #8c8c9e;
 }
 
@@ -170,7 +202,49 @@ const handleConfirm = () => {
   color: #aaa;
 }
 
-.select-radio input {
+.entity-props-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.chip-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+  padding: 2px 6px;
   cursor: pointer;
+  font-size: 11px;
+  color: #ccc;
+  transition: all 0.1s ease;
+}
+
+.chip-btn:hover {
+  background: rgba(100, 150, 255, 0.15);
+  border-color: #6496ff;
+  color: #fff;
+}
+
+.chip-btn.active {
+  background: #2563eb;
+  border-color: #3b82f6;
+  color: #fff;
+}
+
+.chip-k {
+  color: #7b7b8f;
+}
+
+.chip-btn.active .chip-k {
+  color: #bfdbfe;
+}
+
+.chip-v {
+  font-weight: 500;
 }
 </style>

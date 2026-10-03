@@ -1,6 +1,9 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch, reactive } from 'vue'
 import { rublesToWordsRu, numberToWordsRu } from '~~/app/utils/numberToWordsRu'
+import { useDirectoryInterpolator, type DirectoryLookupItem } from '~/composables/useDirectoryInterpolator'
+import DirectorySuggestDropdown from '~/components/directory/DirectorySuggestDropdown.vue'
+import DirectoryResolutionModal from '~/components/directory/DirectoryResolutionModal.vue'
 
 import Torg12Sheet from './sheets/torg/Torg12Sheet.vue'
 import Torg2Sheet from './sheets/torg/Torg2Sheet.vue'
@@ -20,7 +23,6 @@ export interface TorgItem {
   quantity: number
   price: number
   ndsRate: number
-  // Поля для ТОРГ-2 (расхождения):
   factQuantity?: number
   diffQuantity?: number
   defectDescription?: string
@@ -76,6 +78,21 @@ const props = defineProps<{
 const emit = defineEmits<{
   'update:modelValue': [val: any]
 }>()
+
+const { fetchAllDirectories, resolveVariable } = useDirectoryInterpolator()
+
+/* ── Состояние подсказчика и модалки справочников ── */
+const suggestDropdownRef = ref<InstanceType<typeof DirectorySuggestDropdown> | null>(null)
+const suggestVisible = ref(false)
+const suggestCoords = reactive({ x: 0, y: 0 })
+const suggestQuery = ref('')
+const allDirectoryItems = ref<DirectoryLookupItem[]>([])
+
+const resolutionModalOpen = ref(false)
+const resolutionCandidates = ref<DirectoryLookupItem[]>([])
+let currentActiveInput: HTMLInputElement | null = null
+let resolving = false
+let currentApplyCallback: ((resolvedText: string, item?: DirectoryLookupItem) => void) | null = null
 
 const defaultData: TorgDocData = {
   torgType: 'torg12',
@@ -136,14 +153,142 @@ const defaultData: TorgDocData = {
   }
 }
 
-const doc = ref<TorgDocData>(props.modelValue && typeof props.modelValue === 'object' ? { ...defaultData, ...props.modelValue } : defaultData)
+const doc = ref<TorgDocData>(
+    props.modelValue && typeof props.modelValue === 'object'
+        ? { ...defaultData, ...props.modelValue }
+        : defaultData
+)
 
 watch(doc, (val) => {
   emit('update:modelValue', val)
 }, { deep: true })
 
-/* ───────────────────────── Выбор нужного бланка ───────────────────────── */
+/* ───────────────────────── Перехват {@...} в инпутах ТОРГ ───────────────────────── */
 
+async function onFieldInput(
+    e: Event,
+    applyFn: (resolvedText: string, item?: DirectoryLookupItem) => void
+) {
+  const target = e.target as HTMLInputElement
+  if (!target) return
+
+  const val = target.value || ''
+  currentActiveInput = target
+  currentApplyCallback = applyFn
+
+  // 1. Проверяем полное закрытое выражение {@...}
+  const exactMatch = val.match(/\{@[^}]+}/)
+  if (exactMatch) {
+    suggestVisible.value = false
+    if (resolving || resolutionModalOpen.value) return
+    resolving = true
+    try {
+      const expr = exactMatch[0]
+      const res = await resolveVariable(expr)
+
+      if (res.directValue) {
+        const replaced = val.replace(expr, res.directValue)
+        applyFn(replaced)
+        target.value = replaced
+      } else if (res.candidates && res.candidates.length > 0) {
+        resolutionCandidates.value = res.candidates
+        resolutionModalOpen.value = true
+      }
+    } finally {
+      resolving = false
+    }
+    return
+  }
+
+  // 2. Проверяем незакрытый префикс {@ для живого автодополнения
+  const match = val.match(/\{@([^}]*)$/)
+  if (match) {
+    suggestQuery.value = match[1] || ''
+    const rect = target.getBoundingClientRect()
+    suggestCoords.x = Math.max(16, rect.left)
+    suggestCoords.y = rect.bottom
+    suggestVisible.value = true
+  } else {
+    suggestVisible.value = false
+  }
+}
+
+function handleFieldKeyDown(e: KeyboardEvent) {
+  if (!suggestVisible.value) return
+  if (['ArrowDown', 'ArrowUp', 'Enter', 'Tab', 'Escape'].includes(e.key)) {
+    suggestDropdownRef.value?.handleKeyDown(e)
+  }
+}
+
+// Обработчик выбора из выпадающего саджеста
+function handleSuggestSelect(item: DirectoryLookupItem, fieldValue?: string) {
+  if (currentApplyCallback && currentActiveInput) {
+    const rawVal = currentActiveInput.value || ''
+    // Если пользователь кликнул по конкретному реквизиту (например, ИНН)
+    const replacement = fieldValue || item.title
+    const replaced = rawVal.replace(/\{@[^}]*$/, replacement)
+
+    currentApplyCallback(replaced, item)
+    currentActiveInput.value = replaced
+  }
+  suggestVisible.value = false
+}
+
+// Обработчик подтверждения из модального окна
+function handleModalSelect(item: DirectoryLookupItem, fieldValue?: string) {
+  resolutionModalOpen.value = false
+  if (currentApplyCallback && currentActiveInput) {
+    const rawVal = currentActiveInput.value || ''
+    const replacement = fieldValue || item.title
+    const replaced = rawVal.replace(/\{@[^}]+}/, replacement)
+
+    currentApplyCallback(replaced, item)
+    currentActiveInput.value = replaced
+    currentActiveInput.focus()
+  }
+}
+
+// Каскадное заполнение поставщика
+function applySupplierEntity(name: string, item?: DirectoryLookupItem) {
+  doc.value.supplier.name = name
+  if (item) {
+    if (item.inn) doc.value.supplier.inn = item.inn
+    if (item.kpp) doc.value.supplier.kpp = item.kpp
+    if (item.address) doc.value.supplier.address = item.address
+    if (item.raw.bankName) doc.value.supplier.bankName = String(item.raw.bankName)
+    if (item.bik) doc.value.supplier.bik = item.bik
+    if (item.accountNumber) doc.value.supplier.settlementAccount = item.accountNumber
+    if (item.raw.corrAccount) doc.value.supplier.corrAccount = String(item.raw.corrAccount)
+    if (item.raw.okpo) doc.value.supplier.okpo = String(item.raw.okpo)
+  }
+}
+
+// Каскадное заполнение плательщика / покупателя
+function applyPayerEntity(name: string, item?: DirectoryLookupItem) {
+  doc.value.payer.name = name
+  if (item) {
+    if (item.inn) doc.value.payer.inn = item.inn
+    if (item.kpp) doc.value.payer.kpp = item.kpp
+    if (item.address) doc.value.payer.address = item.address
+    if (item.raw.bankName) doc.value.payer.bankName = String(item.raw.bankName)
+    if (item.bik) doc.value.payer.bik = item.bik
+    if (item.accountNumber) doc.value.payer.settlementAccount = item.accountNumber
+    if (item.raw.okpo) doc.value.payer.okpo = String(item.raw.okpo)
+  }
+}
+
+// Каскадное заполнение позиции номенклатуры
+function applyItemEntity(idx: number, name: string, item?: DirectoryLookupItem) {
+  doc.value.items[idx].name = name
+  if (item) {
+    if (item.code) doc.value.items[idx].code = item.code
+    if (item.price !== undefined) doc.value.items[idx].price = item.price
+    if (item.unit) doc.value.items[idx].unitName = item.unit
+    if (item.raw.vatRate !== undefined) doc.value.items[idx].ndsRate = Number(item.raw.vatRate)
+  }
+}
+
+/* ───────────────────────── Выбор бланка ───────────────────────── */
 const TORG_SHEETS = {
   torg12: Torg12Sheet,
   torg2: Torg2Sheet,
@@ -159,7 +304,6 @@ const TORG_OPTIONS = [
 ]
 
 /* ───────────────────────── Расчеты ───────────────────────── */
-
 const computedRows = computed(() => {
   return doc.value.items.map(item => {
     const sumWithoutNds = +(item.quantity * item.price).toFixed(2)
@@ -231,7 +375,6 @@ function handlePrint() {
     return
   }
 
-  // Создаем скрытый фрейм исключительно для печати бланка
   const iframe = document.createElement('iframe')
   iframe.style.position = 'fixed'
   iframe.style.right = '0'
@@ -244,13 +387,11 @@ function handlePrint() {
   const docFrame = iframe.contentWindow?.document
   if (!docFrame) return
 
-  // Определяем ориентацию: ТОРГ-12 и ТОРГ-2 — альбомные, ТОРГ-16 — книжный
   const isLandscape = doc.value.torgType !== 'torg16'
   const pageRule = isLandscape
       ? '@page { size: A4 landscape; margin: 8mm 10mm; }'
       : '@page { size: A4 portrait; margin: 10mm 12mm; }'
 
-  // Копируем все стили приложения во фрейм, чтобы таблица и шрифты выглядели 1-в-1
   const styles = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))
       .map(el => el.outerHTML)
       .join('\n')
@@ -264,6 +405,11 @@ function handlePrint() {
         <title>${doc.value.docNumber ? 'Документ №' + doc.value.docNumber : 'Печать'}</title>
         ${styles}
         <style>
+.molo-dir-modal-host {
+  position: relative;
+  z-index: 10100;
+}
+
           ${pageRule}
           html, body {
             margin: 0 !important;
@@ -289,7 +435,6 @@ function handlePrint() {
   `)
   docFrame.close()
 
-  // Даем фрейму отрендерить шрифты и вызываем диалог печати
   setTimeout(() => {
     iframe.contentWindow?.focus()
     iframe.contentWindow?.print()
@@ -299,9 +444,38 @@ function handlePrint() {
   }, 250)
 }
 
+// Справочники грузим один раз (раньше — на каждое изменение modelValue, т.е. на каждый символ)
+onMounted(async () => {
+  allDirectoryItems.value = await fetchAllDirectories()
+})
 </script>
+
 <template>
   <div class="primary-doc-tool" :class="[`mode-${doc.torgType}`]">
+    <!-- Саджест подсказок прямо под инпутом -->
+    <DirectorySuggestDropdown
+        ref="suggestDropdownRef"
+        :visible="suggestVisible"
+        :x="suggestCoords.x"
+        :y="suggestCoords.y"
+        :query="suggestQuery"
+        :items="allDirectoryItems"
+        @select="handleSuggestSelect"
+        @close="suggestVisible = false"
+    />
+
+    <!-- Модалка выбора при нескольких кандидатах -->
+    <!-- Телепортируем в body: внутри .primary-doc-tool (overflow:hidden) и окна приложения модалка обрезается -->
+    <Teleport to="body">
+      <div class="molo-dir-modal-host">
+        <DirectoryResolutionModal
+            v-model="resolutionModalOpen"
+            :candidates="resolutionCandidates"
+            @select="handleModalSelect"
+        />
+      </div>
+    </Teleport>
+
     <!-- Верхний тулбар -->
     <header class="doc-toolbar no-print">
       <div class="toolbar-left">
@@ -338,13 +512,11 @@ function handlePrint() {
               <UIMoloInput v-model="doc.docDate" type="date" t-label="Дата" compact />
             </div>
 
-            <!-- Доп. поля для ТОРГ-16 (Причина списания) -->
             <div v-if="doc.torgType === 'torg16'" class="stacked">
               <UIMoloInput v-if="doc.extra" v-model="doc.extra.cause" t-label="Причина списания" compact />
               <UIMoloInput v-if="doc.extra" v-model="doc.extra.fromWarehouse" t-label="Склад списания" compact />
             </div>
 
-            <!-- Доп. поля для ТОРГ-2 (Сопроводительные документы) -->
             <div v-else-if="doc.torgType === 'torg2'" class="grid-2">
               <UIMoloInput v-if="doc.extra" v-model="doc.extra.waybillNumber" t-label="№ ТТН / Накладной" compact />
               <UIMoloInput v-model="doc.contractNumber" t-label="№ Договора" compact />
@@ -360,11 +532,17 @@ function handlePrint() {
         <!-- Поставщик / Организация -->
         <UIMoloSection>
           <template #header>
-            <span>{{ doc.torgType === 'torg16' ? 'Организация' : 'Поставщик' }}</span>
+            <span>{{ doc.torgType === 'torg16' ? 'Организация' : 'Поставщик' }} ({@ для поиска)</span>
           </template>
           <template #main>
             <div class="stacked">
-              <UIMoloInput v-model="doc.supplier.name" t-label="Наименование" compact />
+              <UIMoloInput
+                  v-model="doc.supplier.name"
+                  t-label="Наименование"
+                  compact
+                  @input="onFieldInput($event, applySupplierEntity)"
+                  @keydown="handleFieldKeyDown"
+              />
               <div class="grid-2">
                 <UIMoloInput v-model="doc.supplier.inn" t-label="ИНН" compact />
                 <UIMoloInput v-model="doc.supplier.kpp" t-label="КПП" compact />
@@ -373,18 +551,34 @@ function handlePrint() {
                 <UIMoloInput v-model="doc.supplier.okpo" t-label="ОКПО" compact />
                 <UIMoloInput v-model="doc.supplier.address" t-label="Адрес" compact />
               </div>
+              <div class="grid-2">
+                <UIMoloInput
+                    v-model="doc.supplier.bankName"
+                    t-label="Банк"
+                    compact
+                    @input="onFieldInput($event, (v) => doc.supplier.bankName = v)"
+                    @keydown="handleFieldKeyDown"
+                />
+                <UIMoloInput v-model="doc.supplier.bik" t-label="БИК" compact />
+              </div>
             </div>
           </template>
         </UIMoloSection>
 
-        <!-- Плательщик / Получатель (Не нужен при списании ТОРГ-16) -->
+        <!-- Покупатель / Получатель -->
         <UIMoloSection v-if="doc.torgType !== 'torg16'">
           <template #header>
-            <span>Покупатель / Грузополучатель</span>
+            <span>Покупатель / Грузополучатель ({@ для поиска)</span>
           </template>
           <template #main>
             <div class="stacked">
-              <UIMoloInput v-model="doc.payer.name" t-label="Наименование" compact />
+              <UIMoloInput
+                  v-model="doc.payer.name"
+                  t-label="Наименование"
+                  compact
+                  @input="onFieldInput($event, applyPayerEntity)"
+                  @keydown="handleFieldKeyDown"
+              />
               <div class="grid-2">
                 <UIMoloInput v-model="doc.payer.inn" t-label="ИНН" compact />
                 <UIMoloInput v-model="doc.payer.kpp" t-label="КПП" compact />
@@ -397,10 +591,10 @@ function handlePrint() {
           </template>
         </UIMoloSection>
 
-        <!-- Товарная номенклатура -->
+        <!-- Номенклатура -->
         <UIMoloSection>
           <template #header>
-            <span>Товары ({{ doc.items.length }})</span>
+            <span>Товары ({{ doc.items.length }}) · Введите {@ в название</span>
           </template>
           <template #main>
             <div class="items-list">
@@ -410,7 +604,13 @@ function handlePrint() {
                   <button class="remove-btn" title="Удалить" @click="removeItem(idx)">✕</button>
                 </div>
 
-                <UIMoloInput v-model="item.name" placeholder="Наименование товара" compact />
+                <UIMoloInput
+                    v-model="item.name"
+                    placeholder="Наименование товара (напр: {@Товары)"
+                    compact
+                    @input="onFieldInput($event, (name, it) => applyItemEntity(idx, name, it))"
+                    @keydown="handleFieldKeyDown"
+                />
 
                 <div class="grid-3">
                   <UIMoloInput v-model.number="item.quantity" type="number" t-label="По док-там" compact />
@@ -422,10 +622,9 @@ function handlePrint() {
                   </UIMoloSelect>
                 </div>
 
-                <!-- Специфика для ТОРГ-2: Расхождения -->
                 <div v-if="doc.torgType === 'torg2'" class="grid-2">
                   <UIMoloInput v-model.number="item.factQuantity" type="number" t-label="Фактически принято" compact />
-                  <UIMoloInput v-model="item.defectDescription" placeholder="Причина расхождения / брак" t-label="Дефект" compact />
+                  <UIMoloInput v-model="item.defectDescription" placeholder="Причина расхождения" t-label="Дефект" compact />
                 </div>
               </div>
             </div>
@@ -435,23 +634,39 @@ function handlePrint() {
         <!-- Ответственные лица и комиссия -->
         <UIMoloSection>
           <template #header>
-            <span>Ответственные лица / Комиссия</span>
+            <span>Ответственные лица ({@Сотрудники)</span>
           </template>
           <template #main>
             <div class="stacked">
-              <UIMoloInput v-model="doc.signers.directorName" t-label="Руководитель / Председатель" compact />
-              <UIMoloInput v-model="doc.signers.accountantName" t-label="Главный бухгалтер" compact />
+              <UIMoloInput
+                  v-model="doc.signers.directorName"
+                  t-label="Руководитель / Председатель"
+                  compact
+                  @input="onFieldInput($event, (v) => doc.signers.directorName = v)"
+                  @keydown="handleFieldKeyDown"
+              />
+              <UIMoloInput
+                  v-model="doc.signers.accountantName"
+                  t-label="Главный бухгалтер"
+                  compact
+                  @input="onFieldInput($event, (v) => doc.signers.accountantName = v)"
+                  @keydown="handleFieldKeyDown"
+              />
               <UIMoloInput
                   v-if="doc.torgType === 'torg16'"
                   v-model="doc.signers.responsiblePerson"
-                  t-label="МОЛ (Материально ответственное лицо)"
+                  t-label="МОЛ"
                   compact
+                  @input="onFieldInput($event, (v) => doc.signers.responsiblePerson = v)"
+                  @keydown="handleFieldKeyDown"
               />
               <UIMoloInput
                   v-if="doc.torgType === 'torg2' || doc.torgType === 'torg16'"
                   v-model="doc.signers.commissionMembers"
-                  t-label="Члены комиссии (через запятую)"
+                  t-label="Члены комиссии"
                   compact
+                  @input="onFieldInput($event, (v) => doc.signers.commissionMembers = v)"
+                  @keydown="handleFieldKeyDown"
               />
             </div>
           </template>
@@ -482,6 +697,7 @@ function handlePrint() {
   background: var(--half_opacity_bg);
   color: #d1d1db;
   overflow: hidden;
+  position: relative;
 }
 
 .doc-toolbar {
@@ -507,11 +723,6 @@ function handlePrint() {
   font-weight: 700;
   padding: 3px 6px;
   border-radius: 4px;
-}
-
-.toolbar-actions {
-  display: flex;
-  gap: 10px;
 }
 
 .doc-workspace {
@@ -577,10 +788,6 @@ function handlePrint() {
   cursor: pointer;
 }
 
-.icon-btn {
-  padding: 2px 6px;
-}
-
 .doc-preview-viewport {
   flex: 1;
   background: var(--half_opacity_bg);
@@ -594,20 +801,16 @@ function handlePrint() {
   body * {
     visibility: hidden;
   }
-
   .no-print {
     display: none !important;
   }
-
   .doc-preview-viewport {
     padding: 0 !important;
     background: white !important;
   }
-
   .printable-sheet, .printable-sheet * {
     visibility: visible;
   }
-
   .printable-sheet {
     position: absolute;
     left: 0;
@@ -620,7 +823,6 @@ function handlePrint() {
 }
 </style>
 
-<!-- Глобальная ориентация страниц на печати: альбомная для ТОРГ-12 и ТОРГ-2, книжная для ТОРГ-16 -->
 <style>
 @media print {
   .mode-torg12 @page,
@@ -628,7 +830,6 @@ function handlePrint() {
   size: A4 landscape;
   margin: 10mm;
 }
-
   .mode-torg16 @page {
   size: A4 portrait;
   margin: 12mm;

@@ -6,6 +6,7 @@ import { useLogger } from '~/composables/useLogger'
 import { useNotifications } from '~/composables/useNotifications'
 import { useWindowManager } from '~/composables/window/useWindowManager'
 import { useAppStore } from '~~/stores/appStore'
+import PythonConsole from '~/components/UI/MoloPythonConsole.vue'
 const props = defineProps<{
   moduleData?: any
   moduleId?: string
@@ -31,6 +32,8 @@ const {
 const { fetchFullModuleData } = useModuleService()
 const error = ref<string | null>(null)
 const isLoadingModule = ref(false)
+// Python-модули не компилируются в Vue-компонент — вместо этого показываем консоль запуска
+const pyModule = ref<any>(null)
 const { addLog } = useLogger('Загрузчик модуля')
 const appStore = useAppStore()
 const getEnterpriseId = (): string | null => {
@@ -50,6 +53,7 @@ const getModuleId = (): string | null => {
 }
 async function loadModule() {
   error.value = null
+  pyModule.value = null
   let fullData = props.moduleData
 
   const hasCode = fullData?.code && String(fullData.code).trim().length > 0
@@ -87,6 +91,18 @@ async function loadModule() {
   }
   const files = [...(fullData.files || []), ...(props.additionalFiles || [])]
   const deps = fullData.dependencies || {}
+  if (fullData.format === 'py') {
+    pyModule.value = {
+      id: fullData._id || resolvedId,
+      name: fullData.name,
+      fileName: fullData.fileName,
+      code,
+      files,
+      dependencies: deps
+    }
+    emit('loaded', true)
+    return
+  }
   addLog('info', `Компилирую модуль "${fullData.name || 'Без названия'}"`)
   // НОВОЕ: передаём version — по нему (+ хэшу code/files/deps) compileModule
   // проверяет кэш скомпилированных компонентов. Если модуль не менялся
@@ -139,6 +155,15 @@ onUnmounted(() => {
       <UIMoloLoaders wndLoader/>
       <span>Компиляция модуля...</span>
     </div>
+    <PythonConsole
+        v-else-if="pyModule"
+        :key="pyModule.id"
+        :code="pyModule.code"
+        :file-name="pyModule.fileName"
+        :files="pyModule.files"
+        :dependencies="pyModule.dependencies"
+        :module-name="pyModule.name"
+    />
     <component
         v-else-if="compiledComponent"
         :is="compiledComponent"

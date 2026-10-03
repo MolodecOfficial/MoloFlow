@@ -247,3 +247,23 @@ export const restartScript = async (
     runningModules.set(moduleId, result)
     return result
 }
+
+export const startPythonDaemon = async (moduleId: string, enterpriseId: string) => {
+    try {
+        const res = await $fetch<{ success: boolean; pid: number; message: string }>('/api/py/daemon', {
+            method: 'POST',
+            body: { action: 'start', moduleId, enterpriseId }
+        })
+        console.log(`[Python Daemon] ${res.message}`)
+        return res
+    } catch (e: any) {
+        console.error(`[Python Daemon Error] Ошибка автозапуска бота:`, e)
+    }
+}
+
+export const stopPythonDaemon = async (moduleId: string) => {
+    return await $fetch('/api/py/daemon', {
+        method: 'POST',
+        body: { action: 'stop', moduleId }
+    })
+}

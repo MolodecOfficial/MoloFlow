@@ -67,16 +67,13 @@ export function usePinnedItems() {
     /** Синхронизировать data пина по windowKey (двусторонняя связь) */
     function syncDataByWindowKey(windowKey: string, patch: Record<string, any>) {
         const hasPin = pinnedItems.value.some(i => i.windowKey === windowKey)
-        if (!hasPin) {
-            console.log('[usePinnedItems] syncDataByWindowKey: NO pin found for key=', windowKey)
-            return
-        }
+        if (!hasPin) return // Никакого спама в лог
+
         pinnedItems.value = pinnedItems.value.map(i =>
             i.windowKey === windowKey
                 ? { ...i, data: { ...i.data, ...patch, _syncedAt: Date.now() } }
                 : i
         )
-        console.log('[usePinnedItems] syncDataByWindowKey DONE key=', windowKey, 'dataKeys=', Object.keys(patch))
     }
 
     return {

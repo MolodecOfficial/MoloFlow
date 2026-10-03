@@ -526,7 +526,6 @@ function deleteUser() {
   position: relative;
   flex: 1;
   min-height: calc(100vh - 160px);
-  box-sizing: border-box;
   overflow: hidden;
 }
 

@@ -7,6 +7,7 @@ import { useWindowResize } from '~/composables/window/useWindowResize'
 import { ref, computed, onMounted, onUnmounted, watch, provide } from 'vue'
 import { useAppStore } from '~~/stores/appStore'
 import { getAllThemes, getAllButtonStyles, THEME_STORAGE_KEY, BUTTON_STYLE_STORAGE_KEY } from '~~/types/window-themes'
+import { normalizeUrl, extractHostname } from '~/utils/urlHelper'
 
 const appStore = useAppStore()
 
@@ -29,7 +30,8 @@ const emit = defineEmits<{
   'maximize': []
 }>()
 
-const { openWindow } = useWindowManager()
+const { openWindow, updateWindowData, updateWindowTitle } = useWindowManager()
+
 provide('openWindow', (key: string, data?: any, options?: OpenWindowOptions) => openWindow(key, data, options))
 
 const containerRef = ref<HTMLElement>()
@@ -47,6 +49,61 @@ const refreshKey = ref(0)
 
 function refreshContent() {
   refreshKey.value++
+}
+
+const isEditingUrl = ref(false)
+const urlInput = ref('')
+const urlInputRef = ref<HTMLInputElement>()
+
+function startEditUrl() {
+  urlInput.value = props.window?.data?.url || ''
+  isEditingUrl.value = true
+  nextTick(() => {
+    urlInputRef.value?.focus()
+    urlInputRef.value?.select()
+  })
+}
+
+function cancelEditUrl() {
+  isEditingUrl.value = false
+}
+
+function submitUrl() {
+  const rawTarget = urlInput.value.trim()
+  if (!rawTarget) {
+    cancelEditUrl()
+    return
+  }
+
+  const target = normalizeUrl(rawTarget)
+
+  if (props.window) {
+    if (!props.window.data) {
+      props.window.data = {}
+    }
+
+    props.window.data.url = target
+    props.window.data._updated = Date.now()
+
+    if (props.window.id) {
+      updateWindowData(props.window.id, { url: target })
+      const host = extractHostname(target)
+      updateWindowTitle(props.window.id, `Web: ${host}`)
+    }
+
+    refreshContent()
+  }
+
+  isEditingUrl.value = false
+}
+
+// Быстрое открытие в реальной новой вкладке браузера при зажатом Ctrl/Cmd
+function handleBadgeClick(e: MouseEvent) {
+  if ((e.ctrlKey || e.metaKey) && props.window?.data?.url) {
+    window.open(props.window.data.url, '_blank', 'noopener,noreferrer')
+    return
+  }
+  startEditUrl()
 }
 
 const minimizeWithAnimation = () => {
@@ -304,8 +361,33 @@ watch(() => props.window?.zIndex, (newZIndex) => {
         <div class="window-title">{{ props.window?.title || 'Окно' }}</div>
 
         <!-- Служебный ключ для Управляющего и Администратора -->
-        <div class="header-logger" v-if="role === 'Управляющий' || role === 'Администратор'">
-          <span>{{ props.window?.key }}</span>
+        <div
+            class="header-logger"
+            v-if="role === 'Управляющий' || role === 'Администратор'"
+            @mousedown.stop
+        >
+          <template v-if="!isEditingUrl">
+   <span
+       class="logger-label"
+       @click="handleBadgeClick"
+       :title="props.window?.data?.url
+    ? 'Клик: редактировать | Ctrl+Клик: открыть в новой вкладке (' + props.window.data.url + ')'
+    : 'Кликните, чтобы задать URL'"
+   >
+  {{ props.window?.data?.url ? '🔗 ' + props.window?.data?.url : props.window?.key }}
+</span>
+          </template>
+          <template v-else>
+            <input
+                ref="urlInputRef"
+                v-model="urlInput"
+                class="header-url-input"
+                placeholder="https://example.com"
+                @keydown.enter.prevent="submitUrl"
+                @keydown.esc.prevent="cancelEditUrl"
+                @blur="cancelEditUrl"
+            />
+          </template>
         </div>
 
         <div class="window-controls">
@@ -497,13 +579,24 @@ watch(() => props.window?.zIndex, (newZIndex) => {
 .window-content {
   flex: 1;
   overflow: hidden;
-  overflow-y: auto;
   position: relative;
+  min-height: 0;
+  display: flex;        /* Добавляем */
+  flex-direction: column;/* Добавляем */
+}
+
+.window-content > .content {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
   min-height: 0;
 }
 
 .header-logger {
   display: flex;
+  cursor: pointer;
   font-size: 10px;
   background: rgba(0, 0, 0, 0.3);
   padding: 4px 10px;
@@ -514,6 +607,34 @@ watch(() => props.window?.zIndex, (newZIndex) => {
   margin: 0 8px;
   backdrop-filter: blur(2px);
   border: 1px solid var(--half_opacity_border);
+}
+.header-logger {
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.header-logger:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(91, 141, 239, 0.6);
+}
+
+.logger-label {
+  display: inline-block;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.header-url-input {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #fff;
+  font-family: inherit;
+  font-size: 11px;
+  width: 200px;
+  padding: 0;
 }
 
 .header-logger span {

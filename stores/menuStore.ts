@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { useAppStore } from './appStore'
+import { buildAuthHeaders, resolveUserId } from '~~/server/utils/authContext'
 
 export const useMenuStore = defineStore('menu', () => {
     const appStore = useAppStore()
@@ -42,20 +43,16 @@ export const useMenuStore = defineStore('menu', () => {
             return
         }
 
-        let currentUserId = ''
-        try {
-            const rawUser = localStorage.getItem('user')
-            if (rawUser) {
-                currentUserId = JSON.parse(rawUser)?._id || ''
-            }
-        } catch {}
+        appStore.loadUserFromStorage()
+        const currentUserId = resolveUserId(appStore.currentUser?._id)
 
         try {
             const data: any = await $fetch('/api/menu/location', {
                 query: {
                     enterpriseId: entId,
                     userId: currentUserId || undefined
-                }
+                },
+                headers: buildAuthHeaders(currentUserId)
             })
             locations.value = data.locations || []
         } catch (e) {
@@ -85,6 +82,7 @@ export const useMenuStore = defineStore('menu', () => {
     ) => {
         await $fetch('/api/menu/module', {
             method: 'POST',
+            headers: buildAuthHeaders(appStore.currentUser?._id),
             body: {
                 enterpriseId,
                 groupId,

@@ -1,9 +1,9 @@
-    export interface RawModuleData {
+export interface RawModuleData {
     _id: string
     name: string
     fileName?: string
     description?: string
-    format: 'vue' | 'js' | 'ts'
+    format: 'vue' | 'js' | 'ts' | 'py'
     version?: number
     isPublic?: boolean
     isOfficial?: boolean

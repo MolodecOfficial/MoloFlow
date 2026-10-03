@@ -1,0 +1,21 @@
+<svg viewBox="0 0 32 32" width="32" height="32" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Базовый градиент подложки -->
+    <linearGradient id="vue-bg" x1="2" y1="2" x2="30" y2="30" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#192520" />
+      <stop offset="1" stop-color="#111714" />
+    </linearGradient>
+    <!-- Зеленый фирменный цвет Vue -->
+    <linearGradient id="vue-green" x1="6" y1="8" x2="26" y2="24" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#42d392" />
+      <stop offset="1" stop-color="#2bb277" />
+    </linearGradient>
+  </defs>
+
+  <!-- Единая плитка 26x26 со скруглением 7px -->
+  <rect x="3" y="3" width="26" height="26" rx="7" fill="url(#vue-bg)" stroke="#42d392" stroke-opacity="0.3" stroke-width="1.2" />
+
+  <!-- Фирменный шеврон Vue -->
+  <path d="M16 23.5L7 8H10.5L16 17.5L21.5 8H25L16 23.5Z" fill="url(#vue-green)" />
+  <path d="M16 18.5L10.8 9.5H13.8L16 13.5L18.2 9.5H21.2L16 18.5Z" fill="#35495e" />
+</svg>

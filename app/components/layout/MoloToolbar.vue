@@ -1,21 +1,21 @@
 <script setup lang="ts">
 import { useWindowManager } from '~/composables/window/useWindowManager'
+import MoloSticker from '~/components/ui/MoloSticker.vue'
 
 const { openWindow } = useWindowManager()
 
 const tools = [
-  { key: 'dev:json', icon: '{ }', label: 'JSON', accent: '#5b8def' },
-  { key: 'dev:regex', icon: '.*', label: 'Regex', accent: '#8b5cf6' },
-  { key: 'dev:encode', icon: '⇄', label: 'Encode/Decode', accent: '#33d17a' },
-  { key: 'dev:notes', icon: '📝', label: 'Заметки', accent: '#d29922' },
-  { key: 'dev:calculator', icon: '=', label: 'Калькулятор', accent: '#22b8cf' },
-  { key: 'dev:clock', icon: '🕐', label: 'Часы', accent: '#f97316' },
-  { key: 'dev:calendar', icon: '📅', label: 'Календарь', accent: '#ef5b8d' },
+  { key: 'dev:json', sticker: 'dev-json', label: 'JSON', accent: '#5b8def' },
+  { key: 'dev:regex', sticker: 'dev-regex', label: 'Regex', accent: '#8b5cf6' },
+  { key: 'dev:encode', sticker: 'dev-encode', label: 'Encode/Decode', accent: '#33d17a' },
+  { key: 'dev:notes', sticker: 'dev-notes', label: 'Заметки', accent: '#d29922' },
+  { key: 'dev:calculator', sticker: 'dev-calculator', label: 'Калькулятор', accent: '#22b8cf' },
+  { key: 'dev:clock', sticker: 'dev-clock', label: 'Часы', accent: '#f97316' },
+  { key: 'dev:calendar', sticker: 'dev-calendar', label: 'Календарь', accent: '#ef5b8d' },
 ]
 
 const openTool = (tool: typeof tools[number]) => {
   openWindow(tool.key)
-
 }
 </script>
 
@@ -39,13 +39,13 @@ const openTool = (tool: typeof tools[number]) => {
             :key="tool.key"
             class="tool-btn"
             :style="{ '--tool-color': tool.accent }"
-            :title="`${tool.label} — ${tool.description}`"
+            :title="tool.label"
             @click="openTool(tool)"
         >
           <span class="tool-glow"></span>
 
           <span class="tool-icon">
-            {{ tool.icon }}
+            <MoloSticker :name="tool.sticker" :size="16" />
           </span>
         </button>
       </div>
@@ -68,30 +68,22 @@ const openTool = (tool: typeof tools[number]) => {
 /* Основная glass-панель */
 .dev-toolbar {
   position: relative;
-
   display: flex;
   align-items: center;
-
   min-height: 22px;
-
-  padding: 6px 8px 6px 7px;
-
+  padding: 5px 8px;
   background: var(--half_opacity_bg);
   border: 1px solid var(--half_opacity_border);
   border-radius: 999px;
-
   color: white;
-
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
-
   transition:
       border-color 0.25s ease,
       background 0.25s ease,
       box-shadow 0.25s ease,
       transform 0.2s ease;
 }
-
 
 /* =========================================================
    BRAND
@@ -101,9 +93,7 @@ const openTool = (tool: typeof tools[number]) => {
   display: flex;
   align-items: center;
   gap: 9px;
-
-  padding: 0 4px 0 4px;
-
+  padding: 0 4px;
   user-select: none;
 }
 
@@ -111,7 +101,6 @@ const openTool = (tool: typeof tools[number]) => {
   display: flex;
   flex-direction: column;
   justify-content: center;
-
   line-height: 1;
 }
 
@@ -119,7 +108,6 @@ const openTool = (tool: typeof tools[number]) => {
   font-size: 12px;
   font-weight: 650;
   letter-spacing: 0.15px;
-
   color: rgba(255, 255, 255, 0.94);
 }
 
@@ -129,18 +117,15 @@ const openTool = (tool: typeof tools[number]) => {
 
 .toolbar-divider {
   width: 1px;
-  height: 30px;
-  margin: 0 5px;
-
-  background:
-      linear-gradient(
-          to bottom,
-          transparent,
-          rgba(255, 255, 255, 0.14),
-          transparent
-      );
+  height: 20px;
+  margin: 0 6px;
+  background: linear-gradient(
+      to bottom,
+      transparent,
+      rgba(255, 255, 255, 0.16),
+      transparent
+  );
 }
-
 
 /* =========================================================
    TOOLS DOCK
@@ -149,9 +134,8 @@ const openTool = (tool: typeof tools[number]) => {
 .tools-dock {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
 }
-
 
 /* =========================================================
    TOOL BUTTON
@@ -160,73 +144,44 @@ const openTool = (tool: typeof tools[number]) => {
 .tool-btn {
   --tool-color: #5b8def;
   position: relative;
-
   width: 28px;
   height: 28px;
-
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-
   border: 1px solid var(--half_opacity_border);
-  border-radius: 50px;
-
+  border-radius: 50%;
   background: var(--half_opacity_bg);
-
-  color: rgba(255, 255, 255, 0.82);
-
+  color: rgba(255, 255, 255, 0.85);
   cursor: pointer;
-
   overflow: visible;
-
+  padding: 0;
+  box-sizing: border-box;
   transition:
-      transform 0.18s cubic-bezier(.2, .8, .2, 1),
+      transform 0.18s cubic-bezier(0.2, 0.8, 0.2, 1),
       background 0.2s ease,
       border-color 0.2s ease,
-      color 0.2s ease,
       box-shadow 0.2s ease;
 }
 
 .tool-btn:hover {
-  transform: translateY(-3px);
-
+  transform: translateY(-2px);
   color: white;
-
-  border-color: color-mix(
-      in srgb,
-      var(--tool-color) 65%,
-      white 10%
+  border-color: color-mix(in srgb, var(--tool-color) 65%, white 10%);
+  background: linear-gradient(
+      145deg,
+      color-mix(in srgb, var(--tool-color) 20%, rgba(255, 255, 255, 0.08)),
+      rgba(255, 255, 255, 0.03)
   );
-
-  background:
-      linear-gradient(
-          145deg,
-          color-mix(
-              in srgb,
-              var(--tool-color) 15%,
-              rgba(255, 255, 255, 0.07)
-          ),
-          rgba(255, 255, 255, 0.035)
-      );
-
   box-shadow:
-      0 7px 18px rgba(0, 0, 0, 0.25),
-      0 0 0 3px color-mix(
-          in srgb,
-          var(--tool-color) 13%,
-          transparent
-      ),
-      0 0 16px color-mix(
-          in srgb,
-          var(--tool-color) 18%,
-          transparent
-      );
+      0 6px 14px rgba(0, 0, 0, 0.35),
+      0 0 0 2px color-mix(in srgb, var(--tool-color) 16%, transparent),
+      0 0 12px color-mix(in srgb, var(--tool-color) 24%, transparent);
 }
 
 .tool-btn:active {
-  transform: translateY(-1px) scale(0.94);
+  transform: translateY(0) scale(0.94);
 }
-
 
 /* =========================================================
    TOOL ICON
@@ -235,31 +190,17 @@ const openTool = (tool: typeof tools[number]) => {
 .tool-icon {
   position: relative;
   z-index: 2;
-
   display: flex;
   align-items: center;
   justify-content: center;
-
-  min-width: 22px;
-
-  font-family: 'JetBrains Mono', monospace;
-
-  font-size: 11px;
-  font-weight: 750;
-
-  letter-spacing: -0.7px;
-
-  transition:
-      transform 0.2s ease,
-      color 0.2s ease;
+  width: 100%;
+  height: 100%;
+  transition: transform 0.2s ease;
 }
 
 .tool-btn:hover .tool-icon {
   transform: scale(1.08);
-
-  color: var(--tool-color);
 }
-
 
 /* =========================================================
    TOOL GLOW
@@ -267,21 +208,17 @@ const openTool = (tool: typeof tools[number]) => {
 
 .tool-glow {
   position: absolute;
-  inset: 7px;
-
-  border-radius: 8px;
-
+  inset: 3px;
+  border-radius: 50%;
   background: var(--tool-color);
-
   opacity: 0;
-
-  filter: blur(10px);
-
+  filter: blur(8px);
   transition: opacity 0.25s ease;
+  pointer-events: none;
 }
 
 .tool-btn:hover .tool-glow {
-  opacity: 0.16;
+  opacity: 0.24;
 }
 
 /* =========================================================
@@ -289,17 +226,12 @@ const openTool = (tool: typeof tools[number]) => {
    ========================================================= */
 
 .tool-btn:focus-visible {
-  outline: 2px solid var(--borber-color_main);
+  outline: 2px solid var(--tool-color);
   outline-offset: 2px;
 }
 
-
 /* =========================================================
-   REDUCED MOTION
-   ========================================================= */
-
-/* =========================================================
-   TABLET
+   ADAPTIVE
    ========================================================= */
 
 @media (max-width: 720px) {
@@ -309,18 +241,11 @@ const openTool = (tool: typeof tools[number]) => {
 
   .dev-toolbar {
     width: 100%;
-    max-width: 100%;
-
     justify-content: space-between;
   }
 
-  .toolbar-subtitle,
   .toolbar-divider {
     display: none;
-  }
-
-  .toolbar-brand {
-    padding-right: 5px;
   }
 
   .tools-dock {
@@ -328,31 +253,19 @@ const openTool = (tool: typeof tools[number]) => {
   }
 
   .tool-btn {
-    width: 35px;
-    height: 35px;
+    width: 30px;
+    height: 30px;
   }
 }
-
-
-/* =========================================================
-   SMALL MOBILE
-   ========================================================= */
 
 @media (max-width: 460px) {
   .toolbar-title {
     display: none;
   }
 
-  .toolbar-brand {
-    padding-right: 3px;
-  }
-
-
   .tool-btn {
-    width: 33px;
-    height: 33px;
-    border-radius: 10px;
+    width: 28px;
+    height: 28px;
   }
-
 }
 </style>

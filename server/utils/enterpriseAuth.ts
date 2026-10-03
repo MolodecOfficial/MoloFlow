@@ -1,20 +1,41 @@
-import { H3Event, createError, getHeader, getCookie } from 'h3'
+import { H3Event, createError, getHeader, getCookie, getQuery } from 'h3'
 import { Types } from 'mongoose'
 import jwt from 'jsonwebtoken'
 import { Enterprise, type IEnterpriseMember } from '~~/server/models/enterprise.model'
 import { User } from '~~/server/models/user.model'
+import { PERMISSIONS, ROLE_DEFAULT_PERMISSIONS, type PermissionKey, type UserRole } from '~/types/permissions'
+
+export interface AccessCheckOptions {
+    allowedRoles?: Array<IEnterpriseMember['role']>
+    requiredPermission?: PermissionKey
+}
 
 export async function checkEnterpriseAccess(
     event: H3Event,
     enterpriseId: string,
-    allowedRoles?: Array<IEnterpriseMember['role']>
-): Promise<{ enterprise: any; currentMember: IEnterpriseMember }> {
-    let userId: string | null = event.context.user?._id ? String(event.context.user._id) : null
+    options?: AccessCheckOptions | Array<IEnterpriseMember['role']>
+): Promise<{ enterprise: any; currentMember: IEnterpriseMember; effectiveRole: UserRole }> {
+    // Нормализуем параметры (поддержка старого вызова с массивом ролей и нового с permission)
+    let allowedRoles: Array<IEnterpriseMember['role']> | undefined
+    let requiredPermission: PermissionKey | undefined
+
+    if (Array.isArray(options)) {
+        allowedRoles = options
+    } else if (options) {
+        allowedRoles = options.allowedRoles
+        requiredPermission = options.requiredPermission
+    }
+
+    // 1. Извлекаем ID пользователя
+    let userId: string | null = event.context.user?._id || event.context.user?.id
+        ? String(event.context.user._id || event.context.user.id)
+        : null
+
     const query = getQuery(event)
     if (!userId && query.userId && Types.ObjectId.isValid(String(query.userId))) {
         userId = String(query.userId)
     }
-    // 1. Если context.user не заполнен nuxt-middleware, пробуем прочитать токен из headers/cookies
+
     if (!userId) {
         const authHeader = getHeader(event, 'authorization') || getHeader(event, 'x-enterprise-token')
         const cookieToken = getCookie(event, 'enterprise_token') || getCookie(event, 'token')
@@ -27,7 +48,6 @@ export async function checkEnterpriseAccess(
                 const decoded: any = jwt.verify(rawToken, secret)
                 userId = decoded.userId || decoded._id || decoded.id || null
             } catch {
-                // Если JWT не подписан или это прямой ID/простой токен
                 if (Types.ObjectId.isValid(rawToken)) {
                     userId = rawToken
                 }
@@ -35,7 +55,6 @@ export async function checkEnterpriseAccess(
         }
     }
 
-    // 2. Fallback: заголовок x-user-id (для SPA-клиента)
     if (!userId) {
         const headerUserId = getHeader(event, 'x-user-id')
         if (headerUserId && Types.ObjectId.isValid(headerUserId)) {
@@ -47,25 +66,35 @@ export async function checkEnterpriseAccess(
         throw createError({ statusCode: 401, statusMessage: 'Требуется авторизация (пользователь не найден)' })
     }
 
+    if (!userId) {
+        const rawName = getHeader(event, 'x-user-name')
+        if (rawName) {
+            let name = rawName
+            try { name = decodeURIComponent(rawName) } catch {}
+            const candidates = await User.find({ name }).select('_id').limit(2).lean()
+            // Принимаем только однозначное совпадение
+            if (candidates.length === 1) userId = String(candidates[0]._id)
+        }
+    }
+
     if (!enterpriseId || !Types.ObjectId.isValid(enterpriseId)) {
         throw createError({ statusCode: 400, statusMessage: 'Некорректный ID предприятия' })
     }
 
+    // 2. Ищем предприятие и определяем статус
     const enterprise = await Enterprise.findById(enterpriseId)
     if (!enterprise) {
         throw createError({ statusCode: 404, statusMessage: 'Предприятие не найдено' })
     }
 
-    // Проверяем директора предприятия
     const user = await User.findById(userId).lean()
     const isDirector = enterprise.director && user && (enterprise.director === user.name || enterprise.director === String(user._id))
 
-    // Ищем участника в списке
-    const member = enterprise.members.find(
-        (m) => String(m.userId?._id || m.userId) === String(userId)
+    const member = enterprise.members?.find(
+        (m: any) => String(m.userId?._id || m.userId) === String(userId)
     )
 
-    let memberRole: IEnterpriseMember['role'] = member?.role || 'Сотрудник'
+    let memberRole: UserRole = (member?.role as UserRole) || 'Сотрудник'
     if (isDirector || user?.role === 'Администратор') {
         memberRole = 'Администратор'
     }
@@ -74,15 +103,30 @@ export async function checkEnterpriseAccess(
         throw createError({ statusCode: 403, statusMessage: 'У вас нет доступа к данному предприятию' })
     }
 
-    if (allowedRoles && allowedRoles.length > 0 && !allowedRoles.includes(memberRole)) {
-        throw createError({ statusCode: 403, statusMessage: `Недостаточно прав. Требуется: ${allowedRoles.join(', ')}` })
+    // 3. Проверка действующих ПРАВ (permissions), а не просто названия роли
+    if (memberRole !== 'Администратор') {
+        const userPermissions: PermissionKey[] = ROLE_DEFAULT_PERMISSIONS[memberRole] || []
+
+        if (requiredPermission && !userPermissions.includes(requiredPermission)) {
+            throw createError({
+                statusCode: 403,
+                statusMessage: `Недостаточно прав для выполнения действия. Требуется разрешение: ${requiredPermission}`
+            })
+        }
+
+        if (allowedRoles && allowedRoles.length > 0 && !allowedRoles.includes(memberRole as any)) {
+            throw createError({
+                statusCode: 403,
+                statusMessage: `Недостаточно прав. Требуется роль: ${allowedRoles.join(', ')}`
+            })
+        }
     }
 
     const currentMember: IEnterpriseMember = member || {
         userId: new Types.ObjectId(userId),
-        role: memberRole,
+        role: memberRole as any,
         joinedAt: new Date()
     }
 
-    return { enterprise, currentMember }
+    return { enterprise, currentMember, effectiveRole: memberRole }
 }

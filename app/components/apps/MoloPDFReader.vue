@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, watch, onBeforeUnmount } from 'vue'
 import pdfIcon from '~~/app/assets/icons/pdf.svg'
+import MoloSticker from '~/components/ui/MoloSticker.vue'
+
 const props = defineProps<{
   modelValue?: string | Blob | File
   fileName?: string
@@ -14,7 +16,6 @@ const zoom = ref(100)
 const stampType = ref<'paid' | 'approved' | null>(null)
 const objectUrl = ref<string | null>(null)
 
-// Функция надежной конвертации Base64 в Blob URL
 function base64ToBlobUrl(base64: string): string {
   try {
     const cleanBase64 = base64.includes(',') ? base64.split(',')[1] : base64
@@ -34,19 +35,15 @@ function base64ToBlobUrl(base64: string): string {
 
 const pdfSrc = computed(() => {
   if (!props.modelValue) return ''
-
   if (typeof props.modelValue === 'string') {
     if (props.modelValue.startsWith('http') || props.modelValue.startsWith('blob:')) {
       return props.modelValue
     }
-    // Конвертируем Base64 в Blob URL
     return base64ToBlobUrl(props.modelValue)
   }
-
   if (props.modelValue instanceof Blob) {
     return URL.createObjectURL(props.modelValue)
   }
-
   return ''
 })
 
@@ -111,7 +108,6 @@ function printPdf() {
 
 <template>
   <div class="molo-pdf-viewer">
-    <!-- Тулбар просмотрщика -->
     <header class="pdf-toolbar no-print">
       <div class="toolbar-left">
         <span class="toolbar-badge">PDF РИДЕР</span>
@@ -119,27 +115,31 @@ function printPdf() {
       </div>
 
       <div class="toolbar-center">
-        <button class="tool-btn" title="Отдалить" @click="zoomOut">➖</button>
+        <button class="tool-btn" title="Отдалить" @click="zoomOut">
+          <UIMoloSticker name="zoom-out" :size="16" />
+        </button>
         <span class="zoom-val" @click="resetZoom">{{ zoom }}%</span>
-        <button class="tool-btn" title="Приблизить" @click="zoomIn">➕</button>
+        <button class="tool-btn" title="Приблизить" @click="zoomIn">
+          <UIMoloSticker name="zoom-in" :size="16" />
+        </button>
       </div>
 
       <div class="btn-group">
-        <UIMoloButton class="small" @click="downloadPdf">
-          <img :src="pdfIcon" alt="" style="width: 14px;">
+        <UIMoloButton class="small icon-action-btn" title="Скачать PDF" @click="downloadPdf">
+          <UIMoloSticker name="download" :size="16" />
         </UIMoloButton>
-        <UIMoloButton class="confirm small" @click="printPdf">Печать</UIMoloButton>
+        <UIMoloButton class="confirm small icon-action-btn" title="Печать" @click="printPdf">
+          <UIMoloSticker name="print" :size="16" />
+        </UIMoloButton>
       </div>
     </header>
 
-    <!-- Основная область с PDF и наложением штампов -->
     <div class="pdf-container">
       <div
           v-if="pdfSrc"
           class="pdf-wrapper"
           :style="{ transform: `scale(${zoom / 100})`, transformOrigin: 'top center' }"
       >
-        <!-- Интерактивный штамп -->
         <div v-if="stampType" class="document-stamp" :class="stampType">
           <div class="stamp-inner">
             <span class="stamp-org">ООО «МОЛОФЛОУ»</span>
@@ -156,7 +156,7 @@ function printPdf() {
       </div>
 
       <div v-else class="pdf-empty">
-        <div class="empty-icon">📄</div>
+        <UIMoloSticker name="folder-open" :size="48" glow />
         <h3>PDF-файл не загружен</h3>
         <p>Выберите файл с компьютера или перетащите его в рабочую область</p>
         <UIMoloButton class="confirm small" @click="triggerUpload">Выбрать PDF-файл</UIMoloButton>
@@ -225,14 +225,11 @@ function printPdf() {
 .tool-btn {
   background: none;
   border: none;
-  color: #aaa;
   cursor: pointer;
-  padding: 2px 6px;
-  font-size: 12px;
-}
-
-.tool-btn:hover {
-  color: #fff;
+  padding: 2px 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .zoom-val {
@@ -242,10 +239,12 @@ function printPdf() {
   text-align: center;
 }
 
-.toolbar-right {
-  display: flex;
+.icon-action-btn {
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
+  gap: 4px;
+  padding: 4px 8px;
 }
 
 .pdf-container {
@@ -284,11 +283,6 @@ function printPdf() {
   color: #6a6a7a;
   height: 100%;
   gap: 12px;
-}
-
-.empty-icon {
-  font-size: 48px;
-  opacity: 0.4;
 }
 
 .document-stamp {

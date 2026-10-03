@@ -12,7 +12,7 @@ const moduleFileSchema = new mongoose.Schema({
     },
     format: {
         type: String,
-        enum: ['js', 'ts', 'vue', 'css', 'scss', 'json'],
+        enum: ['js', 'ts', 'vue', 'py', 'css', 'scss', 'json'],
         required: true
     },
     code: {
@@ -49,7 +49,7 @@ const dynamicModuleSchema = new mongoose.Schema({
     format: {
         type: String,
         required: [true, 'Выберите формат файла!'],
-        enum: ['js', 'ts', 'vue'],
+        enum: ['js', 'ts', 'vue', 'py'],
     },
     code: {
         type: String,

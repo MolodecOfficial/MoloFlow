@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import {useUserStore} from "~~/stores/userStore";
-import QRCode from 'qrcode';
+import { useAppStore } from '~~/stores/appStore'
+import QRCode from 'qrcode'
 
 const selected = ref('')
 const statusMessage = ref('')
@@ -20,7 +20,8 @@ const twoFactorSecret = ref('')
 const twoFactorQR = ref('')
 const isFirstTime = ref(false)
 
-const userStore = useUserStore()
+// Единый системный стор вместо устаревшего userStore
+const appStore = useAppStore()
 
 const pageTitle = computed(() =>
     selected.value ? `Вход в ${selected.value}` : 'Вход в систему'
@@ -31,34 +32,33 @@ useHead({
 })
 
 const loginOptions = [
-  {value: '', label: 'Выберите вход', disabled: true},
-  {value: 'Предприятие', label: 'Предприятие'},
-  {value: 'Склад', label: 'Склад'},
-  {value: 'Бухгалтерия', label: 'Бухгалтерия'}
+  { value: '', label: 'Выберите вход', disabled: true },
+  { value: 'Предприятие', label: 'Предприятие' },
+  { value: 'Склад', label: 'Склад' },
+  { value: 'Бухгалтерия', label: 'Бухгалтерия' }
 ]
 
-function selectOption(option: {value: string, label: string, disabled?: boolean}) {
-  if (option.disabled) return;
-  selected.value = option.value;
-  dropdownOpen.value = false;
+function selectOption(option: { value: string; label: string; disabled?: boolean }) {
+  if (option.disabled) return
+  selected.value = option.value
+  dropdownOpen.value = false
 }
 
 function handleClickOutside(event: MouseEvent) {
-  const target = event.target as HTMLElement;
+  const target = event.target as HTMLElement
   if (!target.closest('.custom-dropdown')) {
-    dropdownOpen.value = false;
+    dropdownOpen.value = false
   }
 }
 
-
-
 onMounted(() => {
-  document.addEventListener('click', handleClickOutside);
-});
+  document.addEventListener('click', handleClickOutside)
+  getUser()
+})
 
 onUnmounted(() => {
-  document.removeEventListener('click', handleClickOutside);
-});
+  document.removeEventListener('click', handleClickOutside)
+})
 
 // Возврат к форме входа
 function backToLogin() {
@@ -69,76 +69,76 @@ function backToLogin() {
 
 async function loginUser() {
   const userData = {
-    name: name.value,
+    name: name.value.trim(),
     password: password.value,
     loginType: selected.value
-  };
+  }
 
   if (!userData.name || !userData.password || !userData.loginType) {
-    statusMessage.value = 'Заполните все поля';
-    return;
+    statusMessage.value = 'Заполните все поля'
+    return
   }
 
   try {
-    loading.value = true;
-    statusMessage.value = 'Произвожу вход...';
+    loading.value = true
+    statusMessage.value = 'Произвожу вход...'
 
     const response = await fetch('/api/users/login', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify(userData)
-    });
+    })
 
-    const data = await response.json();
+    const data = await response.json()
 
     if (response.ok) {
-      userId.value = data.userId;
-      isFirstTime.value = data.isFirstTime || false;
+      userId.value = data.userId
+      isFirstTime.value = Boolean(data.isFirstTime)
 
       if (data.isFirstTime) {
-        // Первый вход - показываем QR код для настройки
-        twoFactorSecret.value = data.secret;
-        const otpauth = `otpauth://totp/MoloFlow:${name.value}?secret=${data.secret}&issuer=MoloFlow`;
-        twoFactorQR.value = await QRCode.toDataURL(otpauth);
-        step.value = 'setup-2fa';
-        statusMessage.value = 'Отсканируйте QR-код в Google Authenticator';
+        // Первый вход - показываем QR код для настройки TOTP
+        twoFactorSecret.value = data.secret
+        const otpauth = `otpauth://totp/MoloFlow:${name.value}?secret=${data.secret}&issuer=MoloFlow`
+        twoFactorQR.value = await QRCode.toDataURL(otpauth)
+        step.value = 'setup-2fa'
+        statusMessage.value = 'Отсканируйте QR-код в Google Authenticator'
       } else {
-        // Обычный вход - просим код
-        step.value = 'verify-2fa';
-        statusMessage.value = '';
+        // Обычный вход - переход к вводу 6-значного кода
+        step.value = 'verify-2fa'
+        statusMessage.value = ''
       }
     } else {
-      statusMessage.value = data.message || 'Ошибка при входе';
+      statusMessage.value = data.message || 'Ошибка при входе'
     }
   } catch (error) {
-    console.error('Ошибка:', error);
-    statusMessage.value = 'Произошла ошибка при входе';
+    console.error('Ошибка входа:', error)
+    statusMessage.value = 'Произошла ошибка при входе'
   } finally {
-    loading.value = false;
+    loading.value = false
   }
 }
 
 async function verify2FA() {
   if (!verificationCode.value || verificationCode.value.length !== 6) {
-    statusMessage.value = 'Введите 6-значный код';
-    return;
+    statusMessage.value = 'Введите 6-значный код'
+    return
   }
 
   if (!/^\d+$/.test(verificationCode.value)) {
-    statusMessage.value = 'Код должен содержать только цифры';
-    return;
+    statusMessage.value = 'Код должен содержать только цифры'
+    return
   }
 
   try {
-    loading.value = true;
-    statusMessage.value = 'Проверяю код...';
+    loading.value = true
+    statusMessage.value = 'Проверяю код...'
 
     const response = await fetch('/api/users/2fa-login', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify({
         userId: userId.value,
@@ -146,69 +146,66 @@ async function verify2FA() {
         loginType: selected.value,
         isFirstTime: isFirstTime.value
       })
-    });
+    })
 
-    const data = await response.json();
+    const data = await response.json()
 
     if (response.ok) {
-      userStore.setUser({
+      // Сохраняем в единый appStore с гарантированным _id
+      appStore.setUser({
+        _id: data.user._id || userId.value,
         name: data.user.name,
-        role: data.user.role
+        role: data.user.role,
+        email: data.user.email,
+        phone: data.user.phone
       })
 
-      localStorage.setItem('lastLoginType', selected.value);
+      localStorage.setItem('lastLoginType', selected.value)
 
-      statusMessage.value = `Успешно, ${name.value}`;
-      setTimeout(() => router.push(
-          selected.value === 'Бухгалтерия' ? '/accountancy' :
-              selected.value === 'Склад' ? '/storage' :
-                  selected.value === 'Предприятие' ? '/enterprise' : '/'
-      ), 1500);
+      statusMessage.value = `Успешно, ${name.value}`
+      setTimeout(() => {
+        router.push(
+            selected.value === 'Бухгалтерия' ? '/accountancy' :
+                selected.value === 'Склад' ? '/storage' :
+                    selected.value === 'Предприятие' ? '/enterprise' : '/'
+        )
+      }, 1500)
     } else {
-      statusMessage.value = data.message || 'Неверный код';
+      statusMessage.value = data.message || 'Неверный код'
     }
   } catch (error) {
-    console.error('Ошибка:', error);
-    statusMessage.value = 'Произошла ошибка при проверке кода';
+    console.error('Ошибка 2FA:', error)
+    statusMessage.value = 'Произошла ошибка при проверке кода'
   } finally {
-    loading.value = false;
+    loading.value = false
   }
 }
 
-async function getUser() {
-  checkingAuth.value = true;
-  const storageUser = localStorage.getItem('user')
-  const lastLoginType = localStorage.getItem('lastLoginType')
+function getUser() {
+  checkingAuth.value = true
 
-  if (storageUser) {
-    try {
-      const user = JSON.parse(storageUser)
-      storageName.value = user.name
-      console.log("Текущий пользователь в хранилище: " + user.name)
+  // Синхронизируем пользователя через appStore
+  const hasUser = appStore.loadUserFromStorage()
+  const lastLoginType = typeof window !== 'undefined' ? localStorage.getItem('lastLoginType') : null
 
-      if (lastLoginType) {
-        console.log("Последний тип входа: " + lastLoginType)
-        setTimeout(() => {
-          router.push(
-              lastLoginType === 'Бухгалтерия' ? '/accountancy' :
-                  lastLoginType === 'Склад' ? '/storage' :
-                      lastLoginType === 'Предприятие' ? '/enterprise' : '/'
-          )
-        }, 2500)
-      }
-    } catch (error) {
-      console.error(error)
-    } finally {
-      checkingAuth.value = false;
+  if (hasUser && appStore.currentUser) {
+    storageName.value = appStore.currentUser.name
+
+    if (lastLoginType) {
+      setTimeout(() => {
+        router.push(
+            lastLoginType === 'Бухгалтерия' ? '/accountancy' :
+                lastLoginType === 'Склад' ? '/storage' :
+                    lastLoginType === 'Предприятие' ? '/enterprise' : '/'
+        )
+      }, 2500)
+    } else {
+      checkingAuth.value = false
     }
   } else {
-    checkingAuth.value = false;
+    checkingAuth.value = false
   }
 }
-
-onMounted(() => {
-  getUser()
-})
 </script>
 
 <template>
