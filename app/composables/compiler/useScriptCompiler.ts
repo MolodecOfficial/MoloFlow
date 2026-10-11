@@ -24,7 +24,7 @@ const transpileTypeScript = (code: string): string => {
 // Создание изолированного контекста выполнения
 const createSandboxContext = (moduleName?: string) => {
     // Устанавливаем глобальную переменную с именем модуля
-    if (typeof window !== 'undefined') {
+    if (import.meta.client) {
         (window as any).__currentModuleName = moduleName
     }
 
@@ -134,7 +134,7 @@ export const executeScript = async (
             }
 
             // Устанавливаем имя модуля глобально перед выполнением
-            if (options?.moduleName && typeof window !== 'undefined') {
+            if (options?.moduleName && import.meta.client) {
                 (window as any).__currentModuleName = options.moduleName
             }
 
@@ -206,7 +206,7 @@ export const executeScript = async (
             reject(error)
         } finally {
             // Очищаем глобальную переменную после выполнения
-            if (typeof window !== 'undefined') {
+            if (import.meta.client) {
                 setTimeout(() => {
                     if ((window as any).__currentModuleName === options?.moduleName) {
                         (window as any).__currentModuleName = null

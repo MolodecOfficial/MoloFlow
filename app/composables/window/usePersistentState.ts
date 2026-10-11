@@ -14,7 +14,7 @@ export function usePersistentState<T>(key: string, defaultValue: T): Ref<T> {
     const storageKey = `devtools_${getEnterpriseId()}_${key}`
 
     let initial = defaultValue
-    if (typeof window !== 'undefined') {
+    if (import.meta.client) {
         try {
             const raw = localStorage.getItem(storageKey)
             if (raw !== null) initial = JSON.parse(raw)

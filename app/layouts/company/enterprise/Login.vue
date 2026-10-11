@@ -42,7 +42,8 @@ const handleLogin = async () => {
       }
     })
 
-    // Используем композабл для сохранения
+    // login() сохраняет токен, обновляет appStore и оповещает приложение
+    // (index.vue закроет окна прошлого сеанса и подтянет роль с сервера)
     enterprise.login({
       enterprise: response.enterprise,
       token: response.token
@@ -59,7 +60,7 @@ const handleLogin = async () => {
       openWindow('control')
     }, 50)
   } catch (error: any) {
-    addLog('error', `Ошибка входа - ${error.data?.message}`)
+    addLog('error', `Ошибка входа - ${error?.data?.message || error?.message || 'неизвестная ошибка'}`)
     addNotification('error', 'Ошибка входа')
   } finally {
     loading.value = false

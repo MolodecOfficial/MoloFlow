@@ -14,7 +14,7 @@ export async function checkEnterpriseAccess(
     event: H3Event,
     enterpriseId: string,
     options?: AccessCheckOptions | Array<IEnterpriseMember['role']>
-): Promise<{ enterprise: any; currentMember: IEnterpriseMember; effectiveRole: UserRole }> {
+): Promise<{ enterprise: any; currentMember: IEnterpriseMember; effectiveRole: UserRole; user: any; userId: string }> {
     // Нормализуем параметры (поддержка старого вызова с массивом ролей и нового с permission)
     let allowedRoles: Array<IEnterpriseMember['role']> | undefined
     let requiredPermission: PermissionKey | undefined
@@ -26,15 +26,12 @@ export async function checkEnterpriseAccess(
         requiredPermission = options.requiredPermission
     }
 
-    // 1. Извлекаем ID пользователя
+    // 1. Извлекаем ID пользователя.
+    // Приоритет: контекст сервера -> подписанный JWT -> заголовок -> имя -> query.
+    // Раньше query.userId проверялся раньше токена — его легко подделать.
     let userId: string | null = event.context.user?._id || event.context.user?.id
         ? String(event.context.user._id || event.context.user.id)
         : null
-
-    const query = getQuery(event)
-    if (!userId && query.userId && Types.ObjectId.isValid(String(query.userId))) {
-        userId = String(query.userId)
-    }
 
     if (!userId) {
         const authHeader = getHeader(event, 'authorization') || getHeader(event, 'x-enterprise-token')
@@ -62,19 +59,27 @@ export async function checkEnterpriseAccess(
         }
     }
 
-    if (!userId) {
-        throw createError({ statusCode: 401, statusMessage: 'Требуется авторизация (пользователь не найден)' })
-    }
-
+    // Резервный вариант: поиск по имени (только однозначное совпадение).
+    // Раньше этот блок стоял ПОСЛЕ throw 401 и никогда не выполнялся.
     if (!userId) {
         const rawName = getHeader(event, 'x-user-name')
         if (rawName) {
             let name = rawName
             try { name = decodeURIComponent(rawName) } catch {}
             const candidates = await User.find({ name }).select('_id').limit(2).lean()
-            // Принимаем только однозначное совпадение
             if (candidates.length === 1) userId = String(candidates[0]._id)
         }
+    }
+
+    if (!userId) {
+        const query = getQuery(event)
+        if (query.userId && Types.ObjectId.isValid(String(query.userId))) {
+            userId = String(query.userId)
+        }
+    }
+
+    if (!userId) {
+        throw createError({ statusCode: 401, statusMessage: 'Требуется авторизация (пользователь не найден)' })
     }
 
     if (!enterpriseId || !Types.ObjectId.isValid(enterpriseId)) {
@@ -128,5 +133,5 @@ export async function checkEnterpriseAccess(
         joinedAt: new Date()
     }
 
-    return { enterprise, currentMember, effectiveRole: memberRole }
+    return { enterprise, currentMember, effectiveRole: memberRole, user, userId: String(userId) }
 }

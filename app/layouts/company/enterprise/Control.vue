@@ -352,6 +352,8 @@ async function grantAccess() {
     searchQuery.value = ''
     searchResults.value = []
     await loadMembers()
+    // Если изменили роль самому себе — применяем сразу
+    void store.refreshAccess()
   } catch (e: any) {
     addNotification('error', e.data?.message || 'Ошибка добавления сотрудника')
   } finally {
@@ -436,7 +438,9 @@ function formatDate(dateStr: string) {
 }
 
 onMounted(async () => {
-  await store.loadEnterpriseFromStorage()
+  store.loadEnterpriseFromStorage()
+  // Подтягиваем актуальную роль, чтобы окно не работало по устаревшим данным
+  await store.refreshAccess()
   if (store.getEnterpriseId()) {
     await Promise.all([
       loadWorkspaceFolders(),

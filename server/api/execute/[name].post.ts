@@ -9,25 +9,21 @@ export default defineEventHandler(async (event) => {
     const { fileName, data } = body || {}
 
     if (!moduleId) {
-        throw createError({
-            statusCode: 400,
-            message: 'moduleId is required'
-        })
+        throw createError({ statusCode: 400, message: 'moduleId is required' })
     }
 
-    const mod = await DynamicModule.findById(moduleId)
+    const mod = await DynamicModule.findById(moduleId).lean()
     if (!mod) {
         throw createError({ statusCode: 404, message: 'Module not found' })
     }
 
-    // ── ОБРАБОТКА PYTHON: Запуск фонового демона 24/7 ──
+    // ── PYTHON: фоновый демон ──
     if (mod.format === 'py') {
         try {
-            // Вызываем внутренний эндпоинт демона
             const daemonRes = await $fetch<{ success: boolean; pid: number; message: string }>('/api/py/daemon', {
                 method: 'POST',
                 body: {
-                    action: 'start',
+                    action: 'restart',
                     moduleId: mod._id.toString(),
                     enterpriseId: mod.enterpriseId
                 }
@@ -35,30 +31,39 @@ export default defineEventHandler(async (event) => {
 
             return {
                 result: daemonRes,
-                logs: [`[Daemon] ${daemonRes.message}`]
+                logs: [`[Daemon] ${daemonRes.message}`],
+                entries: [{ level: 'info', source: 'Daemon', text: daemonRes.message, ts: Date.now() }],
+                actions: []
             }
         } catch (error: any) {
             console.error('[Execute API Python Daemon Error]:', error)
             throw createError({
                 statusCode: error.statusCode || 500,
                 message: error.message || 'Не удалось запустить фоновый Python-демон',
-                data: { logs: [error.message] }
+                data: {
+                    logs: [error.message],
+                    entries: [{ level: 'error', source: 'Daemon', text: String(error.message), ts: Date.now() }],
+                    actions: []
+                }
             })
         }
     }
 
-    // ── ОБРАБОТКА JS / TS ЧЕРЕЗ VM ──
+    // ── JS / TS через VM ──
     try {
-        const sandbox = await getModuleSandbox(moduleId, mod.enterpriseId)
-        const { result, logs } = await sandbox.executeFile(fileName, data || {})
-        return { result, logs }
+        const sandbox = await getModuleSandbox(moduleId, String(mod.enterpriseId))
+        const { result, logs, entries, actions } = await sandbox.executeFile(fileName, data || {})
+        return { result, logs, entries, actions }
     } catch (error: any) {
         console.error('[Execute API Error]:', error.message)
-        const logs = error.data?.logs || []
         throw createError({
             statusCode: error.statusCode || 500,
             message: error.message || 'Script execution failed',
-            data: { logs }
+            data: {
+                logs: error.data?.logs || [],
+                entries: error.data?.entries || [],
+                actions: error.data?.actions || []
+            }
         })
     }
 })

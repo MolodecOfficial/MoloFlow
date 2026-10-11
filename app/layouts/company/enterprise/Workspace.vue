@@ -1135,6 +1135,7 @@ onUnmounted(() => {
                     v-if="doc.type === 'excel'"
                     :model-value="doc.data"
                     @update:model-value="(val) => updateDocData(doc.id, val)"
+                    @resolve-variable="onDocumentVariableTrigger"
                 />
                 <AppsMoloDocument
                     v-else-if="doc.type === 'word'"

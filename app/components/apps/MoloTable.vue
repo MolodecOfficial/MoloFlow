@@ -10,6 +10,7 @@ import '@univerjs/preset-sheets-core/lib/index.css'
 import * as XLSX from 'xlsx'
 import { useDirectoryInterpolator, type DirectoryLookupItem } from '~/composables/useDirectoryInterpolator'
 import DirectorySuggestDropdown from '~/components/directory/DirectorySuggestDropdown.vue'
+import type { ApiImportPayload, ApiSource } from '~/composables/useApiTable'
 
 const props = defineProps<{
   modelValue?: Record<string, any>
@@ -47,13 +48,44 @@ let editDisposables: Array<{ dispose: () => void } | (() => void)> = []
 const IMPORT_DEFAULT_ROW_H = 20
 const IMPORT_DEFAULT_COL_W = 64
 
+/* ── Подключённые API-источники ──
+   Храним рядом со снимком Univer под отдельным ключом: Univer про него не знает, поэтому
+   вырезаем перед createWorkbook и добавляем обратно при каждом сохранении. */
+const API_SOURCES_KEY = 'moloApiSources'
+const apiModalOpen = ref(false)
+const apiSources = ref<ApiSource[]>([])
+
+function readSources(data?: Record<string, any> | null): ApiSource[] {
+  const list = data?.[API_SOURCES_KEY]
+  return Array.isArray(list) ? JSON.parse(JSON.stringify(list)) : []
+}
+
+function stripSources(data: Record<string, any>): Record<string, any> {
+  if (!(API_SOURCES_KEY in data)) return data
+  const { [API_SOURCES_KEY]: _omit, ...rest } = data
+  return rest
+}
+
+function serializeSources(): ApiSource[] {
+  return apiSources.value.map((s) => {
+    const copy: ApiSource = JSON.parse(JSON.stringify(s))
+    if (!copy.saveHeaders) {
+      // токены в документ не пишем — только имена заголовков
+      copy.needsHeaders = copy.needsHeaders || copy.headers.some(h => h.value)
+      copy.headers = copy.headers.map(h => ({ key: h.key, value: '' }))
+    }
+    return copy
+  })
+}
+
 function flushEmit(workbook?: any) {
   if (saveTimeout) {
     clearTimeout(saveTimeout)
     saveTimeout = null
   }
-  const snapshot = (workbook ?? univerAPIInstance?.getActiveWorkbook())?.save()
-  if (!snapshot) return
+  const base = (workbook ?? univerAPIInstance?.getActiveWorkbook())?.save()
+  if (!base) return
+  const snapshot = apiSources.value.length ? { ...base, [API_SOURCES_KEY]: serializeSources() } : base
   lastEmitted = snapshot
   emit('update:modelValue', snapshot)
 }
@@ -69,7 +101,8 @@ function replaceWorkbook(data: Record<string, any>) {
   try {
     const oldId = api.getActiveWorkbook()?.getId()
     if (oldId) (api as any).disposeUnit?.(oldId)
-    return api.createWorkbook(data)
+    apiSources.value = readSources(data)
+    return api.createWorkbook(stripSources(data))
   } catch (e) {
     console.error('Не удалось загрузить таблицу', e)
     return null
@@ -257,6 +290,139 @@ function wsToSheet(ws: XLSX.WorkSheet, id: string, name: string) {
   }
 }
 
+/* ───────────────────────── Импорт из API ───────────────────────── */
+
+const API_DATE_FALLBACK_COL_W = 64
+
+// Строка, начинающаяся с «=», не должна превращаться в формулу — кладём её как текстовую ячейку
+function toUniverCell(v: any) {
+  return typeof v === 'string' && v.startsWith('=') ? { v, t: 1 } : v
+}
+
+function uniqueSheetName(wb: any, wanted: string): string {
+  const used = new Set<string>((wb.getSheets?.() ?? []).map((s: any) => String(s.getSheetName()).toLowerCase()))
+  const base = (String(wanted || 'API').replace(/[\\/?*[\]:]/g, '_').slice(0, 28).trim()) || 'API'
+  let name = base
+  let i = 2
+  while (used.has(name.toLowerCase())) name = `${base} ${i++}`
+  return name
+}
+
+function ensureSheetCapacity(sheet: any, needRows: number, needCols: number) {
+  try {
+    const maxRows = sheet.getMaxRows?.() ?? 0
+    if (needRows > maxRows) {
+      if (sheet.setRowCount) sheet.setRowCount(needRows + 20)
+      else sheet.insertRows?.(Math.max(0, maxRows - 1), needRows - maxRows + 20)
+    }
+    const maxCols = sheet.getMaxColumns?.() ?? 0
+    if (needCols > maxCols) {
+      if (sheet.setColumnCount) sheet.setColumnCount(needCols + 2)
+      else sheet.insertColumns?.(Math.max(0, maxCols - 1), needCols - maxCols + 2)
+    }
+  } catch (e) {
+    console.warn('Не удалось расширить лист', e)
+  }
+}
+
+function handleApiImport({ source, matrix, target }: ApiImportPayload) {
+  const wb: any = univerAPIInstance?.getActiveWorkbook()
+  if (!wb) return
+
+  try {
+    const cols = matrix.headers.length
+    const values: any[][] = [matrix.headers, ...matrix.rows].map(r => r.map(toUniverCell))
+    let sheet: any = null
+    let anchorRow = 0
+    let anchorCol = 0
+    let isNewSheet = false
+    let isRefresh = false
+
+    // 1. Обновление ранее вставленной таблицы: чистим старый диапазон и пишем на то же место
+    if (target === 'refresh' && source.sheetId) {
+      sheet = wb.getSheetBySheetId?.(source.sheetId) ?? null
+      if (sheet) {
+        isRefresh = true
+        anchorRow = source.anchorRow ?? 0
+        anchorCol = source.anchorCol ?? 0
+        if (source.lastRows && source.lastCols) {
+          const old = sheet.getRange(anchorRow, anchorCol, source.lastRows, source.lastCols)
+          if (old.clearContent) old.clearContent()
+          else old.clear?.()
+        }
+      }
+    }
+
+    // 2. Текущий лист, с выделенной ячейки
+    if (!sheet && target === 'active') {
+      sheet = wb.getActiveSheet()
+      const sel = sheet?.getSelection?.()?.getActiveRange?.() ?? sheet?.getActiveRange?.()
+      anchorRow = sel?.getRow?.() ?? 0
+      anchorCol = sel?.getColumn?.() ?? 0
+    }
+
+    // 3. Новый лист (также если лист для обновления был удалён)
+    if (!sheet) {
+      sheet = wb.create(uniqueSheetName(wb, source.name), values.length + 20, Math.max(cols + 5, 26))
+      isNewSheet = true
+      anchorRow = 0
+      anchorCol = 0
+    }
+
+    ensureSheetCapacity(sheet, anchorRow + values.length, anchorCol + cols)
+    sheet.getRange(anchorRow, anchorCol, values.length, cols).setValues(values)
+
+    // Оформление шапки и ширины колонок — только при первой вставке, чтобы не затирать ручные правки
+    if (!isRefresh) {
+      try {
+        const head = sheet.getRange(anchorRow, anchorCol, 1, cols)
+        head.setFontWeight?.('bold')
+        head.setBackground?.('#f1f3f5')
+        const sample = values.slice(0, 200)
+        for (let c = 0; c < cols; c++) {
+          let maxLen = 0
+          for (const row of sample) {
+            const cell: any = row[c]
+            const len = String(typeof cell === 'object' && cell !== null ? cell.v : cell ?? '').length
+            if (len > maxLen) maxLen = len
+          }
+          const w = Math.min(320, Math.max(API_DATE_FALLBACK_COL_W, maxLen * 7 + 20))
+          sheet.setColumnWidth?.(anchorCol + c, w)
+        }
+        if (isNewSheet) sheet.setFrozenRows?.(1)
+      } catch (e) {
+        console.warn('Не удалось оформить таблицу', e)
+      }
+    }
+
+    const saved: ApiSource = {
+      ...source,
+      needsHeaders: source.saveHeaders ? false : source.headers.some(h => h.value) || source.needsHeaders,
+      sheetId: sheet.getSheetId(),
+      sheetName: sheet.getSheetName(),
+      anchorRow,
+      anchorCol,
+      lastRows: values.length,
+      lastCols: cols,
+      lastSyncAt: new Date().toISOString(),
+    }
+    const idx = apiSources.value.findIndex(s => s.id === saved.id)
+    if (idx >= 0) apiSources.value.splice(idx, 1, saved)
+    else apiSources.value.push(saved)
+
+    wb.setActiveSheet?.(sheet)
+    flushEmit()
+  } catch (e) {
+    console.error('Ошибка вставки данных из API', e)
+    alert('Не удалось вставить данные в таблицу. Подробности — в консоли браузера.')
+  }
+}
+
+function removeApiSource(id: string) {
+  apiSources.value = apiSources.value.filter(s => s.id !== id)
+  flushEmit() // данные в листе остаются, удаляется только привязка к API
+}
+
 /* ───────────────────────── Перехват {@...} через события редактора Univer ─────────────────────────
    Текст читаем из самого редактора Univer (SheetEditChanging), а не из DOM: ячейка рисуется на canvas,
    а скрытый contenteditable не хранит весь набранный текст. */
@@ -414,7 +580,8 @@ onMounted(async () => {
   univerAPIInstance = univerAPI
 
   const hasData = props.modelValue && Object.keys(props.modelValue).length > 0
-  const workbook = univerAPI.createWorkbook(hasData ? props.modelValue! : { name: 'Новая таблица' })
+  if (hasData) apiSources.value = readSources(props.modelValue)
+  const workbook = univerAPI.createWorkbook(hasData ? stripSources(props.modelValue!) : { name: 'Новая таблица' })
   lastEmitted = hasData ? toRaw(props.modelValue) : null
 
   bindEditorEvents(univerAPI)
@@ -484,13 +651,23 @@ onBeforeUnmount(() => {
         <UIMoloButton class="small" title="Импорт из Excel" @click="triggerExcelImport">
           <UIMoloSticker name="folder"/>
         </UIMoloButton>
+        <UIMoloButton class="small" title="Подключить API и показать данные таблицей" @click="apiModalOpen = true">
+          <UIMoloSticker name="dev-json"/>
+        </UIMoloButton>
       </div>
       <div class="toolbar-sep"/>
       <div class="toolbar-group">
-        <span class="toolbar-hint">Поддерживаются форматы: <b>.xlsx, .xls, .csv</b> · Для автоподстановки введите <b>{@</b> в ячейку</span>
+        <span class="toolbar-hint">Поддерживаются форматы: <b>.xlsx, .xls, .csv</b> · Данные из внешнего сервиса — кнопка <b>API</b> · Для автоподстановки введите <b>{@</b> в ячейку</span>
       </div>
     </div>
     <div ref="containerEl" class="molo-sheet-root"/>
+
+    <AppsMoloAPIImportModal
+        v-model="apiModalOpen"
+        :sources="apiSources"
+        @import="handleApiImport"
+        @remove="removeApiSource"
+    />
   </div>
 </template>
 

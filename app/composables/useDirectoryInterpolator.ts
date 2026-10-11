@@ -49,7 +49,7 @@ const SYSTEM_SLUGS = [
 
 const FIELD_DICTIONARY: Record<string, string> = {
     title: 'Наименование / ФИО',
-    code: 'Код / Артикул',
+    code: 'Код / Артикул / ID',
     inn: 'ИНН',
     kpp: 'КПП',
     ogrn: 'ОГРН',
@@ -68,7 +68,8 @@ const FIELD_DICTIONARY: Record<string, string> = {
     unit: 'Ед. изм.',
     vatRate: 'НДС',
     department: 'Отдел',
-    role: 'Должность / Роль'
+    role: 'Должность / Роль',
+    birthDate: 'День рождения'
 }
 
 export function useDirectoryInterpolator() {
@@ -177,10 +178,23 @@ export function useDirectoryInterpolator() {
         }
     }
 
+    /**
+     * Быстрый сквозной поиск сотрудника по ID / табельному номеру
+     */
+    const findEmployeeById = async (searchId: string): Promise<DirectoryLookupItem | null> => {
+        const query = searchId.trim().toLowerCase()
+        if (!query) return null
+
+        const employees = await fetchDirectoryItems('departments')
+        const exact = employees.find(
+            (e) => e.code.toLowerCase() === query || e.id.toLowerCase() === query
+        )
+        return exact || null
+    }
+
     const resolveSlug = (alias: string): string | null => {
         const clean = alias.toLowerCase().trim()
 
-        // 1. Проверяем системные регулярки
         if (/^(сотрудник|штат|отдел|персонал|должност)/.test(clean)) return 'departments'
         if (/^(контрагент|клиент|поставщик|подрядчик|партнер)/.test(clean)) return 'counterparties'
         if (/^(банк|счет|бик|расчетн)/.test(clean)) return 'bank_accounts'
@@ -188,7 +202,6 @@ export function useDirectoryInterpolator() {
         if (/^(термин|глоссари|словар)/.test(clean)) return 'glossary'
         if (SYSTEM_SLUGS.includes(clean)) return clean
 
-        // 2. Проверяем кастомные справочники и их алиасы
         for (const def of customDefs.value) {
             if (def.slug.toLowerCase() === clean) return def.slug
             if (def.title.toLowerCase() === clean) return def.slug
@@ -212,7 +225,7 @@ export function useDirectoryInterpolator() {
         if (/^(телефон|тел|phone)/.test(p)) return item.phone || null
         if (/^(цена|стоимость|price)/.test(p)) return item.price !== undefined ? String(item.price) : null
         if (/^(ед|единица|unit)/.test(p)) return item.unit || null
-        if (/^(код|артикул|code|sku)/.test(p)) return item.code || null
+        if (/^(код|артикул|code|sku|id)/.test(p)) return item.code || null
 
         for (const field of item.availableFields) {
             if (field.key.toLowerCase() === p || field.label.toLowerCase() === p) {
@@ -292,6 +305,7 @@ export function useDirectoryInterpolator() {
         fetchDirectoryItems,
         fetchAllDirectories,
         fetchDefinitions,
+        findEmployeeById,
         resolveVariable,
         extractFieldValue,
         invalidateCache,

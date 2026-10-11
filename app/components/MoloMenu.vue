@@ -11,6 +11,7 @@ import { useMenuStore } from '~~/stores/menuStore'
 import { useModulesStore } from '~~/stores/modulesStore'
 import { useWindowManager } from '~~/app/composables/window/useWindowManager'
 import { useModulePrefetch } from '~/composables/compiler/useModulePrefetch'
+import { executeServerModule } from '~~/app/composables/compiler/useServerExecute'
 import MoloSticker from '~/components/ui/MoloSticker.vue'
 
 const props = defineProps<{ role?: string }>()
@@ -124,15 +125,10 @@ async function runAutoStartScripts(enterpriseId: string) {
       const typeLabel = module.format === 'py' ? 'Python-бота' : 'фонового скрипта'
       addLog('info', `Автозапуск ${typeLabel}: ${module.name}`)
 
-      const response = await $fetch<{ logs?: string[] }>(`/api/execute/${module._id}`, {
-        method: 'POST',
-        body: {
-          data: {
-            moduleName: module.name,
-            enterpriseId,
-            isAutoStart: true
-          }
-        }
+      const response = await executeServerModule(module._id, undefined, {
+        moduleName: module.name,
+        enterpriseId,
+        isAutoStart: true
       })
 
       if (response?.logs?.length) {
@@ -153,10 +149,11 @@ async function runAutoStartScripts(enterpriseId: string) {
   }
 }
 
-const loadAll = async (force = false) => {
+const loadAll = async (force = false, runScripts = true) => {
   loading.value = true
   const enterpriseId = appStore.getEnterpriseId()
-  const role = appStore.currentMemberRole || props.role || 'Администратор'
+  // Раньше при неизвестной роли подставлялась 'Администратор' — теперь минимальные права
+  const role = appStore.currentMemberRole || props.role || 'Пользователь'
 
   try {
     await Promise.all([
@@ -164,7 +161,8 @@ const loadAll = async (force = false) => {
       enterpriseId ? modulesStore.loadEnterpriseModules(enterpriseId, force) : Promise.resolve()
     ])
 
-    if (enterpriseId) {
+    // При смене роли скрипты повторно не запускаем — только перечитываем меню
+    if (enterpriseId && runScripts) {
       void runAutoStartScripts(enterpriseId)
     }
   } catch (e: any) {
@@ -195,6 +193,16 @@ watch(
         menuStore.invalidate()
         await loadAll(true)
       }
+    }
+)
+
+// Роль изменили (например, управляющий назначил нового администратора) — перечитываем меню
+watch(
+    () => appStore.currentMemberRole,
+    async (newRole, oldRole) => {
+      if (!newRole || !oldRole || newRole === oldRole) return
+      menuStore.invalidate()
+      await loadAll(true, false)
     }
 )
 
@@ -249,7 +257,7 @@ const resultPath = (result: any) => {
   return parts.filter(Boolean).join(' / ')
 }
 
-// MoloMenu.vue
+
 const restartModule = async (moduleData: any) => {
   if (!moduleData) return
   const moduleId = moduleData._id
@@ -261,7 +269,7 @@ const restartModule = async (moduleData: any) => {
 
   try {
     executingModules.value.add(moduleId)
-    addLog('info', `Запуск/перезапуск модуля: ${moduleData.name}`)
+    addLog('info', `Запуск модуля: ${moduleData.name}`)
 
     const enterpriseId = appStore.getEnterpriseId()
     if (!enterpriseId) {
@@ -269,43 +277,28 @@ const restartModule = async (moduleData: any) => {
       return
     }
 
-    // 1. Вызываем запуск
-    const response = await $fetch<{ logs?: string[] }>(`/api/execute/${moduleData._id}`, {
-      method: 'POST',
-      body: {
-        data: {
-          moduleName: moduleData.name,
-          enterpriseId,
-          moduleId
-        }
-      }
+    // executeServerModule сам проиграет оригинальные логи от файла и выполнит действия (открытие окон и т.д.)
+    await executeServerModule(moduleData._id, undefined, {
+      moduleName: moduleData.name,
+      enterpriseId,
+      moduleId
     })
 
-    if (response.logs && response.logs.length) {
-      const { addLog: addModuleLog } = useLogger('Модуль')
-      for (const log of response.logs) {
-        addModuleLog('info', log)
-      }
-    }
-
-    // 2. Если это Python — опрашиваем статус фонового процесса
     if (moduleData.format === 'py') {
       setTimeout(async () => {
         try {
-          const status = await $fetch<{ running: boolean; pid?: number; logs?: string[] }>('/api/py/daemon', {
+          const status = await $fetch<{ running: boolean; pid?: number }>('/api/py/daemon', {
             method: 'POST',
             body: { action: 'status', moduleId }
           })
 
           if (status.running) {
-            addLog('success', `Скрипт запущен! PID: ${status.pid}. Активен в фоне.`)
+            addLog('success', `Скрипт запущен (PID: ${status.pid})`)
           } else {
-            addLog('error', `Процесс скрипта остановился. Проверьте ошибки в консоли.`)
+            addLog('error', `Процесс остановился`)
           }
         } catch {}
       }, 1500)
-    } else {
-      addLog('success', `Скрипт "${moduleData.name}" выполнен`)
     }
 
   } catch (error: any) {
@@ -370,15 +363,29 @@ const closePanel = () => {
 
 const togglePanel = () => (isOpen.value ? closePanel() : openPanel())
 
+// Замок показываем только когда роль подтверждена сервером, иначе он мелькал бы у тех,
+// чьи права ещё не успели обновиться
+const isLocked = computed(() => {
+  const effective = appStore.currentMemberRole || props.role
+  return effective === 'Пользователь' && appStore.sessionChecked
+})
+
+watch(isLocked, (locked) => {
+  if (!locked && showLock.value) {
+    showLock.value = false
+    emit('lock-hover', false)
+  }
+})
+
 const onLockEnter = () => {
-  if (props.role === 'Пользователь') {
+  if (isLocked.value) {
     showLock.value = true
     emit('lock-hover', true)
   }
 }
 
 const onLockLeave = () => {
-  if (props.role === 'Пользователь') {
+  if (showLock.value) {
     showLock.value = false
     emit('lock-hover', false)
   }
@@ -546,7 +553,7 @@ onUnmounted(() => {
                       </span>
                       <span v-else class="card-meta">открыть окно</span>
 
-                      <span
+                      <UIMoloButton
                           v-if="item.isScript"
                           class="restart-btn"
                           :class="{ spinning: executingModules.has(item.moduleId) }"
@@ -554,7 +561,7 @@ onUnmounted(() => {
                           @click.stop="restartModule(item.moduleData)"
                       >
                         <MoloSticker name="rotate" :size="12" />
-                      </span>
+                      </UIMoloButton>
                     </UIMoloButton>
                   </div>
                   <div v-else class="empty-block">

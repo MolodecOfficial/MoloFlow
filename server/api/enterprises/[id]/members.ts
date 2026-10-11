@@ -2,6 +2,7 @@ import { defineEventHandler, getRouterParam, readBody, getQuery, createError } f
 import mongoose from 'mongoose'
 import { Enterprise } from '~~/server/models/enterprise.model'
 import { User } from '~~/server/models/user.model'
+import { publishAccessChange } from '~~/server/utils/accessEvents'
 
 function buildEnterpriseQuery(id: string) {
     const orList: any[] = [{ _id: id }]
@@ -124,6 +125,9 @@ export default defineEventHandler(async (event) => {
         await User.findByIdAndUpdate(targetUserId, { $set: { role: targetRole } })
         await enterprise.save()
 
+        // Мгновенно сообщаем сессии этого пользователя, что его роль изменилась
+        publishAccessChange(String(enterprise._id), targetUserId)
+
         return { success: true, message: 'Сотрудник успешно добавлен' }
     }
 
@@ -142,6 +146,9 @@ export default defineEventHandler(async (event) => {
         )
 
         await enterprise.save()
+
+        publishAccessChange(String(enterprise._id), String(userId))
+
         return { success: true, message: 'Доступ сотрудника отозван' }
     }
 })

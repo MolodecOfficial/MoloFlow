@@ -35,8 +35,8 @@ interface StoredWindowSettings {
 }
 
 const getViewport = () => ({
-    width: typeof window !== 'undefined' ? window.innerWidth : 1280,
-    height: typeof window !== 'undefined' ? window.innerHeight : 800,
+    width: import.meta.client ? window.innerWidth : 1280,
+    height: import.meta.client ? window.innerHeight : 800,
 })
 
 const clampToViewport = (pos: WindowPosition, size: { width: number; height: number }) => {
@@ -80,7 +80,7 @@ export function useWindowManager() {
     const resolveCurrentRole = (): UserRole => {
         if (store.currentMemberRole) return store.currentMemberRole as UserRole
 
-        if (typeof window !== 'undefined') {
+        if (import.meta.client) {
             try {
                 const rawUser = localStorage.getItem('user')
                 const rawEnt = localStorage.getItem('currentEnterprise')

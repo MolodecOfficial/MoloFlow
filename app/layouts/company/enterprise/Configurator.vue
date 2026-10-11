@@ -1,6 +1,7 @@
 <script lang="ts" setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import { useAppStore } from '~~/stores/appStore'
+import { buildAuthHeaders } from '~~/server/utils/authContext'
 
 const props = defineProps<{
   enterpriseId?: string
@@ -11,6 +12,9 @@ const emit = defineEmits(['close', 'saved'])
 const { addNotification } = useNotifications('Управление доступом')
 const { addLog } = useLogger('Управление доступом')
 const store = useAppStore()
+
+// Без этих заголовков сервер не знает, КТО меняет роли (ответ 401 «Требуется авторизация»)
+const authHeaders = () => buildAuthHeaders(store.currentUser?._id)
 
 interface MemberItem {
   userId: string
@@ -71,13 +75,54 @@ async function loadMembers() {
 
   loading.value = true
   try {
-    const data: any = await $fetch(`/api/enterprises/${entId}/members`)
+    const data: any = await $fetch(`/api/enterprises/${entId}/members`, { headers: authHeaders() })
     members.value = data.members || []
     enterpriseTitle.value = data.enterpriseName || ''
   } catch (e: any) {
     addNotification('error', e.data?.message || 'Не удалось загрузить список участников')
   } finally {
     loading.value = false
+  }
+}
+
+const savingRoleFor = ref<string | null>(null)
+
+/** Смена роли УЖЕ добавленного сотрудника внутри этого предприятия */
+async function changeMemberRole(member: MemberItem, newRole: string) {
+  if (!newRole || newRole === member.role) return
+  const entId = getEntId()
+  savingRoleFor.value = member.userId
+  try {
+    await $fetch(`/api/enterprises/${entId}/members`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: { userId: member.userId, role: newRole }
+    })
+    addNotification('success', `${member.name}: роль изменена на «${newRole}»`)
+    addLog('info', `Роль ${member.name} в предприятии изменена: ${member.role} → ${newRole}`)
+    await loadMembers()
+    // Если поменяли роль себе — применяем сразу
+    void store.refreshAccess(true)
+  } catch (e: any) {
+    addNotification('error', e.data?.message || e.data?.statusMessage || 'Не удалось изменить роль')
+    await loadMembers() // вернуть выпадающий список к реальному значению
+  } finally {
+    savingRoleFor.value = null
+  }
+}
+
+async function changeGlobalUserRole(targetUser: FoundUser, newRole: string) {
+  try {
+    await $fetch(`/api/users/${targetUser._id}/role`, {
+      method: 'PATCH',
+      headers: authHeaders(),
+      body: { role: newRole }
+    })
+    targetUser.role = newRole
+    addNotification('success', `Пользователю ${targetUser.name} назначена глобальная роль: ${newRole}`)
+    addLog('info', `Глобальная роль ${targetUser.name} изменена на ${newRole}`)
+  } catch (e: any) {
+    addNotification('error', e.data?.message || e.data?.statusMessage || 'Ошибка обновления роли')
   }
 }
 
@@ -93,6 +138,7 @@ watch(searchQuery, (val) => {
     searchLoading.value = true
     try {
       const res: any = await $fetch(`/api/enterprises/${entId}/members`, {
+        headers: authHeaders(),
         query: { search: val.trim() }
       })
       const existing = new Set(members.value.map(m => String(m.userId)))
@@ -119,6 +165,7 @@ async function grantAccess() {
   try {
     await $fetch(`/api/enterprises/${entId}/members`, {
       method: 'POST',
+      headers: authHeaders(),
       body: {
         userId: selectedUser.value._id,
         role: selectedRole.value
@@ -131,6 +178,7 @@ async function grantAccess() {
     searchQuery.value = ''
     searchResults.value = []
     await loadMembers()
+    void store.refreshAccess(true)
   } catch (e: any) {
     addNotification('error', e.data?.message || 'Ошибка добавления сотрудника')
   } finally {
@@ -150,12 +198,14 @@ async function confirmRemoveAccess() {
   try {
     await $fetch(`/api/enterprises/${entId}/members`, {
       method: 'DELETE',
+      headers: authHeaders(),
       body: { userId: memberToRemove.value.userId }
     })
     addNotification('success', 'Доступ отозван')
     removeModalOpen.value = false
     memberToRemove.value = null
     await loadMembers()
+    void store.refreshAccess(true)
   } catch (e: any) {
     addNotification('error', e.data?.message || 'Ошибка удаления')
   } finally {
@@ -237,15 +287,16 @@ onMounted(() => {
 
               <div v-if="selectedUser" class="assign-block">
                 <div class="selected-user-banner">
-                  <span>Выбран: <b>{{ selectedUser.name }}</b></span>
+                  <span>Выбран: <b>{{ selectedUser.name }}</b> (Текущая: {{ selectedUser.role }})</span>
                 </div>
 
+                <!-- Вариант 1: Добавить в ЭТО предприятие -->
                 <UIMoloSelect
                     v-model="selectedRole"
                     compact
                     :parent="availableRoles"
                     children="label"
-                    tLabel="Назначаемая роль в предприятии"
+                    tLabel="Роль внутри данного предприятия"
                     valueKey="value"
                 />
 
@@ -255,9 +306,31 @@ onMounted(() => {
                     @click="grantAccess"
                 >
                   <UIMoloLoaders v-if="addingMember" btnLoader />
-                  <span v-else>Предоставить доступ</span>
+                  <span v-else>Добавить в штат предприятия</span>
                 </UIMoloButton>
+
+                <!-- Вариант 2: Дать самостоятельную роль Управляющего без добавления в чужую базу -->
+                <div class="global-promote-box" style="margin-top: 10px; padding-top: 10px; border-top: 1px dashed rgba(255,255,255,0.1);">
+                  <small style="color: #8c8c9e; display: block; margin-bottom: 6px;">
+                    Или назначить системную роль (для управления своими предприятиями):
+                  </small>
+                  <div style="display: flex; gap: 8px;">
+                    <UIMoloButton
+                        class="small"
+                        @click="changeGlobalUserRole(selectedUser, 'Управляющий')"
+                    >
+                      Сделать Управляющим
+                    </UIMoloButton>
+                    <UIMoloButton
+                        class="small"
+                        @click="changeGlobalUserRole(selectedUser, 'Администратор')"
+                    >
+                      Сделать Админом
+                    </UIMoloButton>
+                  </div>
+                </div>
               </div>
+
             </div>
           </template>
         </UIMoloSection>
@@ -304,6 +377,15 @@ onMounted(() => {
                 </div>
 
                 <div class="member-actions">
+                  <select
+                      class="role-select"
+                      :value="member.role"
+                      :disabled="savingRoleFor === member.userId"
+                      title="Изменить роль в предприятии"
+                      @change="changeMemberRole(member, ($event.target as HTMLSelectElement).value)"
+                  >
+                    <option v-for="r in availableRoles" :key="r.value" :value="r.value">{{ r.value }}</option>
+                  </select>
                   <UIMoloButton
                       class="small close"
                       title="Отозвать доступ"
@@ -332,6 +414,32 @@ onMounted(() => {
 </template>
 
 <style scoped>
+.member-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.role-select {
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #e0e0e0;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  cursor: pointer;
+}
+
+.role-select:disabled {
+  opacity: 0.5;
+  cursor: progress;
+}
+
+.role-select option {
+  color: #111;
+}
+
 .manager-workspace {
   display: flex;
   flex-direction: column;

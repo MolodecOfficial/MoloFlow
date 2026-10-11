@@ -1,31 +1,35 @@
-import { ref, computed, watch } from 'vue'
+import { computed } from 'vue'
 import { useStorage } from '@vueuse/core'
+import { useAppStore } from '~~/stores/appStore'
 
+/**
+ * Единый источник правды по предприятию — appStore.
+ * Здесь только токен (useStorage) и удобные обёртки login/logout,
+ * которые синхронизируют store и оповещают приложение.
+ */
 export const useEnterprise = () => {
-    // Реактивное хранилище через VueUse
-    const enterprise = useStorage('currentEnterprise', null, localStorage, {
-        serializer: {
-            read: (v: any) => v ? JSON.parse(v) : null,
-            write: (v: any) => JSON.stringify(v)
-        }
-    })
+    const appStore = useAppStore()
 
-    const token = useStorage('enterprise_token', null, localStorage)
+    const token = useStorage<string | null>('enterprise_token', null, localStorage)
 
-    const enterpriseId = computed(() => {
-        return enterprise.value?._id || enterprise.value?.id || null
-    })
+    // Раньше здесь была отдельная копия в useStorage — она устаревала при смене прав.
+    const enterprise = computed(() => appStore.enterpriseData)
+
+    const enterpriseId = computed(() => appStore.enterpriseId || enterprise.value?._id || enterprise.value?.id || null)
 
     const isLoggedIn = computed(() => !!token.value && !!enterpriseId.value)
 
     const login = (data: any) => {
-        enterprise.value = data.enterprise
+        const id = data?.enterprise?._id || data?.enterprise?.id
         token.value = data.token
+        if (id) appStore.setEnterprise(String(id), data.enterprise)
+        window.dispatchEvent(new Event('enterprise-login'))
     }
 
     const logout = () => {
-        enterprise.value = null
         token.value = null
+        appStore.clearEnterprise()
+        window.dispatchEvent(new Event('enterprise-logout'))
     }
 
     return {

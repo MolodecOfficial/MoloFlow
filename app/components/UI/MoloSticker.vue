@@ -270,10 +270,10 @@ const activeIcon = computed(() => {
 
       <!-- 🗑️ Удалить / Корзина -->
       <g v-else-if="activeIcon === 'trash'">
-        <path d="M6.5 8V18C6.5 19.1 7.4 20 8.5 20H15.5C16.6 20 17.5 19.1 17.5 18V8" stroke="url(#stk-rose)"
+        <path d="M6.5 8V18C6.5 19.1 7.4 20 8.5 20H15.5C16.6 20 17.5 19.1 17.5 18V8" stroke="white"
               stroke-width="1.5" stroke-linejoin="round"/>
-        <path d="M4.5 8H19.5M9.5 5.5H14.5" stroke="url(#stk-rose)" stroke-width="1.6" stroke-linecap="round"/>
-        <path d="M10 11.5V16.5M14 11.5V16.5" stroke="url(#stk-rose)" stroke-width="1.3" stroke-linecap="round"
+        <path d="M4.5 8H19.5M9.5 5.5H14.5" stroke="white" stroke-width="1.6" stroke-linecap="round"/>
+        <path d="M10 11.5V16.5M14 11.5V16.5" stroke="white" stroke-width="1.3" stroke-linecap="round"
               opacity="0.7"/>
       </g>
 

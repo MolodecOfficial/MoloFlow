@@ -1,5 +1,5 @@
-import { authenticator } from 'otplib';
 import User from "~~/server/models/user.model";
+import { verifyTotp } from "~~/server/utils/totp";
 
 export default defineEventHandler(async (event) => {
     const body = await readBody(event);
@@ -9,24 +9,16 @@ export default defineEventHandler(async (event) => {
         throw createError({ statusCode: 400, message: 'Недостаточно данных' });
     }
 
-    // Проверяем код
-    const isValid = authenticator.verify({
-        token,
-        secret
-    });
+    const isValid = await verifyTotp(token, secret);
 
     if (!isValid) {
         throw createError({ statusCode: 400, message: 'Неверный код' });
     }
 
-    // Сохраняем секрет в БД пользователя (после подтверждения)
     await User.findByIdAndUpdate(userId, {
         twoFactorSecret: secret,
         twoFactorEnabled: true
     });
 
-    return {
-        success: true,
-        message: '2FA успешно настроена'
-    };
+    return { success: true, message: '2FA успешно настроена' };
 });

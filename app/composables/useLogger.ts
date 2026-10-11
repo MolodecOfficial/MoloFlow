@@ -22,7 +22,7 @@ export const globalLogs = {
 export function useLogger(source?: string) {
     const addLog = (type: LogType, text: string, dynamicParams?: Record<string, any>) => {
         // Автоматически определяем источник, если не передан
-        let moduleSource = source || (typeof window !== 'undefined' && (window as any).__currentModuleName)
+        let moduleSource = source || (import.meta.client && (window as any).__currentModuleName)
 
 
         let processedText = text

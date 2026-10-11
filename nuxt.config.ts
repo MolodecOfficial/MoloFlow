@@ -1,21 +1,36 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
+import pkg from './package.json'
 export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
-  devtools: { enabled: true },
+  devtools: { enabled: false },
   css: ['~/assets/main.scss'],
+  ssr: false,
 
   runtimeConfig: {
-    mongodb: process.env.MONGODB_URI,
+    // Дефолтная строка подключения подставится, если в среде пусто
+    mongodb: process.env.MONGODB_URI || 'mongodb+srv://molomongodb:molodecfordb@cluster0.cjtt1.mongodb.net/MoloFlowDB',
+
+    public: {
+      appVersion: pkg.version || '1.0.0'
+    }
   },
 
   nitro: {
+    preset: 'node-server',
     plugins: ['~/server/plugins/mongoose.ts'],
+    inlineDynamicImports: true,
     experimental: {
       websocket: true
     },
     storage: {
       'ws:clients': { driver: 'memory' }
-    },
+    }
+  },
+
+  vue: {
+    compilerOptions: {
+      isCustomElement: (tag) => tag === 'webview'
+    }
   },
 
   vite: {
@@ -32,9 +47,10 @@ export default defineNuxtConfig({
     },
     json: {
       stringify: true
-    },
+    }
   },
 
   modules: [
-    '@atmoner/nuxt-electron','@pinia/nuxt'],
+    '@pinia/nuxt'
+  ]
 })

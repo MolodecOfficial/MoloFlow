@@ -1,4 +1,3 @@
-// utils/authContext.ts
 function decodeJwtPayload(token: string): any | null {
     try {
         const part = token.split('.')[1]

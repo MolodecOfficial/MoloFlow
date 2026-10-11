@@ -1,6 +1,20 @@
 <script setup lang="ts">
+import { computed, ref, onMounted, onUnmounted } from 'vue'
+import { useRouter, useHead, useRuntimeConfig } from '#imports'
 import { useAppStore } from '~~/stores/appStore'
 import QRCode from 'qrcode'
+
+const config = useRuntimeConfig()
+const appStore = useAppStore()
+const router = useRouter()
+
+// Локальная версия текущей сборки
+const currentVersion = computed(() => `v${config.public.appVersion || '1.0.0'}`)
+
+// Данные удаленной версии из MongoDB
+const latestRemoteVersion = ref<string | null>(null)
+const updateNotes = ref('')
+const hasNewUpdate = ref(false)
 
 const selected = ref('')
 const statusMessage = ref('')
@@ -8,20 +22,15 @@ const loading = ref(false)
 const name = ref('')
 const storageName = ref('')
 const password = ref('')
-const router = useRouter()
 const dropdownOpen = ref(false)
 const checkingAuth = ref(true)
 
-// Состояния для 2FA
 const step = ref<'login' | 'setup-2fa' | 'verify-2fa'>('login')
 const userId = ref('')
 const verificationCode = ref('')
 const twoFactorSecret = ref('')
 const twoFactorQR = ref('')
 const isFirstTime = ref(false)
-
-// Единый системный стор вместо устаревшего userStore
-const appStore = useAppStore()
 
 const pageTitle = computed(() =>
     selected.value ? `Вход в ${selected.value}` : 'Вход в систему'
@@ -51,20 +60,42 @@ function handleClickOutside(event: MouseEvent) {
   }
 }
 
+// Запрос к серверу: сверка текущей версии с опубликованной
+async function checkForRemoteUpdates() {
+  try {
+    const data = await $fetch<{ latestVersion: string; notes: string }>('/api/system/version-check')
+    if (data?.latestVersion) {
+      latestRemoteVersion.value = `v${data.latestVersion.replace(/^v/, '')}`
+      updateNotes.value = data.notes || ''
+
+      // Сравниваем чистые строки версий
+      const localClean = currentVersion.value.replace(/^v/, '').trim()
+      const remoteClean = data.latestVersion.replace(/^v/, '').trim()
+
+      if (remoteClean !== localClean) {
+        hasNewUpdate.value = true
+      }
+    }
+  } catch {
+    // В оффлайн-режиме просто игнорируем ошибку проверки
+  }
+}
+
 onMounted(() => {
   document.addEventListener('click', handleClickOutside)
   getUser()
+  void checkForRemoteUpdates()
 })
 
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)
 })
 
-// Возврат к форме входа
 function backToLogin() {
   step.value = 'login'
   verificationCode.value = ''
   statusMessage.value = ''
+  isFirstTime.value = false
 }
 
 async function loginUser() {
@@ -81,31 +112,27 @@ async function loginUser() {
 
   try {
     loading.value = true
-    statusMessage.value = 'Произвожу вход...'
+    statusMessage.value = 'Авторизация...'
 
     const response = await fetch('/api/users/login', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(userData)
     })
 
     const data = await response.json()
 
     if (response.ok) {
-      userId.value = data.userId
+      userId.value = String(data.userId)
       isFirstTime.value = Boolean(data.isFirstTime)
 
       if (data.isFirstTime) {
-        // Первый вход - показываем QR код для настройки TOTP
         twoFactorSecret.value = data.secret
-        const otpauth = `otpauth://totp/MoloFlow:${name.value}?secret=${data.secret}&issuer=MoloFlow`
+        const otpauth = `otpauth://totp/MoloFlow:${encodeURIComponent(name.value.trim())}?secret=${data.secret}&issuer=MoloFlow&algorithm=SHA1&digits=6&period=30`
         twoFactorQR.value = await QRCode.toDataURL(otpauth)
         step.value = 'setup-2fa'
-        statusMessage.value = 'Отсканируйте QR-код в Google Authenticator'
+        statusMessage.value = 'Отсканируйте QR-код в приложении'
       } else {
-        // Обычный вход - переход к вводу 6-значного кода
         step.value = 'verify-2fa'
         statusMessage.value = ''
       }
@@ -114,20 +141,17 @@ async function loginUser() {
     }
   } catch (error) {
     console.error('Ошибка входа:', error)
-    statusMessage.value = 'Произошла ошибка при входе'
+    statusMessage.value = 'Сервер недоступен или ошибка сети'
   } finally {
     loading.value = false
   }
 }
 
 async function verify2FA() {
-  if (!verificationCode.value || verificationCode.value.length !== 6) {
-    statusMessage.value = 'Введите 6-значный код'
-    return
-  }
+  const cleanCode = verificationCode.value.trim()
 
-  if (!/^\d+$/.test(verificationCode.value)) {
-    statusMessage.value = 'Код должен содержать только цифры'
+  if (!cleanCode || cleanCode.length !== 6 || !/^\d+$/.test(cleanCode)) {
+    statusMessage.value = 'Введите корректный 6-значный код'
     return
   }
 
@@ -137,12 +161,10 @@ async function verify2FA() {
 
     const response = await fetch('/api/users/2fa-login', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         userId: userId.value,
-        token: verificationCode.value,
+        token: cleanCode,
         loginType: selected.value,
         isFirstTime: isFirstTime.value
       })
@@ -151,31 +173,31 @@ async function verify2FA() {
     const data = await response.json()
 
     if (response.ok) {
-      // Сохраняем в единый appStore с гарантированным _id
       appStore.setUser({
-        _id: data.user._id || userId.value,
+        _id: String(data.user._id || userId.value),
         name: data.user.name,
         role: data.user.role,
         email: data.user.email,
         phone: data.user.phone
       })
 
-      localStorage.setItem('lastLoginType', selected.value)
+      if (import.meta.client) {
+        localStorage.setItem('lastLoginType', selected.value)
+      }
 
       statusMessage.value = `Успешно, ${name.value}`
       setTimeout(() => {
-        router.push(
-            selected.value === 'Бухгалтерия' ? '/accountancy' :
-                selected.value === 'Склад' ? '/storage' :
-                    selected.value === 'Предприятие' ? '/enterprise' : '/'
-        )
-      }, 1500)
+        const dest = selected.value === 'Бухгалтерия' ? '/accountancy' :
+            selected.value === 'Склад' ? '/storage' :
+                selected.value === 'Предприятие' ? '/enterprise' : '/'
+        router.push(dest)
+      }, 500)
     } else {
       statusMessage.value = data.message || 'Неверный код'
     }
   } catch (error) {
     console.error('Ошибка 2FA:', error)
-    statusMessage.value = 'Произошла ошибка при проверке кода'
+    statusMessage.value = 'Ошибка проверки кода'
   } finally {
     loading.value = false
   }
@@ -184,25 +206,19 @@ async function verify2FA() {
 function getUser() {
   checkingAuth.value = true
 
-  // Синхронизируем пользователя через appStore
   const hasUser = appStore.loadUserFromStorage()
-  const lastLoginType = typeof window !== 'undefined' ? localStorage.getItem('lastLoginType') : null
+  const lastLoginType = import.meta.client ? localStorage.getItem('lastLoginType') : null
 
-  if (hasUser && appStore.currentUser) {
+  if (hasUser && appStore.currentUser && lastLoginType) {
     storageName.value = appStore.currentUser.name
-
-    if (lastLoginType) {
-      setTimeout(() => {
-        router.push(
-            lastLoginType === 'Бухгалтерия' ? '/accountancy' :
-                lastLoginType === 'Склад' ? '/storage' :
-                    lastLoginType === 'Предприятие' ? '/enterprise' : '/'
-        )
-      }, 2500)
-    } else {
-      checkingAuth.value = false
-    }
+    setTimeout(() => {
+      const dest = lastLoginType === 'Бухгалтерия' ? '/accountancy' :
+          lastLoginType === 'Склад' ? '/storage' :
+              lastLoginType === 'Предприятие' ? '/enterprise' : '/'
+      router.push(dest)
+    }, 1000)
   } else {
+    storageName.value = ''
     checkingAuth.value = false
   }
 }
@@ -211,6 +227,7 @@ function getUser() {
 <template>
   <section class="auth-container">
     <LayoutMoloGround/>
+
     <section class="auth-main-container">
       <section class="auth-header">
         <section class="auth-nav">
@@ -264,22 +281,22 @@ function getUser() {
         </template>
       </section>
 
-      <!-- ШАГ 1: Форма входа - показываем ТОЛЬКО когда выбран модуль -->
+      <!-- ШАГ 1: Вход -->
       <section v-if="step === 'login' && selected && !checkingAuth && !storageName" class="auth-form">
         <span class="welcome-text">Добро пожаловать. Выполните вход в систему</span>
         <section class="auth-login">
           <div class="form__group field">
-            <input v-model="name" class="form__field" placeholder="Имя пользователя" name="username" id='username' required @keydown.enter="loginUser"/>
+            <input v-model="name" class="form__field" placeholder="Имя пользователя" name="username" id="username" required @keydown.enter="loginUser"/>
             <label for="username" class="form__label">Имя пользователя</label>
           </div>
           <div class="form__group field">
-            <input v-model="password" class="form__field" placeholder="Пароль" type="password" name="password" id='password' required @keydown.enter="loginUser"/>
+            <input v-model="password" class="form__field" placeholder="Пароль" type="password" name="password" id="password" required @keydown.enter="loginUser"/>
             <label for="password" class="form__label">Пароль</label>
           </div>
         </section>
       </section>
 
-      <!-- ШАГ 2: Настройка 2FA (первый вход) -->
+      <!-- ШАГ 2: Настройка 2FA -->
       <section v-else-if="step === 'setup-2fa'" class="auth-form">
         <span class="welcome-text">Настройка двухфакторной защиты</span>
         <section class="auth-login">
@@ -318,7 +335,7 @@ function getUser() {
         </section>
       </section>
 
-      <!-- ШАГ 3: Обычная проверка 2FA -->
+      <!-- ШАГ 3: Проверка 2FA -->
       <section v-else-if="step === 'verify-2fa'" class="auth-form">
         <span class="welcome-text">Двухфакторная аутентификация</span>
         <section class="auth-login">
@@ -345,10 +362,9 @@ function getUser() {
         </section>
       </section>
 
-      <!-- Футер - показываем ТОЛЬКО когда выбран модуль или мы на шагах 2FA -->
+      <!-- Футер -->
       <section class="auth-footer" v-if="!checkingAuth && !storageName && (selected || step !== 'login')">
         <section class="login_status">
-          <!-- Кнопка для шага входа - только если выбран модуль -->
           <button
               type="button"
               v-if="step === 'login' && selected"
@@ -361,7 +377,6 @@ function getUser() {
             <span v-else>Выполнить вход</span>
           </button>
 
-          <!-- Кнопка для шагов 2FA -->
           <button
               v-if="step === 'setup-2fa' || step === 'verify-2fa'"
               class="login-btn"
@@ -372,17 +387,23 @@ function getUser() {
             <span v-else>Подтвердить</span>
           </button>
 
-          <!-- Статус сообщение - показываем только если есть сообщение и мы на нужном шаге -->
-          <span v-if="((step === 'login') || step !== 'login')"
-                class="status">{{ statusMessage }}</span>
+          <span v-if="step === 'login' || step !== 'login'" class="status">
+            {{ statusMessage }}
+          </span>
         </section>
 
-        <!-- Ссылка на регистрацию - только на шаге входа и когда выбран модуль -->
         <NuxtLink v-if="step === 'login' && selected" to="/register" class="new_user">
           Новый аккаунт
         </NuxtLink>
       </section>
     </section>
+
+    <!-- Полупрозрачная плашка текущей локальной сборки справа снизу -->
+    <div class="version-tag">
+      <span class="version-dot"></span>
+      <span>{{ currentVersion }}</span>
+    </div>
+
   </section>
 </template>
 
@@ -845,26 +866,126 @@ option {
   color: white;
 }
 
+.version-tag {
+  position: fixed;
+  right: 18px;
+  bottom: 14px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  color: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(8px);
+  user-select: none;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.version-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #38bdf8;
+  opacity: 0.6;
+}
+
+/* ── Всплывающий тост об обновлении ── */
+.version-update-toast {
+  position: fixed;
+  right: 20px;
+  bottom: 42px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: rgba(18, 20, 29, 0.92);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 12px;
+  backdrop-filter: blur(24px);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6);
+  cursor: pointer;
+  z-index: 999;
+  max-width: 380px;
+}
+
+.toast-badge {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  padding: 3px 6px;
+  border-radius: 5px;
+  flex-shrink: 0;
+}
+
+.toast-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+}
+
+.toast-text strong {
+  color: #ffffff;
+  font-size: 13px;
+}
+
+.toast-text span {
+  color: rgba(255, 255, 255, 0.7);
+  line-height: 1.3;
+}
+
+.toast-close {
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 12px;
+  margin-left: 6px;
+  flex-shrink: 0;
+}
+
+.toast-close:hover {
+  color: #ffffff;
+}
+
+.notice-fade-enter-active,
+.notice-fade-leave-active {
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.notice-fade-enter-from,
+.notice-fade-leave-to {
+  opacity: 0;
+  transform: translateY(10px);
+}
+
 @media (max-width: 480px) {
   .auth-main-container {
     width: 90%;
     margin: 20px;
     padding: 20px;
   }
-
   .auth-header {
     flex-direction: column;
     gap: 12px;
     align-items: stretch;
   }
-
   .custom-dropdown {
     min-width: auto;
     width: 100%;
   }
-
-  .dropdown-trigger {
-    width: 100%;
+  .version-update-toast {
+    right: 12px;
+    left: 12px;
+    bottom: 50px;
   }
 }
 </style>

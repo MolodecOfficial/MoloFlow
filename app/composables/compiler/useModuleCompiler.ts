@@ -474,7 +474,7 @@ async function prepareSFC(
 const cache = useModuleCache()
 
 function applyStyleToDom(moduleId: string, css: string) {
-    if (typeof document === 'undefined') return
+    if (!import.meta.client) return
     const styleId = `dynamic-module-style-${moduleId}`
     let el = document.getElementById(styleId) as HTMLStyleElement | null
     if (!el) {
@@ -488,7 +488,7 @@ function applyStyleToDom(moduleId: string, css: string) {
 
 function removeStyleFromDomIfUnused(moduleId: string) {
     if (cache.hasActiveInstances(moduleId)) return
-    if (typeof document === 'undefined') return
+    if (!import.meta.client) return
     const styleId = `dynamic-module-style-${moduleId}`
     const el = document.getElementById(styleId)
     if (el) el.remove()
