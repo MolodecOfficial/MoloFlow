@@ -2,7 +2,7 @@
 import pkg from './package.json'
 export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
-  devtools: { enabled: false },
+  devtools: { enabled: true },
   css: ['~/assets/main.scss'],
   ssr: false,
 

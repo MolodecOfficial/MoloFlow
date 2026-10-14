@@ -3,63 +3,355 @@
 import {computed} from 'vue'
 
 export type StickerName =
-    | 'departments'
-    | 'it'
-    | 'finance'
-    | 'bank'
-    | 'bank_accounts'
-    | 'counterparties'
-    | 'nomenclature'
-    | 'warehouse'
-    | 'glossary'
-    | 'construction'
-    | 'store'
-    | 'sales'
-    | 'management'
-    | 'production'
-    | 'services'
-    | 'folder'
-    | 'folder-open'
-    | 'history'
-    | 'lock'
-    | 'edit'
-    | 'trash'
-    | 'phone'
-    | 'zoom-in'
-    | 'zoom-out'
-    | 'rotate'
-    | 'print'
-    | 'download'
-    | 'fullscreen'
-    | 'fullscreen-exit'
+// разделы
+    | 'departments' | 'it' | 'finance' | 'bank' | 'bank_accounts' | 'counterparties'
+    | 'nomenclature' | 'warehouse' | 'glossary' | 'construction' | 'store' | 'sales'
+    | 'management' | 'production' | 'services'
+    // файлы и действия
+    | 'folder' | 'folder-open' | 'history' | 'lock' | 'edit' | 'trash' | 'phone'
+    | 'zoom-in' | 'zoom-out' | 'rotate' | 'print' | 'download' | 'fullscreen' | 'fullscreen-exit'
+    // графики
+    | 'chart-area' | 'chart-line' | 'chart-bar' | 'chart-hbar' | 'chart-donut'
+    | 'chart-histogram' | 'chart-empty' | 'sigma' | 'table' | 'trophy' | 'trend-up' | 'trend-down'
+    // dev-инструменты
+    | 'dev-json' | 'dev-regex' | 'dev-encode' | 'dev-notes' | 'dev-calculator' | 'dev-clock' | 'dev-calendar'
+    // редактор PDF
+    | 'cursor' | 'type' | 'highlighter' | 'pen' | 'square' | 'circle' | 'arrow' | 'image'
+    | 'signature' | 'stamp' | 'undo' | 'redo' | 'fit' | 'save' | 'rotate-cw' | 'rotate-ccw'
+    | 'file-plus' | 'up' | 'down' | 'copy' | 'sidebar' | 'x' | 'plus'
+
+type PathDef = string | { d: string; dash?: string; fill?: boolean; o?: number }
 
 const props = withDefaults(
     defineProps<{
       name: StickerName | string
       size?: number | string
       glow?: boolean
+      /** Цвет иконки. По умолчанию наследуется от текста (currentColor) */
+      color?: string
+      /** Толщина линии (viewBox 24×24) */
+      strokeWidth?: number | string
     }>(),
     {
       size: 16,
-      glow: false
+      glow: false,
+      color: undefined,
+      strokeWidth: 1.9
     }
 )
 
-const resolvedSize = computed(() => {
-  return typeof props.size === 'number' ? `${props.size}px` : props.size
-})
+const resolvedSize = computed(() => (typeof props.size === 'number' ? `${props.size}px` : props.size))
 
-const activeIcon = computed(() => {
-  switch (props.name) {
-    case 'bank_accounts':
-      return 'bank'
-    case 'warehouse':
-      return 'nomenclature'
-    case 'sales':
-      return 'store'
-    default:
-      return props.name
+/* Алиасы: старые имена → актуальная иконка */
+const ALIASES: Record<string, string> = {
+  bank_accounts: 'bank',
+  warehouse: 'nomenclature',
+  sales: 'store',
+  rotate: 'rotate-cw',
+  edit: 'pen',
+  close: 'x',
+  printer: 'print'
+}
+
+/* Единый стиль: viewBox 24×24, линия currentColor, скруглённые концы и углы */
+const ICONS: Record<string, PathDef[]> = {
+  /* ───── разделы ───── */
+  departments: [
+    'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2',
+    'M9 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8z',
+    'M22 21v-2a4 4 0 0 0-3-3.87',
+    'M16 3.13a4 4 0 0 1 0 7.75'
+  ],
+  it: [
+    'M5 3h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z',
+    'M8 21h8',
+    'M12 17v4',
+    'm9.5 7-2 2.5 2 2.5',
+    'm14.5 7 2 2.5-2 2.5'
+  ],
+  finance: [
+    'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z',
+    'M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8',
+    'M12 18V6'
+  ],
+  bank: [
+    'M3 22h18',
+    'M6 18v-7',
+    'M10 18v-7',
+    'M14 18v-7',
+    'M18 18v-7',
+    'M12 2 20 7H4z'
+  ],
+  counterparties: [
+    'M8.5 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10z',
+    'M15.5 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10z'
+  ],
+  nomenclature: [
+    'M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z',
+    'M12 22V12',
+    'm3.3 7 8.7 5 8.7-5',
+    'm7.5 4.27 9 5.15'
+  ],
+  construction: [
+    'M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z',
+    'M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2',
+    'M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2',
+    'M10 6h4',
+    'M10 10h4',
+    'M10 14h4',
+    'M10 18h4'
+  ],
+  store: [
+    'M8 21a1 1 0 1 0 0-2 1 1 0 0 0 0 2z',
+    'M19 21a1 1 0 1 0 0-2 1 1 0 0 0 0 2z',
+    'M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12'
+  ],
+  management: [
+    'M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z',
+    'm9 12 2 2 4-4'
+  ],
+  production: [
+    'M2 20a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8l-7 5V8l-7 5V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2z',
+    'M17 18h1',
+    'M12 18h1',
+    'M7 18h1'
+  ],
+  services: [
+    'M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z'
+  ],
+  glossary: [
+    'M12 7v14',
+    'M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z'
+  ],
+
+  /* ───── файлы и действия ───── */
+  folder: [
+    'M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z'
+  ],
+  'folder-open': [
+    'm6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2'
+  ],
+  history: [
+    'M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8',
+    'M3 3v5h5',
+    'M12 7v5l4 2'
+  ],
+  lock: [
+    'M5 11h14a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2z',
+    'M7 11V7a5 5 0 0 1 10 0v4'
+  ],
+  pen: [
+    'M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z'
+  ],
+  trash: [
+    'M3 6h18',
+    'M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6',
+    'M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2',
+    'M10 11v6',
+    'M14 11v6'
+  ],
+  phone: [
+    'M13.832 16.568a1 1 0 0 0 1.213-.303l.355-.465A2 2 0 0 1 17 15h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2A18 18 0 0 1 2 4a2 2 0 0 1 2-2h3a2 2 0 0 1 2 2v3a2 2 0 0 1-.8 1.6l-.468.351a1 1 0 0 0-.292 1.233 14 14 0 0 0 6.392 6.384'
+  ],
+  'zoom-in': [
+    'M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16z',
+    'm21 21-4.3-4.3',
+    'M11 8v6',
+    'M8 11h6'
+  ],
+  'zoom-out': [
+    'M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16z',
+    'm21 21-4.3-4.3',
+    'M8 11h6'
+  ],
+  'rotate-cw': ['M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8', 'M21 3v5h-5'],
+  'rotate-ccw': ['M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8', 'M3 3v5h5'],
+  print: [
+    'M6 9V2h12v7',
+    'M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2',
+    'M6 14h12v8H6z'
+  ],
+  download: [
+    'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4',
+    'm7 10 5 5 5-5',
+    'M12 15V3'
+  ],
+  fullscreen: [
+    'M8 3H5a2 2 0 0 0-2 2v3',
+    'M21 8V5a2 2 0 0 0-2-2h-3',
+    'M3 16v3a2 2 0 0 0 2 2h3',
+    'M16 21h3a2 2 0 0 0 2-2v-3'
+  ],
+  'fullscreen-exit': [
+    'M8 3v3a2 2 0 0 1-2 2H3',
+    'M21 8h-3a2 2 0 0 1-2-2V3',
+    'M3 16h3a2 2 0 0 1 2 2v3',
+    'M16 21v-3a2 2 0 0 1 2-2h3'
+  ],
+
+  /* ───── графики ───── */
+  'chart-area': [
+    'M3 3v16a2 2 0 0 0 2 2h16',
+    {d: 'M7 17l4-5 3 3 5-6v8H7z', fill: true, o: 0.18},
+    'M7 17l4-5 3 3 5-6'
+  ],
+  'chart-line': [
+    'M3 3v16a2 2 0 0 0 2 2h16',
+    'm19 9-5 5-4-4-3 3'
+  ],
+  'chart-bar': [
+    'M3 3v16a2 2 0 0 0 2 2h16',
+    'M18 17V9',
+    'M13 17V5',
+    'M8 17v-3'
+  ],
+  'chart-hbar': [
+    'M3 3v18',
+    'M7 6h13',
+    'M7 12h8',
+    'M7 18h4'
+  ],
+  'chart-donut': [
+    'M21.21 15.89A10 10 0 1 1 8 2.83',
+    'M22 12A10 10 0 0 0 12 2v10z'
+  ],
+  'chart-histogram': [
+    'M3 21h18',
+    'M4 21v-6h4v6',
+    'M10 21V6h4v15',
+    'M16 21v-9h4v9'
+  ],
+  'chart-empty': [
+    'M3 3v16a2 2 0 0 0 2 2h16',
+    {d: 'M8 17v-4', dash: '2 2.4'},
+    {d: 'M13 17V8', dash: '2 2.4'},
+    {d: 'M18 17v-6', dash: '2 2.4'}
+  ],
+  sigma: [
+    'M18 7V5a1 1 0 0 0-1-1H6.5a.5.5 0 0 0-.4.8l4.5 6a2 2 0 0 1 0 2.4l-4.5 6a.5.5 0 0 0 .4.8H17a1 1 0 0 0 1-1v-2'
+  ],
+  table: [
+    'M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z',
+    'M3 9h18',
+    'M3 15h18',
+    'M9 9v12'
+  ],
+  trophy: [
+    'M6 9H4.5a2.5 2.5 0 0 1 0-5H6',
+    'M18 9h1.5a2.5 2.5 0 0 0 0-5H18',
+    'M4 22h16',
+    'M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22',
+    'M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22',
+    'M18 2H6v7a6 6 0 0 0 12 0V2z'
+  ],
+  'trend-up': ['M16 7h6v6', 'm22 7-8.5 8.5-5-5L2 17'],
+  'trend-down': ['M16 17h6v-6', 'm22 17-8.5-8.5-5 5L2 7'],
+
+  /* ───── dev-инструменты ───── */
+  'dev-json': [
+    'M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5c0 1.1.9 2 2 2h1',
+    'M16 21h1a2 2 0 0 0 2-2v-5c0-1.1.9-2 2-2a2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1'
+  ],
+  'dev-regex': [
+    'M17 3v10',
+    'm12.67 5.5 8.66 5',
+    'm12.67 10.5 8.66-5',
+    'M9 17a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v2a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2v-2z'
+  ],
+  'dev-encode': [
+    'M8 3 4 7l4 4',
+    'M4 7h16',
+    'm16 21 4-4-4-4',
+    'M20 17H4'
+  ],
+  'dev-notes': [
+    'M12.5 22H18a2 2 0 0 0 2-2V7l-5-5H6a2 2 0 0 0-2 2v9.5',
+    'M14 2v4a2 2 0 0 0 2 2h4',
+    'M13.378 15.626a1 1 0 1 0-3.004-3.004l-5.01 5.012a2 2 0 0 0-.506.854l-.837 2.87a.5.5 0 0 0 .62.62l2.87-.837a2 2 0 0 0 .854-.506z'
+  ],
+  'dev-calculator': [
+    'M5 2h14a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z',
+    'M8 6h8',
+    'M8 10h.01', 'M12 10h.01', 'M16 10h.01',
+    'M8 14h.01', 'M12 14h.01', 'M16 14h.01',
+    'M8 18h.01', 'M12 18h.01', 'M16 18h.01'
+  ],
+  'dev-clock': [
+    'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z',
+    'M12 7v5l3 2'
+  ],
+  'dev-calendar': [
+    'M8 2v4',
+    'M16 2v4',
+    'M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z',
+    'M3 10h18'
+  ],
+
+  /* ───── редактор PDF ───── */
+  cursor: [
+    'M4.037 4.688a.495.495 0 0 1 .651-.651l16 6.5a.5.5 0 0 1-.063.947l-6.124 1.58a2 2 0 0 0-1.438 1.435l-1.579 6.126a.5.5 0 0 1-.947.063z'
+  ],
+  type: ['M4 7V4h16v3', 'M9 20h6', 'M12 4v16'],
+  highlighter: [
+    'm9 11-6 6v3h9l3-3',
+    'm22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4'
+  ],
+  square: ['M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z'],
+  circle: ['M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z'],
+  arrow: ['M5 12h14', 'm12 5 7 7-7 7'],
+  image: [
+    'M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z',
+    'M9 10a1 1 0 1 0 0-2 1 1 0 0 0 0 2z',
+    'm21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21'
+  ],
+  signature: ['M3 16c3-7 5-10 6-10s-1 9 1 9 3-5 5-5 1 3 3 3 2-1 3-2', 'M3 21h18'],
+  stamp: [
+    'M5 22h14',
+    'M19.27 13.73A2.5 2.5 0 0 0 17.5 13h-11A2.5 2.5 0 0 0 4 15.5V17a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-1.5c0-.66-.26-1.3-.73-1.77',
+    'M14 13V8.5C14 7 15 7 15 5a3 3 0 0 0-6 0c0 2 1 2 1 3.5V13'
+  ],
+  undo: ['M3 7v6h6', 'M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13'],
+  redo: ['M21 7v6h-6', 'M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3L21 13'],
+  fit: [
+    'M8 3H5a2 2 0 0 0-2 2v3',
+    'M21 8V5a2 2 0 0 0-2-2h-3',
+    'M3 16v3a2 2 0 0 0 2 2h3',
+    'M16 21h3a2 2 0 0 0 2-2v-3'
+  ],
+  save: [
+    'M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z',
+    'M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7',
+    'M7 3v4a1 1 0 0 0 1 1h7'
+  ],
+  'file-plus': [
+    'M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z',
+    'M14 2v6h6',
+    'M12 18v-6',
+    'M9 15h6'
+  ],
+  up: ['m18 15-6-6-6 6'],
+  down: ['m6 9 6 6 6-6'],
+  copy: [
+    'M8 8h12a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2z',
+    'M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2'
+  ],
+  sidebar: [
+    'M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z',
+    'M9 3v18'
+  ],
+  x: ['M18 6 6 18', 'm6 6 12 12'],
+  plus: ['M5 12h14', 'M12 5v14']
+}
+
+const activeIcon = computed(() => ALIASES[props.name] ?? props.name)
+
+const paths = computed(() => {
+  const list = ICONS[activeIcon.value]
+  if (!list) {
+    if (import.meta.dev) console.warn(`[MoloSticker] неизвестная иконка: "${props.name}"`)
+    return null
   }
+  return list.map((p) => (typeof p === 'string' ? {d: p} : p) as { d: string; dash?: string; fill?: boolean; o?: number })
 })
 </script>
 
@@ -67,327 +359,33 @@ const activeIcon = computed(() => {
   <span
       class="molo-sticker"
       :class="{ 'with-glow': glow }"
-      :style="{ width: resolvedSize, height: resolvedSize }"
+      :style="{ width: resolvedSize, height: resolvedSize, color: color }"
   >
     <svg
         viewBox="0 0 24 24"
         fill="none"
+        stroke="currentColor"
+        :stroke-width="strokeWidth"
+        stroke-linecap="round"
+        stroke-linejoin="round"
         xmlns="http://www.w3.org/2000/svg"
         class="sticker-svg"
+        aria-hidden="true"
     >
-      <defs>
-        <!-- Премиальный холодный неон (Linear / Raycast) -->
-        <linearGradient id="stk-cyan-core" x1="2" y1="2" x2="22" y2="22" gradientUnits="userSpaceOnUse">
-          <stop stop-color="#38bdf8"/>
-          <stop offset="0.6" stop-color="#3b82f6"/>
-          <stop offset="1" stop-color="#1d4ed8"/>
-        </linearGradient>
-
-        <!-- Мягкий изумруд (Финансы / Успех) -->
-        <linearGradient id="stk-emerald" x1="2" y1="2" x2="22" y2="22" gradientUnits="userSpaceOnUse">
-          <stop stop-color="#4ade80"/>
-          <stop offset="1" stop-color="#059669"/>
-        </linearGradient>
-
-        <!-- Тёплый янтарь (Склад / Логистика / Производство) -->
-        <linearGradient id="stk-amber" x1="2" y1="2" x2="22" y2="22" gradientUnits="userSpaceOnUse">
-          <stop stop-color="#fcd34d"/>
-          <stop offset="1" stop-color="#d97706"/>
-        </linearGradient>
-
-        <!-- Пурпурно-синий (Безопасность / Руководство) -->
-        <linearGradient id="stk-purple" x1="2" y1="2" x2="22" y2="22" gradientUnits="userSpaceOnUse">
-          <stop stop-color="#c084fc"/>
-          <stop offset="1" stop-color="#7c3aed"/>
-        </linearGradient>
-
-        <!-- Рубиновый (Удаление / Отмена) -->
-        <linearGradient id="stk-rose" x1="2" y1="2" x2="22" y2="22" gradientUnits="userSpaceOnUse">
-          <stop stop-color="#fb7185"/>
-          <stop offset="1" stop-color="#e11d48"/>
-        </linearGradient>
-      </defs>
-
-      <!-- ⏱️ История версий / Снимок (Выверено строго под 24x24) -->
-      <g v-if="activeIcon === 'history'">
-        <circle cx="12" cy="12" r="8.5" stroke="url(#stk-cyan-core)" stroke-width="1.6" stroke-linecap="round"
-                stroke-dasharray="48 6"/>
-        <path d="M12 7.5V12L15 14" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-        <path d="M3.5 10L6.5 10L5 7" stroke="#38bdf8" stroke-width="1.5" stroke-linecap="round"
-              stroke-linejoin="round"/>
-        <circle cx="12" cy="12" r="1.2" fill="#38bdf8"/>
-      </g>
-
-      <!-- 📁 Папка закрытая -->
-      <g v-else-if="activeIcon === 'folder'">
+      <template v-if="paths">
         <path
-            d="M2.5 7C2.5 5.6 3.6 4.5 5 4.5H8.5C9.2 4.5 9.8 4.8 10.2 5.3L11.5 6.8C11.9 7.2 12.4 7.5 13 7.5H19C20.4 7.5 21.5 8.6 21.5 10V18C21.5 19.4 20.4 20.5 19 20.5H5C3.6 20.5 2.5 19.4 2.5 18V7Z"
-            fill="#1e2230" fill-opacity="0.8" stroke="url(#stk-cyan-core)" stroke-width="1.5" stroke-linejoin="round"/>
-        <path d="M2.5 10.5H21.5" stroke="#38bdf8" stroke-opacity="0.35" stroke-width="1.2"/>
-        <path d="M6 14H10" stroke="#ffffff" stroke-opacity="0.6" stroke-width="1.4" stroke-linecap="round"/>
-      </g>
+            v-for="(p, i) in paths"
+            :key="i"
+            :d="p.d"
+            :stroke-dasharray="p.dash"
+            :fill="p.fill ? 'currentColor' : 'none'"
+            :fill-opacity="p.fill ? p.o : undefined"
+            :stroke="p.fill ? 'none' : undefined"
+        />
+      </template>
 
-      <!-- 📂 Папка открытая -->
-      <g v-else-if="activeIcon === 'folder-open'">
-        <path
-            d="M3 7C3 5.9 3.9 5 5 5H8.5C9.1 5 9.7 5.3 10.1 5.8L11.4 7.2C11.8 7.7 12.3 8 13 8H19C20.1 8 21 8.9 21 10V13H3V7Z"
-            fill="#1e2230" fill-opacity="0.8" stroke="url(#stk-cyan-core)" stroke-width="1.4" stroke-linejoin="round"/>
-        <path d="M1.5 20L4 10.5H22.5L20 20H1.5Z" fill="#131722" fill-opacity="0.9" stroke="#38bdf8" stroke-width="1.5"
-              stroke-linejoin="round"/>
-        <path d="M7 15.5H12" stroke="#38bdf8" stroke-width="1.4" stroke-linecap="round"/>
-      </g>
-
-      <!-- 🗖 Полный экран (Четкий прицел в углах) -->
-      <g v-else-if="activeIcon === 'fullscreen'">
-        <path d="M4 8.5V5C4 4.4 4.4 4 5 4H8.5" stroke="url(#stk-cyan-core)" stroke-width="1.7" stroke-linecap="round"
-              stroke-linejoin="round"/>
-        <path d="M15.5 4H19C19.6 4 20 4.4 20 5V8.5" stroke="url(#stk-cyan-core)" stroke-width="1.7"
-              stroke-linecap="round" stroke-linejoin="round"/>
-        <path d="M4 15.5V19C4 19.6 4.4 20 5 20H8.5" stroke="url(#stk-cyan-core)" stroke-width="1.7"
-              stroke-linecap="round" stroke-linejoin="round"/>
-        <path d="M15.5 20H19C19.6 20 20 19.6 20 19V15.5" stroke="url(#stk-cyan-core)" stroke-width="1.7"
-              stroke-linecap="round" stroke-linejoin="round"/>
-      </g>
-
-      <!-- 🗗 Оконный режим -->
-      <g v-else-if="activeIcon === 'fullscreen-exit'">
-        <path d="M8.5 4V7.5C8.5 8 8 8.5 7.5 8.5H4" stroke="url(#stk-cyan-core)" stroke-width="1.7"
-              stroke-linecap="round" stroke-linejoin="round"/>
-        <path d="M15.5 4V7.5C15.5 8 16 8.5 16.5 8.5H20" stroke="url(#stk-cyan-core)" stroke-width="1.7"
-              stroke-linecap="round" stroke-linejoin="round"/>
-        <path d="M8.5 20V16.5C8.5 16 8 15.5 7.5 15.5H4" stroke="url(#stk-cyan-core)" stroke-width="1.7"
-              stroke-linecap="round" stroke-linejoin="round"/>
-        <path d="M15.5 20V16.5C15.5 16 16 15.5 16.5 15.5H20" stroke="url(#stk-cyan-core)" stroke-width="1.7"
-              stroke-linecap="round" stroke-linejoin="round"/>
-      </g>
-
-      <!-- 👥 Сотрудники и отделы -->
-      <g v-else-if="activeIcon === 'departments'">
-        <circle cx="16.5" cy="7.5" r="2.8" stroke="url(#stk-purple)" stroke-width="1.4" opacity="0.6"/>
-        <path d="M13.5 16.5C13.5 14.5 15 13.5 17 13.5C19 13.5 20.5 14.5 20.5 16.5" stroke="url(#stk-purple)"
-              stroke-width="1.4" stroke-linecap="round" opacity="0.6"/>
-        <circle cx="9.5" cy="8" r="3.5" stroke="url(#stk-cyan-core)" stroke-width="1.6"/>
-        <path d="M4 19.5C4 16.2 6.5 14.5 9.5 14.5C12.5 14.5 15 16.2 15 19.5" stroke="url(#stk-cyan-core)"
-              stroke-width="1.7" stroke-linecap="round"/>
-      </g>
-
-      <!-- 💻 IT и разработка -->
-      <g v-else-if="activeIcon === 'it'">
-        <rect x="3" y="4" width="18" height="12.5" rx="2.5" stroke="url(#stk-cyan-core)" stroke-width="1.6"/>
-        <path d="M7.5 9.5L9.5 10.5L7.5 11.5" stroke="#38bdf8" stroke-width="1.5" stroke-linecap="round"
-              stroke-linejoin="round"/>
-        <path d="M12 11.5H14.5" stroke="#4ade80" stroke-width="1.6" stroke-linecap="round"/>
-        <path d="M9 19.5H15M12 16.5V19.5" stroke="url(#stk-cyan-core)" stroke-width="1.6" stroke-linecap="round"/>
-      </g>
-
-      <!-- 💰 Финансы -->
-      <g v-else-if="activeIcon === 'finance'">
-        <circle cx="12" cy="12" r="8.5" stroke="url(#stk-emerald)" stroke-width="1.6"/>
-        <path
-            d="M12 7.5V16.5M9.8 10C9.8 8.8 10.8 8.2 12 8.2C13.3 8.2 14.2 9 14.2 10.1C14.2 11.5 12.8 11.8 11.5 12.2C10.2 12.6 9.8 13.2 9.8 14.2C9.8 15.5 10.8 16 12 16C13.5 16 14.5 15.2 14.5 14"
-            stroke="#ffffff" stroke-width="1.5" stroke-linecap="round"/>
-      </g>
-
-      <!-- 🏛️ Банк -->
-      <g v-else-if="activeIcon === 'bank'">
-        <path d="M3.5 8.5L12 4L20.5 8.5H3.5Z" stroke="url(#stk-cyan-core)" stroke-width="1.5" stroke-linejoin="round"/>
-        <path d="M6 11V16.5M10 11V16.5M14 11V16.5M18 11V16.5" stroke="#ffffff" stroke-opacity="0.8" stroke-width="1.5"
-              stroke-linecap="round"/>
-        <path d="M3 19.5H21" stroke="url(#stk-cyan-core)" stroke-width="1.8" stroke-linecap="round"/>
-      </g>
-
-      <!-- 🤝 Контрагенты -->
-      <g v-else-if="activeIcon === 'counterparties'">
-        <circle cx="7.5" cy="12" r="4" stroke="url(#stk-cyan-core)" stroke-width="1.6"/>
-        <circle cx="16.5" cy="12" r="4" stroke="url(#stk-emerald)" stroke-width="1.6"/>
-        <path d="M11 12H13" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round"/>
-        <circle cx="12" cy="12" r="1.3" fill="#ffffff"/>
-      </g>
-
-      <!-- 📦 Номенклатура / Склад -->
-      <g v-else-if="activeIcon === 'nomenclature'">
-        <path d="M12 3.5L20 8V16L12 20.5L4 16V8L12 3.5Z" stroke="url(#stk-amber)" stroke-width="1.6"
-              stroke-linejoin="round"/>
-        <path d="M12 3.5V20.5M20 8L12 12.5L4 8" stroke="url(#stk-amber)" stroke-width="1.5" stroke-linejoin="round"/>
-      </g>
-
-      <!-- 🏗️ Строительство -->
-      <g v-else-if="activeIcon === 'construction'">
-        <path d="M5 20.5V6.5L15 4V20.5" stroke="url(#stk-amber)" stroke-width="1.6"/>
-        <path d="M5 10H15M5 14H15M5 17.5H15" stroke="url(#stk-amber)" stroke-width="1.3" opacity="0.6"/>
-        <path d="M15 7L20 9.5V20.5" stroke="#fcd34d" stroke-width="1.5"/>
-        <path d="M3 20.5H21" stroke="#ffffff" stroke-width="1.7" stroke-linecap="round"/>
-      </g>
-
-      <!-- 🛒 Магазин -->
-      <g v-else-if="activeIcon === 'store'">
-        <path d="M3.5 5H5.8L8.2 15.5H18.5L20.8 7.5H7" stroke="url(#stk-emerald)" stroke-width="1.6"
-              stroke-linecap="round" stroke-linejoin="round"/>
-        <circle cx="9.5" cy="18.5" r="1.7" fill="#ffffff"/>
-        <circle cx="17.2" cy="18.5" r="1.7" fill="#ffffff"/>
-      </g>
-
-      <!-- 🛡️ Руководство / Менеджмент -->
-      <g v-else-if="activeIcon === 'management'">
-        <path d="M12 3.5L19 6.5V11.5C19 16 16 19 12 20.5C8 19 5 16 5 11.5V6.5L12 3.5Z" stroke="url(#stk-purple)"
-              stroke-width="1.6" stroke-linejoin="round"/>
-        <path d="M9.5 11.5L11.5 13.5L15 9.5" stroke="#ffffff" stroke-width="1.6" stroke-linecap="round"
-              stroke-linejoin="round"/>
-      </g>
-
-      <!-- 🏭 Производство -->
-      <g v-else-if="activeIcon === 'production'">
-        <path d="M3.5 20V10L8.5 12.5V10L13.5 12.5V7.5L20.5 11V20H3.5Z" stroke="url(#stk-amber)" stroke-width="1.6"
-              stroke-linejoin="round"/>
-        <circle cx="7" cy="16" r="1.2" fill="#ffffff"/>
-        <circle cx="12" cy="16" r="1.2" fill="#ffffff"/>
-        <circle cx="17" cy="16" r="1.2" fill="#ffffff"/>
-      </g>
-
-      <!-- 🛠️ Услуги -->
-      <g v-else-if="activeIcon === 'services'">
-        <path d="M17.5 7L15 4.5L8.5 11L7.5 14.5L11 13.5L17.5 7Z" stroke="url(#stk-cyan-core)" stroke-width="1.6"
-              stroke-linejoin="round"/>
-        <path d="M5.5 5.5L8.5 8.5M11.5 11.5L13 13M5 19L7.5 16.5" stroke="#38bdf8" stroke-width="1.7"
-              stroke-linecap="round"/>
-      </g>
-
-      <!-- 📖 Глоссарий / Документация -->
-      <g v-else-if="activeIcon === 'glossary'">
-        <path d="M4.5 6C4.5 4.9 5.4 4 6.5 4H19.5V17.5H6.5C5.4 17.5 4.5 18.4 4.5 19.5V6Z" stroke="url(#stk-cyan-core)"
-              stroke-width="1.6" stroke-linejoin="round"/>
-        <path d="M4.5 17.5C5.5 17.5 6.5 18 7.5 19H19.5" stroke="url(#stk-cyan-core)" stroke-width="1.5"
-              stroke-linecap="round"/>
-        <path d="M8.5 8.5H15.5M8.5 12H13.5" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round"/>
-      </g>
-
-      <!-- ✏️ Карандаш -->
-      <g v-else-if="activeIcon === 'edit'">
-        <path d="M5 19L8 18.5L17.5 9L14.5 6L5 15.5V19Z" stroke="url(#stk-cyan-core)" stroke-width="1.5"
-              stroke-linejoin="round"/>
-        <path d="M12.5 8L15.5 11" stroke="#ffffff" stroke-width="1.3"/>
-      </g>
-
-      <!-- 🗑️ Удалить / Корзина -->
-      <g v-else-if="activeIcon === 'trash'">
-        <path d="M6.5 8V18C6.5 19.1 7.4 20 8.5 20H15.5C16.6 20 17.5 19.1 17.5 18V8" stroke="white"
-              stroke-width="1.5" stroke-linejoin="round"/>
-        <path d="M4.5 8H19.5M9.5 5.5H14.5" stroke="white" stroke-width="1.6" stroke-linecap="round"/>
-        <path d="M10 11.5V16.5M14 11.5V16.5" stroke="white" stroke-width="1.3" stroke-linecap="round"
-              opacity="0.7"/>
-      </g>
-
-      <!-- 📞 Телефон -->
-      <g v-else-if="activeIcon === 'phone'">
-        <path
-            d="M6.5 4C6 4 5.5 4.4 5.5 5C5.8 13.5 10.5 18.2 19 18.5C19.6 18.5 20 18 20 17.5V15.5C20 15 19.6 14.6 19.1 14.5L16.2 13.9C15.8 13.8 15.4 14 15.2 14.3L14.1 15.4C12 14.4 10.6 13 9.6 10.9L10.7 9.8C11 9.6 11.2 9.2 11.1 8.8L10.5 5.9C10.4 5.4 10 5 9.5 5H6.5Z"
-            stroke="url(#stk-cyan-core)" stroke-width="1.5" stroke-linejoin="round"/>
-      </g>
-
-      <!-- 🔍+ Приблизить -->
-      <g v-else-if="activeIcon === 'zoom-in'">
-        <circle cx="11" cy="11" r="6.5" stroke="url(#stk-cyan-core)" stroke-width="1.6"/>
-        <path d="M15.5 15.5L19.5 19.5" stroke="url(#stk-cyan-core)" stroke-width="1.8" stroke-linecap="round"/>
-        <path d="M11 8.5V13.5M8.5 11H13.5" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round"/>
-      </g>
-
-      <!-- 🔍- Отдалить -->
-      <g v-else-if="activeIcon === 'zoom-out'">
-        <circle cx="11" cy="11" r="6.5" stroke="url(#stk-cyan-core)" stroke-width="1.6"/>
-        <path d="M15.5 15.5L19.5 19.5" stroke="url(#stk-cyan-core)" stroke-width="1.8" stroke-linecap="round"/>
-        <path d="M8.5 11H13.5" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round"/>
-      </g>
-
-      <!-- 🔄 Повернуть -->
-      <g v-else-if="activeIcon === 'rotate'">
-        <path d="M18.5 9C17.6 6.5 15.2 4.8 12.5 4.8C8.8 4.8 5.8 7.8 5.8 11.5" stroke="url(#stk-cyan-core)"
-              stroke-width="1.6" stroke-linecap="round"/>
-        <path d="M18.5 5V9.5H14" stroke="#38bdf8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-        <path d="M5.5 15C6.4 17.5 8.8 19.2 11.5 19.2C15.2 19.2 18.2 16.2 18.2 12.5" stroke="url(#stk-cyan-core)"
-              stroke-width="1.6" stroke-linecap="round" opacity="0.6"/>
-      </g>
-
-      <!-- 🖨️ Печать -->
-      <g v-else-if="activeIcon === 'print'">
-        <path d="M6.5 7.5V4H17.5V7.5" stroke="#ffffff" stroke-width="1.4" stroke-linecap="round"/>
-        <rect x="4" y="7.5" width="16" height="8" rx="2" stroke="url(#stk-cyan-core)" stroke-width="1.5"/>
-        <path d="M7 12H17V19.5H7V12Z" fill="#131722" stroke="url(#stk-cyan-core)" stroke-width="1.4"
-              stroke-linejoin="round"/>
-        <circle cx="16.5" cy="10" r="0.8" fill="#38bdf8"/>
-      </g>
-
-      <!-- ⬇️ Скачать -->
-      <g v-else-if="activeIcon === 'download'">
-        <path d="M12 4.5V14.5M12 14.5L8.5 11M12 14.5L15.5 11" stroke="#38bdf8" stroke-width="1.7" stroke-linecap="round"
-              stroke-linejoin="round"/>
-        <path d="M5 18.5H19" stroke="url(#stk-cyan-core)" stroke-width="1.7" stroke-linecap="round"/>
-      </g>
-
-      <!-- dev:json — фигурные скобки кода с точкой входа -->
-<g v-else-if="activeIcon === 'dev-json'">
-  <path d="M8.5 4.5C7.2 4.5 6 5.5 6 7V10C6 11 5 12 4 12C5 12 6 13 6 14V17C6 18.5 7.2 19.5 8.5 19.5"
-        stroke="url(#stk-cyan-core)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M15.5 4.5C16.8 4.5 18 5.5 18 7V10C18 11 19 12 20 12C19 12 18 13 18 14V17C18 18.5 16.8 19.5 15.5 19.5"
-        stroke="url(#stk-cyan-core)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="12" cy="12" r="1.3" fill="#38bdf8"/>
-</g>
-
-      <!-- dev:regex — точка со звездочкой и диагональной границей выражения -->
-<g v-else-if="activeIcon === 'dev-regex'">
-  <circle cx="7" cy="13.5" r="1.7" fill="#c084fc"/>
-  <path d="M14 7.5L14 16.5M9.5 12L18.5 12M10.8 8.8L17.2 15.2M10.8 15.2L17.2 8.8" stroke="url(#stk-purple)"
-        stroke-width="1.6" stroke-linecap="round"/>
-</g>
-
-      <!-- dev:encode — двунаправленный поток трансформации данных -->
-<g v-else-if="activeIcon === 'dev-encode'">
-  <path d="M4 8.5H17M17 8.5L13.5 5M17 8.5L13.5 12" stroke="url(#stk-emerald)" stroke-width="1.6" stroke-linecap="round"
-        stroke-linejoin="round"/>
-  <path d="M20 15.5H7M7 15.5L10.5 12M7 15.5L10.5 19" stroke="url(#stk-emerald)" stroke-width="1.6"
-        stroke-linecap="round" stroke-linejoin="round"/>
-</g>
-
-      <!-- dev:notes — блокнот с текстом и угловым карандашом -->
-<g v-else-if="activeIcon === 'dev-notes'">
-  <path
-      d="M5 4.5H15C16.1 4.5 17 5.4 17 6.5V18.5C17 19.6 16.1 20.5 15 20.5H5C3.9 20.5 3 19.6 3 18.5V6.5C3 5.4 3.9 4.5 5 4.5Z"
-      stroke="url(#stk-amber)" stroke-width="1.6" stroke-linejoin="round"/>
-  <path d="M7 8.5H13M7 12.5H11" stroke="#ffffff" stroke-opacity="0.7" stroke-width="1.4" stroke-linecap="round"/>
-  <path d="M14 14.5L19.5 9L21.5 11L16 16.5L13.5 17L14 14.5Z" fill="#1e2230" stroke="#fcd34d" stroke-width="1.4"
-        stroke-linejoin="round"/>
-</g>
-
-      <!-- dev:calculator — клавиатурная сетка со знаками вычисления -->
-<g v-else-if="activeIcon === 'dev-calculator'">
-  <rect x="4" y="3.5" width="16" height="17" rx="3" stroke="url(#stk-cyan-core)" stroke-width="1.6"/>
-  <rect x="7" y="6.5" width="10" height="3" rx="1" fill="#38bdf8" fill-opacity="0.25" stroke="#38bdf8"
-        stroke-width="1.2"/>
-  <circle cx="8" cy="13" r="1" fill="#ffffff"/>
-  <circle cx="12" cy="13" r="1" fill="#ffffff"/>
-  <circle cx="16" cy="13" r="1" fill="#ffffff"/>
-  <circle cx="8" cy="17" r="1" fill="#ffffff"/>
-  <circle cx="12" cy="17" r="1" fill="#ffffff"/>
-  <path d="M15 17H17" stroke="#4ade80" stroke-width="1.6" stroke-linecap="round"/>
-</g>
-
-      <!-- dev:clock — точный циферблат с делениями и стрелками -->
-<g v-else-if="activeIcon === 'dev-clock'">
-  <circle cx="12" cy="12" r="8.5" stroke="url(#stk-amber)" stroke-width="1.6"/>
-  <path d="M12 7.5V12L15.5 13.5" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="12" cy="12" r="1.2" fill="#fcd34d"/>
-</g>
-
-      <!-- dev:calendar — отрывной настенный календарь с фиксаторами -->
-<g v-else-if="activeIcon === 'dev-calendar'">
-  <rect x="3.5" y="5" width="17" height="15.5" rx="3" stroke="url(#stk-rose)" stroke-width="1.6"/>
-  <path d="M3.5 9.5H20.5" stroke="url(#stk-rose)" stroke-width="1.4"/>
-  <path d="M8 3V6M16 3V6" stroke="#ffffff" stroke-width="1.6" stroke-linecap="round"/>
-  <circle cx="8" cy="13.5" r="1" fill="#fb7185"/>
-  <circle cx="12" cy="13.5" r="1" fill="#ffffff" stroke-opacity="0.8"/>
-  <circle cx="16" cy="13.5" r="1" fill="#ffffff" stroke-opacity="0.8"/>
-  <circle cx="8" cy="16.5" r="1" fill="#ffffff" stroke-opacity="0.8"/>
-  <circle cx="12" cy="16.5" r="1" fill="#ffffff" stroke-opacity="0.8"/>
-</g>
+      <!-- неизвестное имя: пунктирная заглушка -->
+      <rect v-else x="4" y="4" width="16" height="16" rx="3" stroke-dasharray="3 3"/>
     </svg>
   </span>
 </template>
@@ -407,9 +405,10 @@ const activeIcon = computed(() => {
   width: 100%;
   height: 100%;
   display: block;
+  overflow: visible;
 }
 
 .with-glow {
-  filter: drop-shadow(0 0 6px rgba(56, 189, 248, 0.45));
+  filter: drop-shadow(0 0 6px currentColor);
 }
 </style>

@@ -90,15 +90,6 @@ export default defineEventHandler(async (event) => {
                         isActive: true,
                         componentName: 'Customisation'
                     },
-                    {
-                        id: 'confirm',
-                        placeName: 'confirm',
-                        title: 'Подтверждение',
-                        type: 'item',
-                        requiredRole: ['Сотрудник', 'Управляющий'],
-                        isActive: false,
-                        componentName: 'Confirm'
-                    }
                 ]
             },
             {

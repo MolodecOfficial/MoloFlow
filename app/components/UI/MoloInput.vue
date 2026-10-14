@@ -1,3 +1,4 @@
+<!-- components/ui/MoloInput.vue -->
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 
@@ -13,6 +14,7 @@ const props = defineProps<{
   readonly?: any
   address?: boolean
   phone?: boolean
+  date?: boolean
   compact?: boolean
 }>()
 
@@ -101,7 +103,7 @@ watch(() => props.modelValue, (newVal) => {
   }
 })
 
-// --- логика подсказок ---
+// --- логика подсказок адреса ---
 const addressSearch = ref('')
 const showAddressDropdown = ref(false)
 const suggestions = ref<any[]>([])
@@ -235,17 +237,22 @@ watch(() => props.modelValue, (newVal) => {
     </div>
   </div>
 
-  <!-- Обычный режим (включая date/number) -->
+  <!-- Обычный режим (включая date / number / text) -->
   <div v-else class="form-group" :class="{ compact }">
-    <label v-if="tLabel" :for="id || 'phone-input'">
+    <label v-if="tLabel" :for="id || 'input-field'">
       {{ tLabel }}
       <span class="required" v-if="lRequired">*</span>
     </label>
     <input
-        :type="type || 'text'"
-        :id="id || 'phone-input'"
+        :type="date ? 'date' : (type || 'text')"
+        :id="id || 'input-field'"
         :value="addressSearch"
-        @input="(e) => { const val = (e.target as HTMLInputElement).value; addressSearch = val; $emit('update:modelValue', type === 'number' ? (val === '' ? 0 : Number(val)) : val); $emit('input', e); }"
+        @input="(e) => {
+        const val = (e.target as HTMLInputElement).value;
+        addressSearch = val;
+        $emit('update:modelValue', type === 'number' ? (val === '' ? 0 : Number(val)) : val);
+        $emit('input', e);
+      }"
         @focus="$emit('focus', $event)"
         :required="iRequired"
         :placeholder="placeholder"
@@ -287,7 +294,6 @@ input {
   box-sizing: border-box;
 }
 
-/* Компактный режим для плотных форм и таблиц */
 .form-group.compact {
   gap: 0.2rem;
 }
@@ -306,20 +312,24 @@ input {
 input[type="date"] {
   color-scheme: dark;
   position: relative;
+  cursor: pointer;
 }
 
 input[type="date"]::-webkit-calendar-picker-indicator {
   background-color: rgba(255, 255, 255, 0.2);
   border-radius: 4px;
   cursor: pointer;
+  padding: 3px;
+  transition: background-color 0.2s;
 }
 
 input[type="date"]::-webkit-calendar-picker-indicator:hover {
-  background-color: rgba(30, 72, 239, 0.3);
+  background-color: rgba(56, 114, 239, 0.45);
 }
 
 input:focus {
   border-color: var(--borber-color_main);
+  box-shadow: 0 0 0 2px rgba(56, 114, 239, 0.2);
 }
 
 input::placeholder {
@@ -333,6 +343,7 @@ input:read-only {
   color: rgba(255, 255, 255, 0.5);
   cursor: default;
 }
+
 input:read-only:focus {
   border-color: rgba(255, 255, 255, 0.05);
   box-shadow: none;
@@ -342,9 +353,11 @@ input:read-only:focus {
   position: relative;
   width: 100%;
 }
+
 .search-wrapper {
   position: relative;
 }
+
 .search-spinner {
   position: absolute;
   right: 12px;
@@ -356,6 +369,7 @@ input:read-only:focus {
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
+
 .dropdown {
   position: absolute;
   top: 100%;
@@ -368,15 +382,18 @@ input:read-only:focus {
   margin-top: 2px;
   z-index: 1000;
 }
+
 .dropdown-item {
   padding: 8px 12px;
   cursor: pointer;
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   font-size: 13px;
 }
+
 .dropdown-item:hover {
   background: rgba(30, 135, 239, 0.1);
 }
+
 @keyframes spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }

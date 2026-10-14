@@ -10,7 +10,7 @@ import {
   type ApiImportPayload,
   type ApiMatrix,
   type ApiSource,
-} from '~/composables/useApiTable'
+} from '~/composables/table/useApiTable'
 
 const props = defineProps<{
   modelValue: boolean
@@ -35,22 +35,27 @@ const matrix = ref<ApiMatrix | null>(null)
 let matrixKey = ''
 
 const api_methods = [
-  {
-    label: 'GET / Получить', value: 'GET'
-  },
-  {
-    label: 'POST / Отправить', value: 'POST'
-  }
+  { label: 'GET / Получить', value: 'GET' },
+  { label: 'POST / Отправить', value: 'POST' }
 ]
 
 const isEditing = computed(() => props.sources.some(s => s.id === form.id))
-const currentKey = () => JSON.stringify([form.url, form.method, form.headers, form.body, form.dataPath, form.maxRows])
+const currentKey = () => JSON.stringify([
+  form.url,
+  form.method,
+  form.headers,
+  form.body,
+  form.dataPath,
+  form.maxRows,
+  form.authType,
+  form.authLogin,
+  form.authPassword
+])
 
 const previewHeaders = computed(() => matrix.value?.headers.slice(0, 8) ?? [])
 const previewRows = computed(() => matrix.value?.rows.slice(0, 8).map(r => r.slice(0, 8)) ?? [])
 
 const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v))
-const isSecretKey = (k: string) => /auth|token|key|secret|bearer|password|pass/i.test(k)
 
 function resetForm() {
   Object.assign(form, newSource())
@@ -67,7 +72,7 @@ function startEdit(src: ApiSource) {
   matrixKey = ''
   error.value = ''
   notice.value = src.needsHeaders
-      ? 'Значения заголовков (токены) не хранятся в документе — введите их заново.'
+      ? 'Значения заголовков или ключей авторизации не хранятся в документе — введите их заново.'
       : ''
 }
 
@@ -79,14 +84,37 @@ function removeHeader(i: number) {
   form.headers.splice(i, 1)
 }
 
+function applyYooKassaPreset() {
+  form.authType = 'yookassa'
+  form.method = 'GET'
+  form.name = 'Платежи ЮKassa'
+  form.url = 'https://api.yookassa.ru/v3/payments?limit=100'
+  form.dataPath = 'items'
+}
+
+function setCustomApi() {
+  form.authType = 'none'
+  if (form.name === 'Платежи ЮKassa') {
+    form.name = ''
+    form.url = ''
+    form.dataPath = ''
+  }
+}
+
 function validate(): string | null {
   let url: URL
   try {
     url = new URL(form.url.trim())
   } catch {
-    return 'Введите корректный URL, например https://api.example.com/items'
+    return 'Введите корректный URL, например https://api.yookassa.ru/v3/payments?limit=100'
   }
   if (!['http:', 'https:'].includes(url.protocol)) return 'Поддерживаются только http и https'
+
+  if (form.authType === 'yookassa') {
+    if (!form.authLogin?.trim()) return 'Для ЮKassa укажите Shop ID (логин магазина)'
+    if (!form.authPassword?.trim()) return 'Для ЮKassa укажите секретный ключ (live_... или test_...)'
+  }
+
   if (form.method === 'POST' && form.body.trim()) {
     try {
       JSON.parse(form.body)
@@ -104,10 +132,12 @@ function validate(): string | null {
 function cleanedForm(): ApiSource {
   const src = clone(form) as ApiSource
   src.url = src.url.trim()
-  src.headers = src.headers.filter(h => h.key.trim()).map(h => ({ key: h.key.trim(), value: h.value }))
+  src.headers = (src.headers || []).filter(h => h.key.trim()).map(h => ({ key: h.key.trim(), value: h.value }))
   src.name = src.name.trim() || guessSourceName(src.url)
   src.dataPath = src.dataPath.trim()
   src.maxRows = Math.floor(Number(src.maxRows))
+  src.authLogin = src.authLogin?.trim() || ''
+  src.authPassword = src.authPassword?.trim() || ''
   return src
 }
 
@@ -125,7 +155,7 @@ async function check() {
     matrix.value = await fetchMatrix(src)
     matrixKey = currentKey()
     if (!matrix.value.rows.length) {
-      error.value = 'API ответил, но данных для таблицы нет'
+      error.value = 'API ответил, но строк для таблицы не найдено'
       return false
     }
     return true
@@ -155,8 +185,7 @@ async function submit() {
 }
 
 async function refreshSaved(src: ApiSource) {
-  // токены не хранились — без них запрос не повторить, отправляем в форму
-  if (src.needsHeaders && src.headers.some(h => !h.value)) {
+  if (src.needsHeaders && (!src.authPassword || src.headers.some(h => !h.value))) {
     startEdit(src)
     return
   }
@@ -191,7 +220,7 @@ watch(() => props.modelValue, (open) => {
   <UIMoloModal
       :model-value="modelValue"
       title="Подключить API"
-      width="720px"
+      width="740px"
       :confirm-text="isEditing ? 'Сохранить и обновить' : 'Вставить в таблицу'"
       cancel-text="Отмена"
       @update:model-value="(val) => emit('update:modelValue', val)"
@@ -230,30 +259,84 @@ watch(() => props.modelValue, (open) => {
             <button v-if="isEditing" type="button" class="link-btn" @click="resetForm">+ Новый</button>
           </div>
 
+          <!-- Пресеты -->
+          <div class="row presets">
+            <span class="preset-label">Пресет:</span>
+            <button
+                type="button"
+                class="preset-badge"
+                :class="{ active: form.authType === 'yookassa' }"
+                @click="applyYooKassaPreset"
+            >
+              ЮKassa (Платежи)
+            </button>
+            <button
+                type="button"
+                class="preset-badge"
+                :class="{ active: form.authType === 'none' }"
+                @click="setCustomApi"
+            >
+              Кастомный API
+            </button>
+          </div>
+
+          <!-- Настройка авторизации ЮKassa -->
+          <template v-if="form.authType === 'yookassa'">
+            <div class="sub-title">Авторизация ЮKassa (Basic Auth)</div>
+            <div class="row auth-box">
+              <input
+                  v-model="form.authLogin"
+                  class="field login-field"
+                  type="text"
+                  placeholder="Shop ID (например, 123456)"
+              />
+              <input
+                  v-model="form.authPassword"
+                  class="field grow mono"
+                  type="password"
+                  placeholder="Секретный ключ (live_TYvQ... или test_...)"
+              />
+            </div>
+          </template>
+
           <div class="row">
             <UIMoloSelect
-              :parent="api_methods"
-              children="label"
-              v-model="form.method"
-              value-key="value"
-              />
+                v-model="form.method"
+                :parent="api_methods"
+                children="label"
+                value-key="value"
+            />
             <UIMoloInput
                 v-model="form.url"
-                class=""
+                class="grow"
                 type="text"
-                placeholder="https://api.example.com/v1/items?limit=100"
+                placeholder="https://api.example.com/v1/items"
                 @keydown.enter.prevent="check"
             />
           </div>
 
           <div class="row">
             <input v-model="form.name" class="field grow" type="text" placeholder="Название (по умолчанию — из URL)">
-            <input v-model="form.dataPath" class="field grow" type="text" placeholder="Путь к данным, напр. data.items (необязательно)">
+            <input v-model="form.dataPath" class="field grow" type="text" placeholder="Путь к данным, напр. items (необязательно)">
           </div>
-          <!-- Тело -->
+
+          <!-- Кастомные заголовки (для не-ЮKassa) -->
+          <template v-if="form.authType === 'none'">
+            <div class="sub-title">
+              <span>Заголовки запроса (Headers)</span>
+              <button type="button" class="link-btn" @click="addHeader">+ Добавить</button>
+            </div>
+            <div v-for="(h, i) in form.headers" :key="i" class="row">
+              <input v-model="h.key" class="field half" placeholder="Authorization / X-Api-Key" />
+              <input v-model="h.value" class="field grow mono" type="text" placeholder="Значение" />
+              <button type="button" class="icon-btn" @click="removeHeader(i)">×</button>
+            </div>
+          </template>
+
+          <!-- Тело POST -->
           <template v-if="form.method === 'POST'">
             <div class="sub-title">Тело запроса (JSON)</div>
-            <textarea v-model="form.body" class="field mono" rows="4" placeholder='{"filter": {"status": "active"}}'/>
+            <textarea v-model="form.body" class="field mono" rows="3" placeholder='{"filter": {"status": "active"}}'/>
           </template>
 
           <div class="row options">
@@ -261,9 +344,13 @@ watch(() => props.modelValue, (open) => {
               Макс. строк
               <input v-model.number="form.maxRows" class="field num" type="number" min="1" :max="HARD_MAX_ROWS" :placeholder="String(DEFAULT_MAX_ROWS)">
             </label>
+            <label class="check">
+              <input v-model="form.saveHeaders" type="checkbox" />
+              Сохранять секретные ключи в файле
+            </label>
             <template v-if="!isEditing">
               <label class="radio"><input v-model="target" type="radio" value="new"> Новый лист</label>
-              <label class="radio"><input v-model="target" type="radio" value="active"> Текущий лист, с выделенной ячейки</label>
+              <label class="radio"><input v-model="target" type="radio" value="active"> Текущий лист</label>
             </template>
             <span v-else class="hint">Данные обновятся на листе «{{ form.sheetName }}»</span>
           </div>
@@ -282,7 +369,7 @@ watch(() => props.modelValue, (open) => {
           <div v-if="notice" class="msg info">{{ notice }}</div>
           <div v-if="error" class="msg error">{{ error }}</div>
 
-          <!-- Превью -->
+          <!-- Превью данных -->
           <div v-if="matrix && previewRows.length" class="preview">
             <table>
               <thead>
@@ -326,7 +413,35 @@ watch(() => props.modelValue, (open) => {
 .sub-title { margin-top: 4px; }
 
 .row { display: flex; align-items: center; gap: 8px; }
+.row.presets { gap: 10px; margin-bottom: 2px; }
 .row.options { flex-wrap: wrap; gap: 14px; margin-top: 4px; }
+
+.preset-label { color: #8c8c9e; font-size: 12px; }
+.preset-badge {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--half_opacity_border, rgba(255, 255, 255, 0.12));
+  color: #ccc;
+  padding: 4px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.2s ease;
+}
+.preset-badge:hover { color: #fff; border-color: #6496ff; }
+.preset-badge.active {
+  background: rgba(100, 150, 255, 0.2);
+  border-color: #6496ff;
+  color: #fff;
+  font-weight: 500;
+}
+
+.auth-box {
+  background: rgba(100, 150, 255, 0.06);
+  border: 1px dashed rgba(100, 150, 255, 0.3);
+  padding: 8px;
+  border-radius: 6px;
+}
+.login-field { width: 200px; }
 
 .field {
   background: rgba(255, 255, 255, 0.04);
@@ -342,12 +457,11 @@ watch(() => props.modelValue, (open) => {
 .field:focus { border-color: #6496ff; }
 .field.grow { flex: 1; }
 .field.half { width: 34%; }
-.field.method { width: 84px; }
 .field.num { width: 84px; margin-left: 6px; }
 .field.mono { font-family: monospace; width: 100%; resize: vertical; }
 
 .inline, .radio, .check { display: inline-flex; align-items: center; gap: 6px; color: #ccc; cursor: pointer; }
-.check { font-size: 12px; color: #8c8c9e; align-items: flex-start; }
+.check { font-size: 12px; color: #8c8c9e; }
 
 .link-btn {
   background: none;
@@ -356,12 +470,8 @@ watch(() => props.modelValue, (open) => {
   cursor: pointer;
   font-size: 12px;
   padding: 0 2px;
-  text-transform: none;
-  letter-spacing: 0;
 }
 .link-btn:hover { color: #fff; }
-.link-btn:disabled { opacity: 0.5; cursor: default; }
-.link-btn.danger { color: #ff8a8a; }
 
 .icon-btn {
   background: none;
@@ -407,7 +517,6 @@ watch(() => props.modelValue, (open) => {
 .source-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .source-name { color: #fff; font-size: 13px; }
 .source-url, .source-meta { color: #8c8c9e; font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.source-actions { display: flex; gap: 8px; flex-shrink: 0; }
 
 .preview {
   overflow: auto;

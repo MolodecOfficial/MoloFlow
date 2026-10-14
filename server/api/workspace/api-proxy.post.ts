@@ -9,7 +9,7 @@ import net from 'node:net'
 import { createError, defineEventHandler, readBody } from 'h3'
 
 const MAX_BYTES = 5 * 1024 * 1024 // 5 МБ на ответ
-const TIMEOUT_MS = 15_000
+const TIMEOUT_MS = 30_000
 const MAX_REDIRECTS = 3
 const ALLOWED_METHODS = ['GET', 'POST']
 const FORBIDDEN_HEADERS = new Set(['host', 'content-length', 'connection', 'transfer-encoding', 'cookie'])
@@ -90,7 +90,6 @@ function requestPinned(
 }
 
 export default defineEventHandler(async (event) => {
-    // TODO: подключи сюда свою проверку авторизации, как в остальных /api/workspace/* маршрутах
 
     const input = await readBody<{
         url?: string
@@ -167,7 +166,7 @@ export default defineEventHandler(async (event) => {
         const msg = e?.message === 'too_large'
             ? 'Ответ больше 5 МБ'
             : e?.message === 'timeout'
-                ? 'API не ответил за 15 секунд'
+                ? 'API не ответил за 30 секунд'
                 : `Не удалось выполнить запрос: ${e?.code || e?.message || 'ошибка сети'}`
         throw createError({ statusCode: 502, statusMessage: msg })
     }

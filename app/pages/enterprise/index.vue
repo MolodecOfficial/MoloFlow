@@ -391,17 +391,18 @@ function deleteUser() {
             <LayoutMoloToolbar />
           </section>
 
-          <WindowWindowsManager
-              :windows="windows"
-              @close="closeWindow"
-              @focus="focusWindow"
-              @minimize="minimizeWindow"
-              @move="moveWindow"
-              @resize="resizeWindow"
-              @maximize="maximizeWindow"
-              @open-window="openWindow"
-          />
+
         </main>
+        <WindowWindowsManager
+            :windows="windows"
+            @close="closeWindow"
+            @focus="focusWindow"
+            @minimize="minimizeWindow"
+            @move="moveWindow"
+            @resize="resizeWindow"
+            @maximize="maximizeWindow"
+            @open-window="openWindow"
+        />
       </div>
 
       <!-- Плашка версии снизу справа -->

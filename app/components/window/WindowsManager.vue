@@ -59,14 +59,14 @@ const restoreWindowWithAnimation = (id: string) => {
     <div v-if="windows.some(w => w.isMinimized)" class="minimized-windows">
       <div class="minimized-title">Свернутые окна:</div>
       <div class="minimized-list">
-        <button
+        <UIMoloButton
             v-for="win in windows.filter(w => w.isMinimized)"
             :key="win.id"
             class="minimized-tab"
             @click="restoreWindowWithAnimation(win.id)"
         >
           {{ win.title }}
-        </button>
+        </UIMoloButton>
       </div>
     </div>
   </div>

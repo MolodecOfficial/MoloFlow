@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { UserRole, PermissionKey } from '~/types/permissions'
+import type { UserRole, PermissionKey } from '~/types/permissions.ts'
 import { ROLE_DEFAULT_PERMISSIONS } from '~/types/permissions'
 import { buildAuthHeaders } from '~~/server/utils/authContext'
 

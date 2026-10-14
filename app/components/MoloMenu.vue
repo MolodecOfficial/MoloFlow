@@ -3,9 +3,10 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useEnterprise } from '~~/app/composables/useEnterprise'
 import lock from '~~/public/lock.svg'
-import tsIcon from '~~/public/ts.png'
-import jsIcon from '~~/public/js.png'
-import pyIcon from '~~/public/py.svg'
+import tsIcon from '~~/app/assets/icons/ts.svg'
+import jsIcon from '~~/app/assets/icons/js.svg'
+import pyIcon from '~~/app/assets/icons/py.svg'
+import vueIcon from '~~/app/assets/icons/vue.svg'
 import { useAppStore } from '~~/stores/appStore'
 import { useMenuStore } from '~~/stores/menuStore'
 import { useModulesStore } from '~~/stores/modulesStore'
@@ -138,7 +139,6 @@ async function runAutoStartScripts(enterpriseId: string) {
           if (log.includes('ERROR')) type = 'error'
           else if (log.includes('WARN')) type = 'warning'
           else if (log.includes('SUCCESS') || log.includes('Запущен')) type = 'success'
-          addModuleLog(type, log)
         }
       }
 
@@ -541,7 +541,7 @@ onUnmounted(() => {
                         <img v-else-if="item.format === 'ts'" :src="tsIcon" alt="" />
                         <img v-else-if="item.format === 'js'" :src="jsIcon" alt="" />
                         <img v-else-if="item.format === 'py'" :src="pyIcon" alt="" />
-                        <span v-else class="vue-badge">V</span>
+                        <img v-else :src="vueIcon"/>
                       </span>
                       <span class="card-title">{{ cleanTitle(item.title) }}</span>
                       <span v-if="item.items?.length" class="card-meta">{{ item.items.length }} пунктов</span>
@@ -949,12 +949,11 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.05);
 }
 
 .card-icon img {
-  width: 20px;
-  height: 20px;
+  width: 34px;
+  height: 34px;
 }
 
 .vue-badge {

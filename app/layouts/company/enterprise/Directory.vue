@@ -1,8 +1,12 @@
+<!-- components/directory/Directory.vue -->
 <script lang="ts" setup>
 import { ref, computed, watch, onMounted } from 'vue'
 import { useAppStore } from '~~/stores/appStore'
 import { useDirectoryInterpolator } from '~/composables/useDirectoryInterpolator'
+import { useLogger } from '~/composables/useLogger'
+import { useNotifications } from '~/composables/useNotifications'
 import MoloSticker from '~/components/ui/MoloSticker.vue'
+import MoloToggle from '~/components/ui/MoloToggle.vue'
 
 export type FieldType = 'text' | 'number' | 'date' | 'boolean' | 'select'
 
@@ -53,17 +57,12 @@ const props = defineProps<{
 const appStore = useAppStore()
 const interpolator = useDirectoryInterpolator()
 const { addNotification } = useNotifications('Справочники')
+const { addLog } = useLogger('Справочники')
 
 // ─────────────────────────────────────────────────────────────
-// РЕЕСТР ОТДЕЛОВ С КЛЮЧАМИ
+// РЕЕСТР ОТДЕЛОВ (ЧИСТЫЙ СПИСОК БЕЗ ХАРДКОДА)
 // ─────────────────────────────────────────────────────────────
-const departments = ref<DepartmentItem[]>([
-  { key: 'it', name: 'IT и разработка' },
-  { key: 'admin', name: 'Руководство и менеджмент' },
-  { key: 'finance', name: 'Бухгалтерия и финансы' },
-  { key: 'sales', name: 'Отдел продаж' },
-  { key: 'logistics', name: 'Склад и логистика' }
-])
+const departments = ref<DepartmentItem[]>([])
 
 const isAddDeptModalOpen = ref(false)
 const newDeptForm = ref({
@@ -112,7 +111,8 @@ const STATIC_CONFIG = computed<Record<string, DirectoryMeta>>(() => ({
       },
       { key: 'role', label: 'Должность / Роль', placeholder: 'Ведущий инженер' },
       { key: 'phone', label: 'Контактный телефон', placeholder: '+7 (999) 000-00-00' },
-      { key: 'birthDate', label: 'Дата рождения', type: 'date' }
+      { key: 'birthDate', label: 'Дата рождения', type: 'date' },
+      { key: 'isProbation', label: 'Испытательный срок', type: 'boolean' }
     ]
   },
   counterparties: {
@@ -125,7 +125,8 @@ const STATIC_CONFIG = computed<Record<string, DirectoryMeta>>(() => ({
     titlePlaceholder: 'ООО "Компания"',
     fields: [
       { key: 'kpp', label: 'КПП', placeholder: '770101001' },
-      { key: 'phone', label: 'Телефон', placeholder: '+7...' }
+      { key: 'phone', label: 'Телефон', placeholder: '+7...' },
+      { key: 'isVerified', label: 'Проверен СБ', type: 'boolean' }
     ]
   },
   bank_accounts: {
@@ -137,7 +138,8 @@ const STATIC_CONFIG = computed<Record<string, DirectoryMeta>>(() => ({
     titleLabel: 'Наименование банка',
     titlePlaceholder: 'ПАО СБЕРБАНК',
     fields: [
-      { key: 'accountNumber', label: 'Расчётный счёт', placeholder: '40702810...', required: true }
+      { key: 'accountNumber', label: 'Расчётный счёт', placeholder: '40702810...', required: true },
+      { key: 'isMain', label: 'Основной счёт', type: 'boolean' }
     ]
   },
   nomenclature: {
@@ -149,7 +151,8 @@ const STATIC_CONFIG = computed<Record<string, DirectoryMeta>>(() => ({
     titleLabel: 'Наименование',
     titlePlaceholder: 'Товар',
     fields: [
-      { key: 'unit', label: 'Ед. изм.', placeholder: 'шт', required: true }
+      { key: 'unit', label: 'Ед. изм.', placeholder: 'шт', required: true },
+      { key: 'inStock', label: 'В наличии', type: 'boolean' }
     ]
   },
   glossary: {
@@ -237,6 +240,7 @@ async function saveNewDepartment() {
   const name = String(newDeptForm.value.name || '').trim()
   if (!name) {
     addNotification('warning', 'Укажите название отдела')
+    addLog('warning', 'Попытка сохранения отдела без названия')
     return
   }
 
@@ -249,6 +253,7 @@ async function saveNewDepartment() {
   ).toLowerCase()
 
   const enterpriseId = getEntId()
+  addLog('info', `Сохранение отдела "${name}" [${generatedKey}]...`)
 
   try {
     const saved = await $fetch<DepartmentItem>('/api/directory/departments', {
@@ -268,8 +273,8 @@ async function saveNewDepartment() {
       departments.value.push(saved)
     }
 
-    localStorage.setItem(`depts_${enterpriseId}`, JSON.stringify(departments.value))
     addNotification('success', `Отдел «${name}» [${generatedKey}] сохранён!`)
+    addLog('success', `Отдел "${name}" [${generatedKey}] успешно записан в базу`)
 
     if (itemModalOpen.value) {
       itemForm.value.attributes.department = name
@@ -278,23 +283,18 @@ async function saveNewDepartment() {
     }
 
     isAddDeptModalOpen.value = false
-  } catch {
-    const newDept: DepartmentItem = { key: generatedKey, name }
-    departments.value.push(newDept)
-    localStorage.setItem(`depts_${enterpriseId}`, JSON.stringify(departments.value))
-    addNotification('success', `Отдел «${name}» сохранён локально`)
-    isAddDeptModalOpen.value = false
+  } catch (err: any) {
+    addLog('error', `Ошибка при создании отдела на сервере: ${err?.message || err}`)
+    addNotification('error', 'Не удалось сохранить отдел на сервере')
   }
 }
 
-// Инициализация удаления отдела
 function requestDeleteDepartment(dept: DepartmentItem, e?: Event) {
   if (e) e.stopPropagation()
   deptToDelete.value = dept
   deleteDeptModalOpen.value = true
 }
 
-// Подтверждение удаления отдела
 async function confirmDeleteDepartment() {
   if (!deptToDelete.value) return
   const enterpriseId = getEntId()
@@ -302,43 +302,51 @@ async function confirmDeleteDepartment() {
   const targetName = String(deptToDelete.value.name || '').trim()
 
   deletingDeptLoading.value = true
+  addLog('info', `Инициализация удаления отдела "${targetName}" [${targetKey}]...`)
+
   try {
     await $fetch(`/api/directory/departments/${targetKey}`, {
       method: 'DELETE',
       query: { enterpriseId }
     })
 
-    // Удаляем из локального массива отделов
     departments.value = departments.value.filter(
         (d) => String(d?.key || '').toLowerCase() !== targetKey
     )
 
-    // Обновляем localStorage
-    localStorage.setItem(`depts_${enterpriseId}`, JSON.stringify(departments.value))
-
-    // Очищаем привязку в открытой форме, если был выбран этот отдел
     if (itemForm.value.attributes?.department === targetName || itemForm.value.departmentKey === targetKey) {
       itemForm.value.attributes.department = ''
       itemForm.value.departmentKey = ''
       delete itemForm.value.attributes.departmentKey
     }
 
-    // Закрываем модалки инспекции, если был открыт этот же отдел
     if (viewingDept.value?.key === targetKey) {
       deptPeopleModalOpen.value = false
       viewingDept.value = null
     }
 
     addNotification('success', `Отдел «${targetName}» успешно удалён`)
+    addLog('success', `Отдел "${targetName}" [${targetKey}] удален из системы`)
     deleteDeptModalOpen.value = false
     deptToDelete.value = null
 
-    // Обновляем список записей и сотрудников
     interpolator.invalidateCache()
     await loadItems()
     await loadAllEmployees()
   } catch (err: any) {
-    addNotification('error', err?.data?.message || err?.message || 'Не удалось удалить отдел')
+    const status = err?.statusCode || err?.status || err?.response?.status
+    if (status === 404) {
+      addLog('warning', `Отдел [${targetKey}] не найден в БД, локальное состояние очищено`)
+      departments.value = departments.value.filter(
+          (d) => String(d?.key || '').toLowerCase() !== targetKey
+      )
+      deleteDeptModalOpen.value = false
+      deptToDelete.value = null
+      addNotification('info', `Отдел «${targetName}» удалён из отображения`)
+    } else {
+      addLog('error', `Сбой удаления отдела [${targetKey}]: ${err?.data?.message || err?.message}`)
+      addNotification('error', err?.data?.message || err?.message || 'Не удалось удалить отдел')
+    }
   } finally {
     deletingDeptLoading.value = false
   }
@@ -348,24 +356,20 @@ async function loadDepartments() {
   const enterpriseId = getEntId()
   if (!enterpriseId) return
 
+  addLog('info', `Загрузка отделов предприятия ${enterpriseId}...`)
   try {
     const list = await $fetch<DepartmentItem[]>('/api/directory/departments', {
       query: { enterpriseId }
     })
-    if (Array.isArray(list) && list.length > 0) {
+    if (Array.isArray(list)) {
       departments.value = list.filter((item) => Boolean(item && (item.key || item.name)))
-      return
+      addLog('success', `Получено отделов с сервера: ${departments.value.length}`)
+    } else {
+      departments.value = []
     }
-  } catch {}
-
-  const saved = localStorage.getItem(`depts_${enterpriseId}`)
-  if (saved) {
-    try {
-      const parsed = JSON.parse(saved)
-      if (Array.isArray(parsed)) {
-        departments.value = parsed.filter((item) => Boolean(item && (item.key || item.name)))
-      }
-    } catch {}
+  } catch (err: any) {
+    addLog('error', `Не удалось загрузить отделы: ${err?.message || err}`)
+    departments.value = []
   }
 }
 
@@ -380,15 +384,16 @@ async function loadAllEmployees() {
       query: { enterpriseId, directorySlug: 'departments' }
     })
     allEmployeesList.value = Array.isArray(res) ? res : []
-  } catch {}
+    addLog('info', `Загружен список штата: ${allEmployeesList.value.length} чел.`)
+  } catch (err: any) {
+    addLog('warning', `Не удалось загрузить список сотрудников: ${err?.message || err}`)
+  }
 }
 
 function getDepartmentHeadcount(dept: DepartmentItem | undefined | null): number {
   if (!dept) return 0
-
   const targetKey = String(dept.key ?? '').trim().toLowerCase()
   const targetName = String(dept.name ?? '').trim().toLowerCase()
-
   if (!targetKey && !targetName) return 0
 
   return (allEmployeesList.value || []).filter((emp) => {
@@ -423,6 +428,7 @@ function inspectDepartmentPeople(dept: DepartmentItem | undefined | null) {
     return matchByKey || matchByName
   })
 
+  addLog('info', `Инспекция отдела "${dept.name}": привязано ${deptEmployees.value.length} чел.`)
   deptPeopleModalOpen.value = true
 }
 
@@ -436,9 +442,11 @@ async function handleLookupEmployeeById(targetCode?: string) {
     return
   }
 
+  addLog('info', `Поиск сотрудника по ID: ${codeToLookup}`)
   const employee = await interpolator.findEmployeeById(codeToLookup)
   if (!employee) {
     addNotification('warning', `Сотрудник с ID «${codeToLookup}» не найден`)
+    addLog('warning', `Сотрудник с ID ${codeToLookup} не найден`)
     return
   }
 
@@ -464,6 +472,7 @@ async function handleLookupEmployeeById(targetCode?: string) {
   }
 
   addNotification('info', `Данные «${employee.title}» успешно подставлены!`)
+  addLog('success', `Данные сотрудника ${employee.title} интерполированы в форму`)
 }
 
 async function onCodeFieldBlur() {
@@ -520,7 +529,8 @@ function openCreateDirectoryModal() {
     fields: [
       { key: 'birthDate', label: 'Дата рождения', type: 'date', span: 1 },
       { key: 'phone', label: 'Телефон', type: 'text', span: 1 },
-      { key: 'role', label: 'Должность', type: 'text', span: 1 }
+      { key: 'role', label: 'Должность', type: 'text', span: 1 },
+      { key: 'status', label: 'Статус задачи/Флаг', type: 'boolean', span: 1 }
     ]
   }
   createDirModalOpen.value = true
@@ -550,6 +560,8 @@ async function saveNewDirectory() {
   parsedAliases.push(generatedSlug.toLowerCase())
 
   const enterpriseId = getEntId()
+  addLog('info', `Создание справочника "${newDirForm.value.title}" [${generatedSlug}]...`)
+
   try {
     await $fetch('/api/directory/definitions', {
       method: 'POST',
@@ -565,10 +577,12 @@ async function saveNewDirectory() {
     })
 
     addNotification('success', `Справочник «${newDirForm.value.title}» создан!`)
+    addLog('success', `Справочник ${generatedSlug} успешно сохранён`)
     createDirModalOpen.value = false
     await loadDefinitions()
     currentType.value = generatedSlug
-  } catch {
+  } catch (err: any) {
+    addLog('error', `Ошибка при сохранении справочника: ${err?.message || err}`)
     addNotification('error', 'Не удалось сохранить справочник')
   }
 }
@@ -593,6 +607,8 @@ async function loadItems() {
   if (!enterpriseId) return
 
   loading.value = true
+  addLog('info', `Запрос записей раздела [${currentType.value}]...`)
+
   try {
     const data = await $fetch<DirectoryItem[]>('/api/directory/items', {
       query: {
@@ -602,6 +618,7 @@ async function loadItems() {
       }
     })
     items.value = Array.isArray(data) ? data : []
+    addLog('success', `Загружено записей: ${items.value.length} шт.`)
 
     if (currentType.value === 'departments') {
       allEmployeesList.value = items.value
@@ -612,7 +629,8 @@ async function loadItems() {
     } else if (items.value.length > 0) {
       selectedItem.value = items.value[0]
     }
-  } catch {
+  } catch (err: any) {
+    addLog('error', `Не удалось загрузить записи [${currentType.value}]: ${err?.message || err}`)
     addNotification('error', 'Не удалось загрузить записи')
   } finally {
     loading.value = false
@@ -726,6 +744,8 @@ async function saveItem() {
   }
 
   const enterpriseId = getEntId()
+  addLog('info', `Сохранение карточки "${itemForm.value.title}"...`)
+
   try {
     if (isEditing.value && editingId.value) {
       await $fetch(`/api/directory/items/${editingId.value}`, {
@@ -733,6 +753,7 @@ async function saveItem() {
         body: itemForm.value
       })
       addNotification('success', 'Запись обновлена')
+      addLog('success', `Запись ${editingId.value} обновлена`)
     } else {
       await $fetch('/api/directory/items', {
         method: 'POST',
@@ -743,12 +764,14 @@ async function saveItem() {
         }
       })
       addNotification('success', 'Запись сохранена')
+      addLog('success', `Создана новая запись в [${currentType.value}]`)
     }
     itemModalOpen.value = false
     interpolator.invalidateCache(currentType.value)
     await loadItems()
     await loadAllEmployees()
-  } catch {
+  } catch (err: any) {
+    addLog('error', `Ошибка сохранения записи: ${err?.message || err}`)
     addNotification('error', 'Ошибка сохранения записи')
   }
 }
@@ -758,15 +781,18 @@ async function syncEnterpriseData() {
   if (!enterpriseId) return
 
   syncing.value = true
+  addLog('info', `Синхронизация данных предприятия ${enterpriseId}...`)
   try {
     const res = await $fetch<{ success: boolean; importedCount: number }>('/api/directory/enterprise-sync', {
       method: 'POST',
       body: { enterpriseId }
     })
     addNotification('success', `Синхронизировано: ${res.importedCount}`)
+    addLog('success', `Синхронизация завершена, импортировано: ${res.importedCount}`)
     await loadItems()
     await loadAllEmployees()
-  } catch {
+  } catch (err: any) {
+    addLog('error', `Ошибка синхронизации: ${err?.message || err}`)
     addNotification('error', 'Ошибка синхронизации')
   } finally {
     syncing.value = false
@@ -780,9 +806,11 @@ function requestDelete(item: DirectoryItem) {
 
 async function confirmDelete() {
   if (!itemToDelete.value) return
+  addLog('info', `Удаление записи "${itemToDelete.value.title}" [${itemToDelete.value._id}]...`)
   try {
     await $fetch(`/api/directory/items/${itemToDelete.value._id}`, { method: 'DELETE' })
     addNotification('success', 'Запись удалена')
+    addLog('success', `Запись [${itemToDelete.value._id}] удалена`)
     deleteModalOpen.value = false
     if (selectedItem.value?._id === itemToDelete.value._id) {
       selectedItem.value = null
@@ -791,7 +819,8 @@ async function confirmDelete() {
     itemToDelete.value = null
     await loadItems()
     await loadAllEmployees()
-  } catch {
+  } catch (err: any) {
+    addLog('error', `Не удалось удалить запись: ${err?.message || err}`)
     addNotification('error', 'Не удалось удалить запись')
   }
 }
@@ -821,6 +850,7 @@ watch(currentType, () => {
 })
 
 onMounted(async () => {
+  addLog('info', 'Инициализация панели справочников...')
   await loadDepartments()
   await loadDefinitions()
   await loadItems()
@@ -882,15 +912,15 @@ onMounted(async () => {
       </div>
     </header>
 
-    <!-- Полоса реестра отделов с ключами, подсчетом и кнопкой удаления -->
-    <div class="departments-quick-strip">
+    <!-- Полоса реестра отделов -->
+    <div v-if="validDepartments.length > 0" class="departments-quick-strip">
       <span class="strip-label">Отделы:</span>
       <div class="dept-chips-list">
         <div
             v-for="dept in validDepartments"
             :key="dept.key || dept.name"
             class="dept-chip"
-            :title="`Ключ отдела: [${dept.key}]. Нажмите для просмотра людей.`"
+            :title="`Ключ: [${dept.key}]. Кликните для инспекции.`"
             @click="inspectDepartmentPeople(dept)"
         >
           <span class="dept-name">{{ dept.name }}</span>
@@ -975,14 +1005,22 @@ onMounted(async () => {
                     <small v-if="item.attributes?.departmentKey">[{{ item.attributes.departmentKey }}]</small>
                   </span>
 
-                  <span
-                      v-for="field in currentMeta.fields.filter((f) => f.key !== 'department').slice(0, 2)"
-                      :key="field.key"
-                      class="badge-pill"
-                  >
-                    <small>{{ field.label }}:</small>
-                    {{ item.attributes?.[field.key] || '—' }}
-                  </span>
+                  <!-- Индикаторы колонок в карточке -->
+                  <template v-for="field in currentMeta.fields.filter((f) => f.key !== 'department').slice(0, 3)" :key="field.key">
+                    <span
+                        v-if="field.type === 'boolean'"
+                        class="badge-pill boolean-pill"
+                        :class="{ 'is-true': Boolean(item.attributes?.[field.key]), 'is-false': !item.attributes?.[field.key] }"
+                    >
+                      <MoloSticker :name="item.attributes?.[field.key] ? 'sigma' : 'x'" :size="10" />
+                      <span>{{ field.label }}: {{ item.attributes?.[field.key] ? 'Да' : 'Нет' }}</span>
+                    </span>
+
+                    <span v-else class="badge-pill">
+                      <small>{{ field.label }}:</small>
+                      {{ item.attributes?.[field.key] || '—' }}
+                    </span>
+                  </template>
                 </div>
 
                 <p v-if="item.description" class="item-desc">{{ item.description }}</p>
@@ -1029,6 +1067,7 @@ onMounted(async () => {
                 </span>
               </div>
 
+              <!-- Динамические поля в панели справа -->
               <div class="attributes-stack">
                 <div
                     v-for="field in currentMeta.fields.filter((f) => f.key !== 'department')"
@@ -1036,14 +1075,26 @@ onMounted(async () => {
                     class="field-preview"
                 >
                   <span class="field-label">{{ field.label }}</span>
-                  <span class="field-value">
+                  <div class="field-value">
                     <template v-if="field.type === 'boolean'">
-                      {{ selectedItem.attributes?.[field.key] ? 'Да' : 'Нет' }}
+                      <div
+                          class="boolean-status-card"
+                          :class="selectedItem.attributes?.[field.key] ? 'status-done' : 'status-pending'"
+                      >
+                        <MoloSticker
+                            :name="selectedItem.attributes?.[field.key] ? 'sigma' : 'x'"
+                            :size="13"
+                            :color="selectedItem.attributes?.[field.key] ? '#34d399' : '#f87171'"
+                        />
+                        <span class="status-title">
+                          {{ selectedItem.attributes?.[field.key] ? 'Выполнено / Да' : 'Не выполнено / Нет' }}
+                        </span>
+                      </div>
                     </template>
                     <template v-else>
                       {{ selectedItem.attributes?.[field.key] ?? '—' }}
                     </template>
-                  </span>
+                  </div>
                 </div>
               </div>
 
@@ -1117,12 +1168,15 @@ onMounted(async () => {
                 </button>
               </div>
               <div class="dept-select-dual">
-                <select v-model="itemForm.attributes.department" class="native-dept-select">
-                  <option value="">Без отдела</option>
-                  <option v-for="d in validDepartments" :key="d.key || d.name" :value="d.name">
-                    {{ d.name }} [ключ: {{ d.key }}]
-                  </option>
-                </select>
+                <UIMoloSelect
+                  compact
+                  v-model="itemForm.attributes.department"
+                  all="Без отдела"
+                  :parent="validDepartments"
+                  children="name"
+                  value-key="name"
+                  />
+
                 <span v-if="itemForm.departmentKey" class="selected-key-pill">
                   Ключ: <b>{{ itemForm.departmentKey }}</b>
                 </span>
@@ -1135,6 +1189,7 @@ onMounted(async () => {
                 class="grid-col"
                 :class="`col-${field.span || 1}`"
             >
+              <!-- 1. Селектор -->
               <UIMoloSelect
                   v-if="field.type === 'select'"
                   v-model="itemForm.attributes[field.key]"
@@ -1145,25 +1200,29 @@ onMounted(async () => {
                   valueKey="value"
               />
 
-              <div v-else-if="field.type === 'date'" class="custom-field-group">
-                <label class="field-sublabel">{{ field.label }}</label>
-                <input
+              <!-- 2. Дата: ИСПОЛЬЗУЕМ ОБНОВЛЕННЫЙ UIMoloInput ВМЕСТО САМОДЕЛКИ -->
+              <UIMoloInput
+                  v-else-if="field.type === 'date'"
+                  v-model="itemForm.attributes[field.key]"
+                  date
+                  compact
+                  :lRequired="field.required"
+                  :tLabel="field.label"
+              />
+
+              <!-- 3. Булев флаг: стилизованный MoloToggle -->
+              <div v-else-if="field.type === 'boolean'" class="custom-field-group-check">
+                <UIMoloToggle
                     v-model="itemForm.attributes[field.key]"
-                    type="date"
-                    class="native-date-input"
+                    compact
+                    :label="field.label"
+                    :tLabel="field.label"
+                    trueLabel="Выполнено (Да)"
+                    falseLabel="Не выполнено (Нет)"
                 />
               </div>
 
-              <div v-else-if="field.type === 'boolean'" class="custom-field-group-check">
-                <label class="checkbox-inline">
-                  <input
-                      v-model="itemForm.attributes[field.key]"
-                      type="checkbox"
-                  />
-                  <span>{{ field.label }}</span>
-                </label>
-              </div>
-
+              <!-- 4. Текст / Число -->
               <UIMoloInput
                   v-else
                   v-model="itemForm.attributes[field.key]"
@@ -1265,7 +1324,6 @@ onMounted(async () => {
             </div>
           </div>
 
-          <!-- Нижняя панель действий над отделом -->
           <div class="dept-inspect-footer">
             <UIMoloButton
                 class="small close"
@@ -1450,27 +1508,6 @@ onMounted(async () => {
 .dept-chip:hover {
   background: rgba(100, 150, 255, 0.15);
   border-color: #6496ff;
-}
-
-.dept-chip-del {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  background: rgba(255, 255, 255, 0.08);
-  border: none;
-  border-radius: 50%;
-  color: #bbb;
-  font-size: 10px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  margin-left: 2px;
-}
-
-.dept-chip-del:hover {
-  background: #ef4444;
-  color: #fff;
 }
 
 .dept-key-badge {
@@ -1667,6 +1704,9 @@ onMounted(async () => {
 }
 
 .badge-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-size: 10.5px;
   background: rgba(0, 0, 0, 0.3);
   padding: 2px 6px;
@@ -1682,6 +1722,23 @@ onMounted(async () => {
 .badge-pill.dept-pill small {
   color: #60a5fa;
   font-family: monospace;
+}
+
+.badge-pill.boolean-pill {
+  font-weight: 600;
+  border: 1px solid transparent;
+}
+
+.badge-pill.boolean-pill.is-true {
+  background: rgba(52, 211, 153, 0.12);
+  border-color: rgba(52, 211, 153, 0.3);
+  color: #6ee7b7;
+}
+
+.badge-pill.boolean-pill.is-false {
+  background: rgba(248, 113, 113, 0.1);
+  border-color: rgba(248, 113, 113, 0.25);
+  color: #fca5a5;
 }
 
 .item-desc {
@@ -1768,6 +1825,29 @@ onMounted(async () => {
   color: #8fb1ff;
 }
 
+.boolean-status-card {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  width: fit-content;
+}
+
+.boolean-status-card.status-done {
+  background: rgba(52, 211, 153, 0.12);
+  border: 1px solid rgba(52, 211, 153, 0.3);
+  color: #34d399;
+}
+
+.boolean-status-card.status-pending {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  color: #f87171;
+}
+
 .field-text {
   margin: 0;
   font-size: 12px;
@@ -1813,7 +1893,7 @@ onMounted(async () => {
   gap: 8px;
 }
 
-.input-with-lookup :deep(.input-container) {
+.input-with-lookup :deep(.form-group) {
   flex: 1;
 }
 
@@ -1860,8 +1940,7 @@ onMounted(async () => {
   text-decoration: underline;
 }
 
-.native-dept-select,
-.native-date-input {
+.native-dept-select {
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid var(--half_opacity_border);
   color: #fff;
@@ -1877,25 +1956,14 @@ onMounted(async () => {
   color: #fff;
 }
 
-.native-dept-select:focus,
-.native-date-input:focus {
+.native-dept-select:focus {
   border-color: #6496ff;
 }
 
 .custom-field-group-check {
   display: flex;
-  align-items: center;
-  height: 100%;
-  padding-top: 18px;
-}
-
-.checkbox-inline {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  font-size: 13px;
-  color: #ddd;
+  align-items: flex-end;
+  width: 100%;
 }
 
 .custom-dir-form,

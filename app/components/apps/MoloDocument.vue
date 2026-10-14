@@ -913,8 +913,8 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 4px;
   padding: 8px 12px;
-  background: #fafbfc;
-  border-bottom: 1px solid #d7dbe0;
+  background: #1a1a22;
+  z-index: 10;
   flex-shrink: 0;
 }
 

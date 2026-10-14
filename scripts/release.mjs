@@ -75,6 +75,39 @@ try {
         }
     })
     console.log(`\n🎉 Релиз версии v${nextVersion} успешно опубликован на GitHub!`)
+
+    // Добавляем описание релиза в созданный релиз на GitHub
+    if (process.env.GITHUB_TOKEN && response.releaseNotes) {
+        try {
+            const repo = 'MolodecOfficial/MoloFlow'
+            const tag = `v${nextVersion}`
+
+            // Получаем созданный релиз по тегу
+            const releaseRes = await fetch(`https://api.github.com/repos/${repo}/releases/tags/${tag}`, {
+                headers: {
+                    'Authorization': `token ${process.env.GITHUB_TOKEN}`,
+                    'User-Agent': 'MoloFlow-Release-Script'
+                }
+            })
+
+            if (releaseRes.ok) {
+                const releaseData = await releaseRes.json()
+                // Обновляем body релиза
+                await fetch(`https://api.github.com/repos/${repo}/releases/${releaseData.id}`, {
+                    method: 'PATCH',
+                    headers: {
+                        'Authorization': `token ${process.env.GITHUB_TOKEN}`,
+                        'User-Agent': 'MoloFlow-Release-Script',
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ body: response.releaseNotes })
+                })
+                console.log('📝 Описание релиза успешно сохранено на GitHub!')
+            }
+        } catch (noteErr) {
+            console.warn('⚠️ Не удалось прикрепить описание к релизу:', noteErr.message)
+        }
+    }
 } catch (e) {
     console.error('\n❌ Ошибка во время публикации на GitHub! Проверьте наличие GITHUB_TOKEN в переменных окружения.', e)
     process.exit(1)

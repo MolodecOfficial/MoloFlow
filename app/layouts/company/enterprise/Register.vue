@@ -58,7 +58,7 @@ const createEnterprise = async () => {
       ownershipForm: ownershipForm.value
     }
 
-    const response = await $fetch('/api/enterprises/enterprises', {
+    const response = await $fetch('/api/enterprises/', {
       method: 'POST',
       body: enterpriseData
     })

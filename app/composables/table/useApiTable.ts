@@ -1,11 +1,13 @@
 // composables/useApiTable.ts
-// Запрос к внешнему API (через серверный прокси) и разворачивание ответа в плоскую таблицу.
 import * as XLSX from 'xlsx'
+import { API_TRANSFORMERS } from './useApiTransformers'
 
 export interface ApiHeader {
     key: string
     value: string
 }
+
+export type AuthType = 'none' | 'bearer' | 'basic' | 'yookassa'
 
 export interface ApiSource {
     id: string
@@ -14,14 +16,15 @@ export interface ApiSource {
     method: 'GET' | 'POST'
     headers: ApiHeader[]
     body: string
-    /** Путь к массиву в ответе, например `data.items`. Пусто — определить автоматически */
     dataPath: string
     maxRows: number
-    /** Хранить значения заголовков (токены) внутри документа. По умолчанию — нет */
     saveHeaders: boolean
-    /** Заголовки есть, но значения не сохранены — при обновлении их нужно ввести заново */
     needsHeaders?: boolean
-    // Куда вставлено (заполняется при импорте)
+
+    authType: AuthType
+    authLogin?: string
+    authPassword?: string
+
     sheetId?: string
     sheetName?: string
     anchorRow?: number
@@ -34,11 +37,10 @@ export interface ApiSource {
 export interface ApiMatrix {
     headers: string[]
     rows: any[][]
-    /** Сколько строк пришло всего (до обрезки по maxRows) */
     totalRows: number
     truncated: boolean
-    /** Путь, по которому нашли данные ('' — корень ответа) */
     path: string
+    columnWidths?: number[]
 }
 
 export type ApiImportTarget = 'new' | 'active' | 'refresh'
@@ -66,6 +68,9 @@ export function newSource(): ApiSource {
         dataPath: '',
         maxRows: DEFAULT_MAX_ROWS,
         saveHeaders: false,
+        authType: 'none',
+        authLogin: '',
+        authPassword: '',
     }
 }
 
@@ -79,12 +84,31 @@ export function guessSourceName(url: string): string {
     }
 }
 
-/* ───────────── разбор ответа ───────────── */
+export function buildRequestHeaders(source: ApiSource): Record<string, string> {
+    const headers: Record<string, string> = {}
+
+    for (const h of source.headers) {
+        if (h.key.trim()) headers[h.key.trim()] = h.value
+    }
+
+    if (source.authType === 'yookassa' || source.authType === 'basic') {
+        const login = source.authLogin?.trim() || ''
+        const pass = source.authPassword?.trim() || ''
+        if (login || pass) {
+            const raw = `${login}:${pass}`
+            const token = typeof btoa === 'function' ? btoa(unescape(encodeURIComponent(raw))) : Buffer.from(raw).toString('base64')
+            headers['Authorization'] = `Basic ${token}`
+        }
+    } else if (source.authType === 'bearer' && source.authPassword?.trim()) {
+        headers['Authorization'] = `Bearer ${source.authPassword.trim()}`
+    }
+
+    return headers
+}
 
 const isPlainObject = (v: any): v is Record<string, any> =>
     v !== null && typeof v === 'object' && !Array.isArray(v) && !(v instanceof Date)
 
-/** `data.items`, `result[0].rows` -> значение по пути */
 function getByPath(root: any, path: string): any {
     const tokens = path.match(/[^.[\]]+/g) || []
     let cur = root
@@ -95,7 +119,6 @@ function getByPath(root: any, path: string): any {
     return cur
 }
 
-/** Ищет в ответе самый «табличный» массив (до глубины 3) */
 function findBestArray(root: any): { value: any[]; path: string } | null {
     if (Array.isArray(root)) return { value: root, path: '' }
 
@@ -136,7 +159,7 @@ function normalizeCell(v: any): any {
     if (typeof v === 'boolean') return v
     if (typeof v === 'string') return v.length > MAX_CELL_LEN ? v.slice(0, MAX_CELL_LEN) : v
     if (Array.isArray(v)) {
-        const allPrimitive = v.every(x => x === null || ['string', 'number', 'boolean'].includes(typeof x))
+        const allPrimitive = v.every((x) => x === null || ['string', 'number', 'boolean'].includes(typeof x))
         const s = allPrimitive ? v.join(', ') : JSON.stringify(v)
         return s.length > MAX_CELL_LEN ? s.slice(0, MAX_CELL_LEN) : s
     }
@@ -144,7 +167,7 @@ function normalizeCell(v: any): any {
     return s.length > MAX_CELL_LEN ? s.slice(0, MAX_CELL_LEN) : s
 }
 
-export function toMatrix(data: any, dataPath: string, maxRows: number): ApiMatrix {
+export function toMatrix(data: any, dataPath: string, maxRows: number, authType?: string): ApiMatrix {
     const limit = Math.min(Math.max(1, Math.floor(maxRows) || DEFAULT_MAX_ROWS), HARD_MAX_ROWS)
 
     let node = data
@@ -152,7 +175,6 @@ export function toMatrix(data: any, dataPath: string, maxRows: number): ApiMatri
     if (dataPath.trim()) {
         node = getByPath(data, dataPath.trim())
         path = dataPath.trim()
-        if (node === undefined) throw new Error(`По пути «${path}» в ответе ничего нет`)
     } else {
         const found = findBestArray(data)
         if (found) {
@@ -161,7 +183,7 @@ export function toMatrix(data: any, dataPath: string, maxRows: number): ApiMatri
         }
     }
 
-    // Один объект -> две колонки «Поле / Значение»
+    // 1. Одиночный объект
     if (isPlainObject(node)) {
         const flat: Record<string, any> = {}
         flattenObject(node, '', flat, 1)
@@ -175,6 +197,7 @@ export function toMatrix(data: any, dataPath: string, maxRows: number): ApiMatri
         }
     }
 
+    // 2. Если это примитив
     if (!Array.isArray(node)) {
         return { headers: ['Значение'], rows: [[normalizeCell(node)]], totalRows: 1, truncated: false, path }
     }
@@ -182,21 +205,51 @@ export function toMatrix(data: any, dataPath: string, maxRows: number): ApiMatri
     const total = node.length
     const slice = node.slice(0, limit)
 
-    // Массив массивов: первая строка — заголовки
+    // 3. ПРОВЕРКА НАЛИЧИЯ АДАПТЕРА СЕРВИСА (ЮKassa и др.)
+    const transformer = authType ? API_TRANSFORMERS[authType] : null
+    if (transformer && slice.length) {
+        const flatRows = slice.map((item) => {
+            const out: Record<string, any> = {}
+            if (isPlainObject(item)) flattenObject(item, '', out, 1)
+            else out['value'] = item
+            return out
+        })
+
+        const headers = transformer.columns.map((c) => c.title)
+        const columnWidths = transformer.columns.map((c) => c.width || 140)
+        const rows = flatRows.map((row) =>
+            transformer.columns.map((c) => {
+                const rawVal = row[c.key]
+                const formatted = c.format ? c.format(rawVal, row) : rawVal
+                return normalizeCell(formatted)
+            }),
+        )
+
+        return {
+            headers,
+            rows,
+            totalRows: total,
+            truncated: total > limit,
+            path,
+            columnWidths,
+        }
+    }
+
+    // 4. Массив массивов (CSV-подобный)
     if (slice.length && slice.every(Array.isArray)) {
         const [head, ...rest] = slice as any[][]
-        const width = Math.min(MAX_COLS, Math.max(...slice.map(r => r.length)))
+        const width = Math.min(MAX_COLS, Math.max(...slice.map((r) => r.length)))
         const headers = Array.from({ length: width }, (_, i) => String(head?.[i] ?? `Колонка ${i + 1}`))
         return {
             headers,
-            rows: rest.map(r => Array.from({ length: width }, (_, i) => normalizeCell(r[i]))),
+            rows: rest.map((r) => Array.from({ length: width }, (_, i) => normalizeCell(r[i]))),
             totalRows: Math.max(0, total - 1),
             truncated: total > limit,
             path,
         }
     }
 
-    // Массив объектов: колонки = объединение ключей в порядке появления
+    // 5. Произвольный массив объектов (Fallback для неизвестных API)
     if (slice.some(isPlainObject)) {
         const flatRows = slice.map((item) => {
             const out: Record<string, any> = {}
@@ -214,24 +267,22 @@ export function toMatrix(data: any, dataPath: string, maxRows: number): ApiMatri
                 }
             }
         }
-        // «owner: null» рядом с «owner.fio» не должен давать лишнюю пустую колонку
-        const parents = new Set(headers.filter(h => headers.some(o => o.startsWith(`${h}.`))))
-        const finalHeaders = headers.filter(h =>
-            !parents.has(h) || flatRows.some(r => r[h] !== null && r[h] !== undefined && r[h] !== ''),
-        )
+
+        const parents = new Set(headers.filter((h) => headers.some((o) => o.startsWith(`${h}.`))))
+        const finalHeaders = headers.filter((h) => !parents.has(h) || flatRows.some((r) => r[h] !== null && r[h] !== undefined && r[h] !== ''))
+
         return {
             headers: finalHeaders,
-            rows: flatRows.map(row => finalHeaders.map(h => normalizeCell(row[h]))),
+            rows: flatRows.map((row) => finalHeaders.map((h) => normalizeCell(row[h]))),
             totalRows: total,
             truncated: total > limit,
             path,
         }
     }
 
-    // Массив примитивов
     return {
         headers: ['Значение'],
-        rows: slice.map(v => [normalizeCell(v)]),
+        rows: slice.map((v) => [normalizeCell(v)]),
         totalRows: total,
         truncated: total > limit,
         path,
@@ -252,10 +303,9 @@ function parseCsvToObjects(text: string): Record<string, any>[] {
         if (n) name = `${name}_${n + 1}`
         return name
     })
-    // «123» -> число, но «00123» (коды, ИНН) остаётся строкой
-    const toValue = (v: any) =>
-        typeof v === 'string' && /^-?\d+(\.\d+)?$/.test(v) && !/^-?0\d/.test(v) ? Number(v) : v
-    return rows.slice(1).map(r => Object.fromEntries(headers.map((h, i) => [h, toValue((r as any[])[i] ?? '')])))
+
+    const toValue = (v: any) => (typeof v === 'string' && /^-?\d+(\.\d+)?$/.test(v) && !/^-?0\d/.test(v) ? Number(v) : v)
+    return rows.slice(1).map((r) => Object.fromEntries(headers.map((h, i) => [h, toValue((r as any[])[i] ?? '')])))
 }
 
 export function parseApiText(text: string, contentType: string): any {
@@ -276,18 +326,13 @@ export function parseApiText(text: string, contentType: string): any {
     throw new Error('Ответ не JSON и не CSV — отобразить в таблице нельзя')
 }
 
-/* ───────────── запрос ───────────── */
-
 export function apiErrorMessage(e: any): string {
     return e?.data?.statusMessage || e?.statusMessage || e?.data?.message || e?.message || 'Не удалось выполнить запрос'
 }
 
 export function useApiTable() {
     async function fetchMatrix(source: ApiSource): Promise<ApiMatrix> {
-        const headers: Record<string, string> = {}
-        for (const h of source.headers) {
-            if (h.key.trim()) headers[h.key.trim()] = h.value
-        }
+        const headers = buildRequestHeaders(source)
 
         let res: { text: string; contentType: string }
         try {
@@ -305,7 +350,7 @@ export function useApiTable() {
         }
 
         const data = parseApiText(res.text, res.contentType)
-        return toMatrix(data, source.dataPath, source.maxRows)
+        return toMatrix(data, source.dataPath, source.maxRows, source.authType)
     }
 
     return { fetchMatrix }
