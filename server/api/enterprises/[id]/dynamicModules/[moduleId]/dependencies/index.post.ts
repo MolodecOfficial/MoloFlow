@@ -1,73 +1,81 @@
-// ПУТЬ В ПРОЕКТЕ: server/api/enterprises/[id]/dynamicModules/[moduleId]/dependencies/index.post.ts
-import { findDynamicModuleByKey } from '~~/app/utils/dynamicModuleLookup';
+// server/api/enterprises/[id]/dynamicModules/[moduleId]/dependencies/index.post.ts
+import { defineEventHandler, getRouterParam, readBody, createError } from 'h3'
+import { DynamicModule } from '~~/server/models/dynamicModules.model'
+import { runDbOp } from '~~/server/utils/moloDb/store'
+import { ensureCompanyDb, COMPANY_DB, MODULES_COL } from '~~/server/utils/enterpriseDb'
+import { resolveActor, toHttpError } from '~~/server/utils/moloDb/access'
 
 export default defineEventHandler(async (event) => {
-    const moduleId = getRouterParam(event, 'moduleId');
-    const enterpriseId = getRouterParam(event, 'id');
-    const body = await readBody(event);
-    const { action, packageName, version, packageType = 'dependencies' } = body;
+    try {
+        const moduleId = getRouterParam(event, 'moduleId')
+        const enterpriseId = getRouterParam(event, 'id')
+        const body = await readBody(event)
+        const { action, packageName, version, packageType = 'dependencies' } = body
 
-    console.log(`[Dependencies POST] Module: ${moduleId}, Action: ${action}, Package: ${packageName}`);
-
-    if (!moduleId || !enterpriseId) {
-        throw createError({
-            statusCode: 400,
-            message: 'Missing moduleId or enterpriseId'
-        });
-    }
-
-    const module = await findDynamicModuleByKey(enterpriseId, moduleId);
-    if (!module) {
-        throw createError({ statusCode: 404, message: 'Модуль не найден' });
-    }
-
-    // Инициализируем Map если их нет
-    if (!module.dependencies) module.dependencies = new Map();
-    if (!module.devDependencies) module.devDependencies = new Map();
-
-    if (action === 'add') {
-        if (!packageName) {
-            throw createError({ statusCode: 400, message: 'Имя зависиомсти обязательно' });
+        if (!moduleId || !enterpriseId) {
+            throw createError({ statusCode: 400, message: 'Отсутствует moduleId или enterpriseId' })
         }
 
-        const targetMap = packageType === 'devDependencies' ? module.devDependencies : module.dependencies;
-        targetMap.set(packageName, version || 'latest');
-        await module.save();
+        const actor = await resolveActor(event, enterpriseId, 'schema')
+        await ensureCompanyDb(enterpriseId)
 
-        // Преобразуем Map в объект для ответа
-        const result = {};
-        for (const [key, value] of targetMap) {
-            result[key] = value;
+        const { item } = await runDbOp(
+            { enterpriseId, db: COMPANY_DB, col: MODULES_COL, actor: { kind: 'system', id: actor.id } },
+            { op: 'findOne', filter: { $or: [{ moduleId }, { fileName: moduleId }] } }
+        )
+
+        if (!item) {
+            throw createError({ statusCode: 404, message: 'Модуль не найден' })
+        }
+
+        const deps = { ...(item.dependencies || {}) }
+        const devDeps = { ...(item.devDependencies || {}) }
+        const target = packageType === 'devDependencies' ? devDeps : deps
+
+        if (action === 'add') {
+            if (!packageName) {
+                throw createError({ statusCode: 400, message: 'Имя зависимости обязательно' })
+            }
+            target[packageName] = version || 'latest'
+        } else if (action === 'remove') {
+            if (!target[packageName]) {
+                throw createError({ statusCode: 404, message: 'Зависимость не найдена' })
+            }
+            delete target[packageName]
+        } else {
+            throw createError({ statusCode: 400, message: 'Неизвестное действие' })
+        }
+
+        const patch = {
+            dependencies: deps,
+            devDependencies: devDeps,
+            updatedAt: new Date().toISOString()
+        }
+
+        // Обновляем в локальной базе предприятия
+        await runDbOp(
+            { enterpriseId, db: COMPANY_DB, col: MODULES_COL, actor: { kind: 'system', id: actor.id } },
+            { op: 'update', filter: { _id: item._id }, patch }
+        )
+
+        // Синхронизируем с общей базой
+        if (item.isPublic) {
+            await DynamicModule.findOneAndUpdate(
+                { enterpriseId, fileName: item.fileName },
+                {
+                    dependencies: new Map(Object.entries(deps)),
+                    devDependencies: new Map(Object.entries(devDeps)),
+                    updatedAt: new Date()
+                }
+            )
         }
 
         return {
             success: true,
-            [packageType]: result,
-            message: `Зависимость ${packageName} успешно добавлена`
-        };
-    }
-
-    if (action === 'remove') {
-        const targetMap = packageType === 'devDependencies' ? module.devDependencies : module.dependencies;
-        if (!targetMap.has(packageName)) {
-            throw createError({ statusCode: 404, message: 'Зависимость не найдена' });
+            [packageType]: target,
+            message: `Зависимость ${packageName} успешно обработана`
         }
-
-        targetMap.delete(packageName);
-        await module.save();
-
-        // Преобразуем Map в объект для ответа
-        const result = {};
-        for (const [key, value] of targetMap) {
-            result[key] = value;
-        }
-
-        return {
-            success: true,
-            [packageType]: result,
-            message: `Зависимость ${packageName} удалена успешно`
-        };
+    } catch (e: any) {
+        throw toHttpError(e)
     }
-
-    throw createError({ statusCode: 400, message: 'Непонятное действие. Используйте существующие.' });
-});
+})

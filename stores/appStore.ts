@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { UserRole, PermissionKey } from '~/types/permissions.ts'
+import type { UserRole, PermissionKey } from '~/types/permissions'
 import { ROLE_DEFAULT_PERMISSIONS } from '~/types/permissions'
 import { buildAuthHeaders } from '~~/server/utils/authContext'
 
@@ -32,7 +32,6 @@ export interface EnterpriseData {
     [key: string]: any
 }
 
-/** Ответ сервера GET /api/enterprises/:id/me */
 interface AccessResponse {
     role: UserRole
     permissions?: PermissionKey[]
@@ -40,18 +39,10 @@ interface AccessResponse {
     enterprise?: EnterpriseData
 }
 
-/**
- * ok            — права получены с сервера и применены
- * offline       — сервер недоступен, работаем по локальным данным
- * revoked       — доступ к предприятию отозван / предприятие не найдено
- * unauthorized  — сервер не смог определить пользователя
- * no-enterprise — предприятие не выбрано
- */
 export type AccessRefreshResult = 'ok' | 'offline' | 'revoked' | 'unauthorized' | 'no-enterprise'
 
 export const SESSION_FP_KEY = 'molo_session_fp'
 
-/** Нужно, чтобы useStorage (VueUse) в той же вкладке заметил ручное удаление ключа */
 function notifyStorageRemoved(key: string) {
     if (!import.meta.client) return
     try {
@@ -65,12 +56,9 @@ export const useAppStore = defineStore('app', () => {
     const currentUser = ref<UserSessionData | null>(null)
     const currentMemberRole = ref<UserRole | null>(null)
 
-    /** Роль, подтверждённая сервером. Имеет приоритет над любыми локальными догадками. */
     const serverRole = ref<UserRole | null>(null)
-    /** Хотя бы одна попытка синхронизации прав с сервером завершилась (успехом или нет) */
     const sessionChecked = ref(false)
     const lastSyncAt = ref<number | null>(null)
-    /** Причина последней неудачной синхронизации (для диагностики), null — всё хорошо */
     const accessError = ref<string | null>(null)
 
     const isEnterpriseLoaded = computed(() => !!enterpriseId.value && !!enterpriseData.value)
@@ -83,23 +71,19 @@ export const useAppStore = defineStore('app', () => {
 
     const hasPermission = (permission: PermissionKey) => currentUserPermissions.value.includes(permission)
 
-    /** Отпечаток сессии: пользователь + предприятие + роль */
     const sessionFingerprint = computed(
         () => `${currentUser.value?._id || ''}|${enterpriseId.value || ''}|${currentMemberRole.value || ''}`
     )
 
-    /* ---------- локальный расчёт роли (запасной вариант, пока нет ответа сервера) ---------- */
     const syncRoles = () => {
         if (!currentUser.value) {
             currentMemberRole.value = serverRole.value
             return
         }
-
         if (serverRole.value) {
             currentMemberRole.value = serverRole.value
             return
         }
-
         const currentUserId = String(currentUser.value._id)
         const members = enterpriseData.value?.members || []
         const member = members.find((m: any) => String(m.userId?._id || m.userId) === currentUserId)
@@ -109,7 +93,6 @@ export const useAppStore = defineStore('app', () => {
             (enterpriseData.value.director === currentUser.value.name ||
                 enterpriseData.value.director === currentUserId)
 
-        // Тот же приоритет, что и на сервере (checkEnterpriseAccess)
         if (isDirector || currentUser.value.role === 'Администратор') {
             currentMemberRole.value = 'Администратор'
         } else if (member?.role) {
@@ -183,7 +166,6 @@ export const useAppStore = defineStore('app', () => {
         syncRoles()
     }
 
-    /** Выход только из предприятия (пользователь остаётся) */
     const clearEnterprise = () => {
         enterpriseId.value = null
         enterpriseData.value = null
@@ -199,7 +181,6 @@ export const useAppStore = defineStore('app', () => {
         }
     }
 
-    /** Полный выход */
     const clearSession = () => {
         enterpriseId.value = null
         enterpriseData.value = null
@@ -223,7 +204,6 @@ export const useAppStore = defineStore('app', () => {
         return enterpriseId.value
     }
 
-    /* ---------- синхронизация прав с сервером ---------- */
     const applyServerAccess = (res: AccessResponse) => {
         if (res.user?._id) {
             currentUser.value = { ...(currentUser.value || {}), ...res.user } as UserSessionData
@@ -244,13 +224,8 @@ export const useAppStore = defineStore('app', () => {
 
     let inflight: Promise<AccessRefreshResult> | null = null
 
-    /**
-     * Запрашивает у сервера актуальную роль/права/участников.
-     * Если сервер говорит «доступа нет» — выходим из предприятия.
-     */
     const refreshAccess = (force = false): Promise<AccessRefreshResult> => {
         if (inflight) {
-            // force: запрос уже идёт, но он мог стартовать ДО смены роли — повторяем после него
             return force ? inflight.then(() => refreshAccess(false)) : inflight
         }
 

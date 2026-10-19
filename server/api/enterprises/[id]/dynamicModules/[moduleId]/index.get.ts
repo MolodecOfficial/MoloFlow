@@ -14,6 +14,8 @@
 // в JSON они превращаются в "{}" (у Map нет собственных enumerable-свойств).
 import mongoose from 'mongoose';
 import { DynamicModule } from '~~/server/models/dynamicModules.model';
+import { runDbOp } from '~~/server/utils/moloDb/store';
+import { COMPANY_DB, MODULES_COL } from '~~/server/utils/enterpriseDb';
 
 export default defineEventHandler(async (event) => {
     try {
@@ -39,7 +41,26 @@ export default defineEventHandler(async (event) => {
         const module = await DynamicModule.findOne({ enterpriseId, $or: orConditions });
 
         if (!module) {
-            throw createError({ statusCode: 404, message: 'Module not found' });
+            // Приватный модуль: его нет в общем каталоге, берём из локальной базы предприятия
+            const { item } = await runDbOp(
+                { enterpriseId, db: COMPANY_DB, col: MODULES_COL, actor: { kind: 'system' } },
+                { op: 'findOne', filter: { $or: [{ moduleId: moduleKey }, { fileName: moduleKey }] } }
+            );
+            if (!item) {
+                throw createError({ statusCode: 404, message: 'Module not found' });
+            }
+            return {
+                success: true,
+                module: {
+                    ...item,
+                    _id: item.moduleId || item._id,
+                    code: item.code || '',
+                    files: item.files || [],
+                    dependencies: item.dependencies || {},
+                    devDependencies: item.devDependencies || {},
+                    clientHooks: item.clientHooks || {}
+                }
+            };
         }
 
         const obj = module.toObject();

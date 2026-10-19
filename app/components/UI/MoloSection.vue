@@ -88,6 +88,9 @@
   padding: 15px;
   border-bottom: 1px solid rgba(255,255,255,.08);
   color: #c7c7c7;
+  & span {
+    font-size: 20px
+  }
 }
 
 

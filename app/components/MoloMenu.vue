@@ -8,6 +8,7 @@ import jsIcon from '~~/app/assets/icons/js.svg'
 import pyIcon from '~~/app/assets/icons/py.svg'
 import vueIcon from '~~/app/assets/icons/vue.svg'
 import { useAppStore } from '~~/stores/appStore'
+import { buildAuthHeaders } from '~~/server/utils/authContext'
 import { useMenuStore } from '~~/stores/menuStore'
 import { useModulesStore } from '~~/stores/modulesStore'
 import { useWindowManager } from '~~/app/composables/window/useWindowManager'
@@ -23,6 +24,10 @@ const emit = defineEmits<{
 const menuStore = useMenuStore()
 const modulesStore = useModulesStore()
 const appStore = useAppStore()
+
+// Все запросы к API идут с токеном из стора. Без заголовков сервер отвечает «Требуется авторизация»
+const apiFetch = <T = any>(url: string, opts: any = {}) =>
+    $fetch<T>(url, { ...opts, headers: { ...buildAuthHeaders(appStore.currentUser?._id), ...(opts.headers || {}) } })
 
 const { openWindow } = useWindowManager()
 const { addLog } = useLogger('Меню')
@@ -287,7 +292,7 @@ const restartModule = async (moduleData: any) => {
     if (moduleData.format === 'py') {
       setTimeout(async () => {
         try {
-          const status = await $fetch<{ running: boolean; pid?: number }>('/api/py/daemon', {
+          const status = await apiFetch<{ running: boolean; pid?: number }>('/api/py/daemon', {
             method: 'POST',
             body: { action: 'status', moduleId }
           })

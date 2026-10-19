@@ -1,74 +1,82 @@
-// ПУТЬ В ПРОЕКТЕ: server/api/enterprises/[id]/dynamicModules/[moduleId]/index.put.ts
-import { DynamicModule } from '~~/server/models/dynamicModules.model';
-import { findDynamicModuleByKey } from '~~/app/utils/dynamicModuleLookup';
+import { defineEventHandler, getRouterParam, readBody, createError } from 'h3'
+import { DynamicModule } from '~~/server/models/dynamicModules.model'
+import { resolveActor, toHttpError } from '~~/server/utils/moloDb/access'
+import { runDbOp } from '~~/server/utils/moloDb/store'
+import { ensureCompanyDb, COMPANY_DB, MODULES_COL } from '~~/server/utils/enterpriseDb'
 
 export default defineEventHandler(async (event) => {
-    const enterpriseId = getRouterParam(event, 'id');        // enterpriseId
-    const moduleId = getRouterParam(event, 'moduleId');      // moduleId или fileName
+    try {
+        const enterpriseId = getRouterParam(event, 'id') || event.context.params?.id
+        const moduleId = getRouterParam(event, 'moduleId') || event.context.params?.moduleId
+        const body = await readBody(event)
 
-    const body = await readBody(event);
-    const user = event.context.user;
+        if (!enterpriseId || !moduleId) {
+            throw createError({ statusCode: 400, message: 'Отсутствует enterpriseId или moduleId' })
+        }
 
-    if (!enterpriseId || !moduleId) {
-        throw createError({
-            statusCode: 400,
-            message: 'Enterprise ID and Module ID are required'
-        });
-    }
+        const actor = await resolveActor(event, enterpriseId, 'schema')
+        await ensureCompanyDb(enterpriseId)
 
-    // Запрещаем менять enterpriseId и createdBy
-    delete body.enterpriseId;
-    delete body.createdBy;
+        // 1. Ищем модуль в локальной базе предприятия
+        const existing = await runDbOp(
+            { enterpriseId, db: COMPANY_DB, col: MODULES_COL, actor: { kind: 'system', id: actor.id } },
+            { op: 'findOne', filter: { $or: [{ moduleId }, { fileName: moduleId }] } }
+        )
 
-    // Обработка тегов
-    if (body.tags && typeof body.tags === 'string') {
-        body.tags = body.tags.split(',').map(t => t.trim());
-    }
+        if (!existing.item) {
+            throw createError({ statusCode: 404, message: 'Модуль не найден в локальной базе предприятия' })
+        }
 
-    // Только админ может менять isOfficial
-    if (body.isOfficial !== undefined && user?.name !== 'MolodecOfficial') {
-        delete body.isOfficial;
-    }
+        const files = Array.isArray(body.files)
+            ? body.files.map((file: any) => ({
+                name: file.name,
+                path: file.path,
+                format: file.format,
+                code: file.code || '',
+                isServerFile: !!file.isServerFile,
+                updatedAt: new Date()
+            }))
+            : existing.item.files || []
 
-    // Сначала резолвим реальный документ по fileName ИЛИ _id — иначе, как и в
-    // остальных эндпоинтах, findOneAndUpdate с {_id: moduleId} упадёт CastError'ом,
-    // если moduleId это fileName ('checkingAPI'), а не настоящий ObjectId.
-    const existing = await findDynamicModuleByKey(enterpriseId, moduleId);
-    if (!existing) {
-        throw createError({
-            statusCode: 404,
-            message: 'Module not found or access denied'
-        });
-    }
-
-    const updatedModule = await DynamicModule.findOneAndUpdate(
-        {
-            _id: existing._id,
-            enterpriseId: enterpriseId  // ID предприятия (для безопасности)
-        },
-        {
+        const patch = {
             ...body,
-            code: body.code,
-            updatedAt: new Date(),
-            $inc: { version: 1 }
-        },
-        { new: true, runValidators: true }
-    );
+            files,
+            hasServerCode: files.some((f: any) => f.isServerFile),
+            updatedAt: new Date().toISOString(),
+            version: (existing.item.version || 1) + 1
+        }
 
-    if (!updatedModule) {
-        throw createError({
-            statusCode: 404,
-            message: 'Module not found or access denied'
-        });
-    }
+        // 2. ОБНОВЛЯЕМ В ЛОКАЛЬНОЙ БАЗЕ ПРЕДПРИЯТИЯ
+        await runDbOp(
+            { enterpriseId, db: COMPANY_DB, col: MODULES_COL, actor: { kind: 'system', id: actor.id } },
+            {
+                op: 'update',
+                filter: { _id: existing.item._id },
+                patch
+            }
+        )
 
-    const result = updatedModule.toObject();
-    if (result.dependencies instanceof Map) {
-        result.dependencies = Object.fromEntries(result.dependencies);
-    }
-    if (result.devDependencies instanceof Map) {
-        result.devDependencies = Object.fromEntries(result.devDependencies);
-    }
+        // 3. ЕСЛИ МОДУЛЬ ПУБЛИЧНЫЙ — СИНХРОНИЗИРУЕМ С БАЗОЙ ПРОЕКТА
+        if (patch.isPublic === true) {
+            await DynamicModule.findOneAndUpdate(
+                { enterpriseId, fileName: existing.item.fileName },
+                {
+                    ...patch,
+                    dependencies: new Map(Object.entries(patch.dependencies || {})),
+                    devDependencies: new Map(Object.entries(patch.devDependencies || {}))
+                },
+                { upsert: true }
+            )
+        } else {
+            await DynamicModule.deleteOne({ enterpriseId, fileName: existing.item.fileName })
+        }
 
-    return { success: true, module: result };
-});
+        return {
+            success: true,
+            message: 'Модуль обновлён в локальной базе предприятия',
+            module: { ...existing.item, ...patch }
+        }
+    } catch (e: any) {
+        throw toHttpError(e)
+    }
+})

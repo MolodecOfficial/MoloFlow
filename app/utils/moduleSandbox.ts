@@ -1,6 +1,7 @@
 import vm from 'node:vm'
 import { DynamicModule } from '~~/server/models/dynamicModules.model'
 import { createError } from 'h3'
+import { createSandboxDb } from '~~/server/utils/moloDb/sandboxApi'
 
 export type LogLevel = 'info' | 'success' | 'warning' | 'error'
 
@@ -152,6 +153,10 @@ export class ModuleSandbox {
             timeEnd: (label: string) => console.timeEnd(label)
         }
 
+        // Мини-базы MoloFlow: db('база').коллекция  или  db('база').collection('коллекция')
+        const db = createSandboxDb(this.enterpriseId, this.moduleId)
+        const useMoloDb = (name: string) => db(name)
+
         const exportsObj = {}
         const requireFn = (mod: string) => {
             if (['path', 'crypto', 'http', 'https', 'url'].includes(mod)) {
@@ -161,7 +166,7 @@ export class ModuleSandbox {
         }
 
         const wrappedCode = `
-      (async function(exports, require, module, __filename, __dirname, context, moduleData, console, useLogger, useWindowManager, useNotifications, fetch, Buffer, setTimeout, clearTimeout, setInterval, clearInterval) {
+      (async function(exports, require, module, __filename, __dirname, context, moduleData, console, useLogger, useWindowManager, useNotifications, fetch, Buffer, setTimeout, clearTimeout, setInterval, clearInterval, db, useMoloDb) {
         ${code}
         if (!${skipAutoMain} && typeof main === 'function') {
           return await main(context);
@@ -197,7 +202,9 @@ export class ModuleSandbox {
                 setTimeout,
                 clearTimeout,
                 setInterval,
-                clearInterval
+                clearInterval,
+                db,
+                useMoloDb
             )
 
             return {

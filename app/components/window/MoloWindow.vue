@@ -188,10 +188,11 @@ const containerStyle = computed(() => {
   if (isMaximized.value) {
     return {
       zIndex: currentZIndex,
-      left: '20px',
-      top: '20px',
-      width: 'calc(100vw - 40px)',
-      height: 'calc(100vh - 40px)',
+      left: '0px',
+      top: '0px',
+      borderRadius: '0',
+      width: 'calc(100vw - 0px)',
+      height: 'calc(100vh - 0px)',
       transition: disableTransition ? 'none' : undefined
     }
   }
@@ -464,10 +465,8 @@ watch(() => props.window?.zIndex, (newZIndex) => {
   justify-content: center;
   align-items: center;
   position: fixed;
-  left: 10px;
-  top: 10px;
-  width: calc(100vw - 10px);
-  height: calc(100vh - 10px);
+  border-radius: 0;
+
   z-index: 1;
 }
 
@@ -514,7 +513,7 @@ watch(() => props.window?.zIndex, (newZIndex) => {
 }
 
 .window.maximized {
-  border-radius: 10px;
+  border-radius: 0px;
   box-shadow: none;
 }
 

@@ -1,19 +1,10 @@
+import mongoose from 'mongoose'
+import { DynamicModule } from '~~/server/models/dynamicModules.model'
 
-// Единая точка резолва модуля по "ключу", который прилетает в роуте как
-// :moduleId. Ключ может быть:
-//   - настоящий Mongo _id  ("6a48f2b57085174b10cbb1c8")
-//   - человекочитаемый fileName ("checkingAPI")
-//
-// Раньше каждый эндпоинт делал DynamicModule.findOne({ _id: moduleId, ... })
-// напрямую — и падал с CastError (-> 500), как только moduleId был не похож
-// на ObjectId. Теперь все эндпоинты дергают эту функцию вместо прямого findOne.
-import mongoose from 'mongoose';
-import { DynamicModule } from '~~/server/models/dynamicModules.model';
-
-export async function findDynamicModuleByKey(enterpriseId: string, moduleKey: string) {
-    const orConditions: Record<string, any>[] = [{ fileName: moduleKey }];
-    if (mongoose.Types.ObjectId.isValid(moduleKey)) {
-        orConditions.push({ _id: moduleKey });
-    }
-    return DynamicModule.findOne({ enterpriseId, $or: orConditions });
+/** Находит модуль предприятия по fileName или по _id. Возвращает документ Mongoose (у него есть save). */
+export async function findDynamicModuleByKey(enterpriseId: string, key: string) {
+    if (!enterpriseId || !key) return null
+    const or: Record<string, any>[] = [{ fileName: key }]
+    if (mongoose.Types.ObjectId.isValid(key)) or.push({ _id: key })
+    return DynamicModule.findOne({ enterpriseId, $or: or })
 }

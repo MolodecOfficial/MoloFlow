@@ -4,7 +4,7 @@ export interface IMenuItem {
     id: string;
     title: string;
     placeName: string;
-    requiredRole: ('Пользователь' | 'Сотрудник' | 'Управляющий')[];
+    requiredRole: ('Пользователь' | 'Сотрудник' | 'Управляющий' | 'Администратор')[];
     isActive: boolean;
     componentName?: string;
     componentPath?: string;
@@ -38,7 +38,7 @@ const MenuItemSchema = new Schema({
     },
     requiredRole: [{
         type: String,
-        enum: ['Пользователь', 'Сотрудник', 'Управляющий'],
+        enum: ['Пользователь', 'Сотрудник', 'Управляющий', 'Администратор'],
         required: true
     }],
     isActive: { type: Boolean, default: true },
@@ -58,7 +58,7 @@ const menuSchema = new Schema({
     order: { type: Number, default: 0 },
     requiredRole: [{
         type: String,
-        enum: ['Пользователь', 'Сотрудник', 'Управляющий'],
+        enum: ['Пользователь', 'Сотрудник', 'Управляющий', 'Администратор'],
         required: true
     }],
     isActive: { type: Boolean, default: true },

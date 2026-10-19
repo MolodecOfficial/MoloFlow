@@ -2,7 +2,7 @@
   "name": "moloflow",
   "type": "module",
   "productName": "MoloFlow",
-  "version": "1.5.4",
+  "version": "1.5.5",
   "description": "MoloFlow desktop",
   "author": "Molodec_Official",
   "main": "electron/main.cjs",

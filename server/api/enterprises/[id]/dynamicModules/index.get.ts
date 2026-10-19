@@ -1,56 +1,58 @@
-import { DynamicModule } from '~~/server/models/dynamicModules.model';
-
-// Поля, которых достаточно для отрисовки пунктов меню.
-// Никакого code / files / dependencies — это и есть основной вес ответа.
-const MENU_FIELDS = '_id name fileName format description';
+// server/api/enterprises/[id]/dynamicModules/index.get.ts
+// Источник списка — локальная база предприятия (company / modules), а не общий каталог.
+// Так видны и публичные, и приватные модули.
+import { getQuery, getRequestURL, createError, defineEventHandler } from 'h3'
+import { runDbOp } from '~~/server/utils/moloDb/store'
+import { ensureCompanyDb, COMPANY_DB, MODULES_COL } from '~~/server/utils/enterpriseDb'
+import { toHttpError } from '~~/server/utils/moloDb/access'
 
 export default defineEventHandler(async (event) => {
     try {
-        const url = getRequestURL(event);
-        const match = url.pathname.match(/enterprises\/([^/]+)\/dynamicModules/);
-
-        const enterpriseId =
-            match?.[1] ||
-            (getQuery(event).enterpriseId as string);
+        const url = getRequestURL(event)
+        const match = url.pathname.match(/enterprises\/([^/]+)\/dynamicModules/)
+        const enterpriseId = match?.[1] || (getQuery(event).enterpriseId as string)
 
         if (!enterpriseId) {
-            throw createError({
-                statusCode: 400,
-                message: 'Enterprise ID is required'
-            });
+            throw createError({ statusCode: 400, message: 'Enterprise ID is required' })
         }
 
-        // ?minimal=1 — используется меню (MoloMenu), которому нужны только
-        // название/формат/fileName. Полный код/файлы/зависимости в этом случае
-        // не запрашиваются и не гоняются по сети — это и было причиной медленной загрузки меню.
-        const isMinimal = getQuery(event).minimal === '1' || getQuery(event).minimal === 'true';
+        const q = getQuery(event)
+        const isMinimal = q.minimal === '1' || q.minimal === 'true'
 
-        let query = DynamicModule.find({ enterpriseId, isActive: true }).sort({ createdAt: -1 });
+        await ensureCompanyDb(enterpriseId)
 
-        if (isMinimal) {
-            query = query.select(MENU_FIELDS).lean();
-            const modules = await query;
-            return { success: true, modules };
-        }
+        const { items } = await runDbOp(
+            { enterpriseId, db: COMPANY_DB, col: MODULES_COL, actor: { kind: 'system' } },
+            { op: 'find', filter: {}, limit: 500, withTotal: false }
+        )
 
-        // Полная выдача — как раньше, для редактора модулей, которому нужен code/files/dependencies
-        const modules = await query;
+        const modules = (items as any[])
+            .filter((r) => r.isActive !== false)
+            .map((r) => {
+                // _id для клиента — тот самый moduleId, который использует меню и редактор
+                const base = {
+                    _id: r.moduleId || r._id,
+                    moduleId: r.moduleId || r._id,
+                    name: r.name,
+                    fileName: r.fileName,
+                    format: r.format,
+                    description: r.description || '',
+                    isPublic: r.isPublic === true,
+                    isActive: true
+                }
+                if (isMinimal) return base
+                return {
+                    ...r,
+                    ...base,
+                    code: r.code || '',
+                    files: r.files || [],
+                    dependencies: r.dependencies || {},
+                    devDependencies: r.devDependencies || {}
+                }
+            })
 
-        return {
-            success: true,
-            modules: modules.map(m => ({
-                ...m.toObject(),
-                dependencies: Object.fromEntries(m.dependencies || []),
-                devDependencies: Object.fromEntries(m.devDependencies || [])
-            }))
-        };
-
-    } catch (error: any) {
-        console.error('[GET Modules] Error:', error);
-
-        throw createError({
-            statusCode: error.statusCode || 500,
-            message: error.message || 'Failed to fetch modules'
-        });
+        return { success: true, modules }
+    } catch (e: any) {
+        throw toHttpError(e)
     }
-});
+})

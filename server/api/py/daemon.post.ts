@@ -1,10 +1,12 @@
 // server/api/py/daemon.post.ts
-import { defineEventHandler, readBody, createError } from 'h3'
+import { defineEventHandler, readBody, createError, getRequestURL } from 'h3'
 import { spawn, execSync, type ChildProcess } from 'node:child_process'
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 import { DynamicModule } from '~~/server/models/dynamicModules.model'
+import { issueModuleToken } from '~~/server/utils/moloDb/access'
+import { PY_CLIENT_SOURCE } from '~~/server/utils/moloDb/pythonClient'
 
 interface ManagedProcess {
     pid: number
@@ -118,6 +120,17 @@ export default defineEventHandler(async (event) => {
         }
     }
 
+    // Клиент мини-баз MoloFlow: в боте достаточно  from moloflow_db import db
+    // (если у модуля есть собственный moloflow_db.py — он остаётся приоритетным)
+    const helperPath = path.join(runDir, 'moloflow_db.py')
+    try {
+        await fs.access(helperPath)
+    } catch {
+        await fs.writeFile(helperPath, PY_CLIENT_SOURCE, 'utf-8')
+    }
+    const apiPort = getRequestURL(event).port || process.env.NITRO_PORT || process.env.PORT || '3000'
+    const dbToken = await issueModuleToken(String(moduleDoc.enterpriseId), String(moduleDoc._id))
+
     const pythonCmd = process.env.PYTHON_BIN || (process.platform === 'win32' ? 'python' : 'python3')
     const logsBuffer: string[] = []
 
@@ -131,7 +144,11 @@ export default defineEventHandler(async (event) => {
             PYTHONUNBUFFERED: '1',
             PYTHONDONTWRITEBYTECODE: '1',
             PYTHONIOENCODING: 'utf-8',
-            PYTHONUTF8: '1'
+            PYTHONUTF8: '1',
+            MOLO_API_URL: `http://127.0.0.1:${apiPort}`,
+            MOLO_ENTERPRISE_ID: String(moduleDoc.enterpriseId),
+            MOLO_MODULE_ID: String(moduleDoc._id),
+            MOLO_DB_TOKEN: dbToken
         }
     })
 

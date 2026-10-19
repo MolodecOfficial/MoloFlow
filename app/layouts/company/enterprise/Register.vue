@@ -2,11 +2,12 @@
 import {ref} from 'vue'
 import {useWindowManager} from '~/composables/window/useWindowManager'
 import {useNotifications} from '~/composables/useNotifications'
+import { useAppStore } from '~~/stores/appStore'
 
 const {openWindow} = useWindowManager()
 const {addNotification} = useNotifications('Создание предприятия')
 const {addLog} = useLogger('Создание предприятия')
-
+const appStore = useAppStore()
 
 const loading = ref(false)
 
@@ -45,29 +46,36 @@ const createEnterprise = async () => {
   try {
     const enterpriseData = {
       enterpriseName: enterpriseName.value,
-      inn: Number(inn.value),
-      kpp: Number(kpp.value),
-      ogrn: Number(ogrn.value),
+      inn: inn.value.trim(),
+      kpp: kpp.value.trim(),
+      ogrn: ogrn.value.trim(),
       legalAddress: legalAddress.value,
       actualAddress: sameAddress.value ? legalAddress.value : actualAddress.value,
-      phone: Number(phone.value.replace(/\D/g, '')),
+      phone: phone.value.replace(/\D/g, ''),
       email: email.value,
       director: director.value,
-      okved: Number(okved.value),
+      okved: okved.value.trim(),
       keypass: keypass.value,
       ownershipForm: ownershipForm.value
     }
 
-    const response = await $fetch('/api/enterprises/', {
+    const response: any = await $fetch('/api/enterprises/', {
       method: 'POST',
       body: enterpriseData
     })
-    addLog('success', 'Предприятие создано')
+
+    addLog('success', 'Предприятие и локальная база созданы')
     addNotification('info', response.message)
+
+    // Устанавливаем созданное предприятие как текущее в сторе
+    if (response.enterprise?._id) {
+      appStore.setEnterprise(response.enterprise._id, response.enterprise)
+    }
+
     resetForm()
   } catch (error: any) {
-    addNotification('error', 'Ошибка при создании предприятия')
-    addLog('error', `Ошибка при создании предприятия - ${error.data?.message || error.message}`)
+    addNotification('error', error?.data?.message || error?.message || 'Ошибка при создании предприятия')
+    addLog('error', `Ошибка: ${error.data?.message || error.message}`)
   } finally {
     loading.value = false
   }
@@ -251,7 +259,6 @@ const resetForm = () => {
             v-model="ownershipForm"
             iRequired
             :parent="ownershipOptions"
-            :children="option"
         />
       </div>
 

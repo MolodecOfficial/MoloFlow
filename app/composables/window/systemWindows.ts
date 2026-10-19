@@ -59,6 +59,15 @@ export const SYSTEM_WINDOWS: Record<string, SystemWindowDefinition> = {
         size: { width: 1200, height: 750 },
         requiredPermission: PERMISSIONS.MODULES_DEV,
     },
+
+    'molodb': {
+        component: () => import('~/layouts/company/MoloDBStudio.vue'),
+        title: 'MoloDB Studio',
+        size: { width: 1280, height: 780, minWidth: 800, minHeight: 550 },
+        requiredPermission: PERMISSIONS.MODULES_DEV // или ACCESS_MANAGE
+    },
+
+
     'terms-of-use': {
         component: () => import('~/layouts/company/TermsOfUse.vue'),
         title: 'Условия использования',

@@ -3,6 +3,7 @@ import { useLogger } from '~~/app/composables/useLogger'
 import { useNotifications } from '~~/app/composables/useNotifications'
 import { useWindowManager } from '~~/app/composables/useWindowManager'
 import { useAppStore } from '~~/stores/appStore'
+import { useMoloDb, useMoloDbAdmin } from '~~/app/composables/useMoloDb'
 
 export default defineNuxtPlugin(() => {
     setGlobalComposables({
@@ -10,8 +11,13 @@ export default defineNuxtPlugin(() => {
         useNotifications,
         useWindowManager,
         useAppStore,
+        useMoloDb,
+        useMoloDbAdmin,
         useModulesStore: () => useModuleEditorStore?.()
     })
+
+    // JS/TS-скрипты модулей выполняются как обычные функции — им useMoloDb виден как глобальная функция
+    ;(window as any).useMoloDb = useMoloDb
 
     // Тянем и разворачиваем ВСЕ .vue-компоненты проекта сразу при старте,
     // в фоне, отдельно от любого конкретного модуля — иначе этот налог

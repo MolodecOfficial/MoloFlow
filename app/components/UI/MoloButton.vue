@@ -276,7 +276,7 @@ const handleMouseDown = (event: MouseEvent) => {
   border: 1px solid transparent;
 
   &:hover {
-    border: 1px solid var(--borber-color_main);
+    border: 1px solid #38bdf8;
     background: var(--border-color_hover);
     transform: translateY(-1px);
     box-shadow: 0 4px 12px rgba(var(--borber-color_main), 0.3);

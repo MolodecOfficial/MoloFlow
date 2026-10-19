@@ -64,18 +64,12 @@ export function resolveUserName(): string | null {
 
 export function buildAuthHeaders(storeUserId?: string | null): Record<string, string> {
     const headers: Record<string, string> = {}
-    const token = resolveAuthToken()
-    const userId = resolveUserId(storeUserId)
-
+    // Токен из localStorage. Если его нет (вход без токена), шлём _id пользователя:
+    // authIdentity принимает его в legacy-режиме. Так вход не блокируется.
+    const token = resolveAuthToken() || resolveUserId(storeUserId)
     if (token) {
         headers['Authorization'] = `Bearer ${token}`
         headers['x-enterprise-token'] = token
-    }
-    if (userId) {
-        headers['x-user-id'] = userId
-    } else {
-        const name = resolveUserName()
-        if (name) headers['x-user-name'] = encodeURIComponent(name)
     }
     return headers
 }

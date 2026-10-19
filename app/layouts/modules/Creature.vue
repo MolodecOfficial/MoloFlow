@@ -1,12 +1,18 @@
+<!-- components/apps/molo/Creature.vue -->
 <script lang="ts" setup>
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { getMonacoLanguage, buildEditorFiles } from '~~/app/composables/monaco/index'
 import { useAppStore } from '~~/stores/appStore'
+import { buildAuthHeaders } from '~~/server/utils/authContext'
 import { useMenuStore } from '~~/stores/menuStore'
 import { useModulesStore } from '~~/stores/modulesStore'
 import { useWindowManager } from '~~/app/composables/window/useWindowManager'
+import { useMonacoFiles } from '~~/app/composables/useMonacoFiles'
+import { useNotifications } from '~~/app/composables/useNotifications'
+import { useLogger } from '~~/app/composables/useLogger'
 import MoloSticker from '~/components/UI/MoloSticker.vue'
+import PythonConsole from '~/components/UI/MoloPythonConsole.vue'
 
 import jsIcon from '~~/app/assets/icons/js.svg'
 import tsIcon from '~~/app/assets/icons/ts.svg'
@@ -35,6 +41,10 @@ const { addNotification } = useNotifications('Создание модуля')
 const { addLog } = useLogger('Создание модуля')
 
 const appStore = useAppStore()
+
+// Все запросы к API идут с токеном из стора. Без заголовков сервер отвечает «Требуется авторизация»
+const apiFetch = <T = any>(url: string, opts: any = {}) =>
+    $fetch<T>(url, { ...opts, headers: { ...buildAuthHeaders(appStore.currentUser?._id), ...(opts.headers || {}) } })
 const menuStore = useMenuStore()
 const modulesStore = useModulesStore()
 
@@ -63,16 +73,16 @@ const loading = ref(false)
 const isDeletingModule = ref(false)
 const showDeleteConfirm = ref(false)
 
+const activeMainTab = ref<'code' | 'files' | 'deps'>('code')
+
 // Python: консоль под редактором
-const pyConsoleRef = ref<InstanceType<typeof PythonConsole> | null>(null)
+const pyConsoleRef = ref<any>(null)
 const showPyConsole = ref(false)
 const runPython = async () => {
   showPyConsole.value = true
   await nextTick()
-  pyConsoleRef.value?.run()
+  pyConsoleRef.value?.run('server')
 }
-
-const activeMainTab = ref<'code' | 'files' | 'deps'>('code')
 
 const showFileEditor = ref(false)
 const fileForm = ref({
@@ -94,7 +104,7 @@ const availableFormats = [
   { label: '.ts', value: 'ts' },
   { label: '.py', value: 'py' }
 ]
-// Допфайлы зависят от формата главного: Python-модулю нужны .py (для import) и .json (данные)
+
 const fileFormats = computed(() =>
     formData.value.format === 'py'
         ? [{ label: '.py', value: 'py' }, { label: '.json', value: 'json' }]
@@ -126,7 +136,6 @@ const currentDeps = computed(() => {
 const editorLanguage = computed(() => getMonacoLanguage(formData.value.format))
 const fileEditorLanguage = computed(() => getMonacoLanguage(fileForm.value.format))
 
-// Формируем безопасный список родительских папок внутри выбранной группы
 const availableParents = computed(() => {
   if (!selectedGroupId.value) return []
   const group = (locations.value || []).find((g: any) => (g.groupId || g.id) === selectedGroupId.value)
@@ -183,16 +192,12 @@ const getPlaceholder = () => {
     return `<script setup>
 import { ref } from 'vue'
 
-const message = ref('Привет из динамического модуля!')
-const handleClick = () => {
-  message.value = 'Работает!'
-}
+const message = ref('Привет из модуля MoloFlow!')
 <\/script>
 
 <template>
   <div class="module-card">
-    <h1>{{ message }}</h1>
-    <button @click="handleClick">Нажми на меня</button>
+    <h2>{{ message }}</h2>
   </div>
 </template>
 
@@ -204,9 +209,7 @@ const handleClick = () => {
 </style>`
   }
   if (formData.value.format === 'py') {
-    return `# Python-модуль. Выполняется в браузере (Pyodide).
-# Кнопка «Запуск» вызывает main(context); print() попадает в консоль.
-
+    return `# Python-модуль
 def main(context):
     name = context.get("name", "мир")
     print(f"Привет, {name}!")
@@ -230,33 +233,29 @@ export function main() {
 const getFilePlaceholder = (format: string) => {
   if (format === 'vue') {
     return `<script setup>
-// Код компонента
+// Вложенный компонент
 <\/script>
 
 <template>
   <div>
-    <h2>Новый компонент</h2>
+    <h3>Новый компонент</h3>
   </div>
 </template>
 `
   }
   if (format === 'py') {
-    return `def example(value):
-    return value
+    return `def helper():
+    return True
 `
   }
   if (format === 'json') {
     return `{}
 `
   }
-  if (format === 'ts') {
-    return `export function example(): void {
-  console.log('Hello from TypeScript!')
-}`
-  }
-  return `export function example() {
-  console.log('Hello from JavaScript!')
-}`
+  return `export function helper() {
+  return true
+}
+`
 }
 
 const syncEditorFiles = () => {
@@ -290,7 +289,7 @@ const selectModule = async (id: string | null) => {
 
   loadingFiles.value = true
   try {
-    const res: any = await $fetch(`/api/enterprises/${entId}/dynamicModules/${id}`)
+    const res: any = await apiFetch(`/api/enterprises/${entId}/dynamicModules/${id}`)
     const full = res?.module || null
     if (full) {
       formData.value = {
@@ -350,15 +349,22 @@ const saveModule = async () => {
         ? `/api/enterprises/${enterpriseId}/dynamicModules/${selectedModuleId.value}`
         : `/api/enterprises/${enterpriseId}/dynamicModules`
 
-    const response: any = await $fetch(url, {
+    const response: any = await apiFetch(url, {
       method: isEditing.value ? 'PUT' : 'POST',
       body: payload
     })
 
+    const savedFileName = formData.value.fileName
     await modulesStore.loadEnterpriseModules(enterpriseId, true)
+    // Ищем сохранённый модуль по fileName в свежем списке — не зависим от того, какой id вернул сервер
+    const listed = modules.value.find((m: any) => m.fileName === savedFileName)
+    if (listed?._id) {
+      selectedModuleId.value = String(listed._id)
+    } else if (response.module?.moduleId) {
+      selectedModuleId.value = String(response.module.moduleId)
+    }
     addLog('success', 'Модуль успешно сохранён!')
     if (!isEditing.value) {
-      selectedModuleId.value = response.module?._id || response._id
       addNotification('info', 'Модуль создан')
     } else {
       addNotification('info', 'Модуль обновлён')
@@ -401,7 +407,7 @@ const saveFile = async () => {
       isServerFile: fileForm.value.isServer
     }
 
-    await $fetch(`/api/enterprises/${enterpriseId}/dynamicModules/${selectedModuleId.value}/files`, {
+    await apiFetch(`/api/enterprises/${enterpriseId}/dynamicModules/${selectedModuleId.value}/files`, {
       method: 'POST',
       body: {
         action: editingFilePath.value ? 'update' : 'add',
@@ -425,7 +431,7 @@ const deleteFile = async (filePath: string) => {
   const enterpriseId = appStore.getEnterpriseId()
   if (!selectedModuleId.value || !enterpriseId) return
   try {
-    await $fetch(`/api/enterprises/${enterpriseId}/dynamicModules/${selectedModuleId.value}/files`, {
+    await apiFetch(`/api/enterprises/${enterpriseId}/dynamicModules/${selectedModuleId.value}/files`, {
       method: 'POST',
       body: {
         action: 'delete',
@@ -474,8 +480,7 @@ const addDependency = async () => {
 
   loadingDEP.value = true
   try {
-    // 1. Сохраняем зависимость в базу предприятия
-    await $fetch(`/api/enterprises/${enterpriseId}/dynamicModules/${selectedModuleId.value}/dependencies`, {
+    await apiFetch(`/api/enterprises/${enterpriseId}/dynamicModules/${selectedModuleId.value}/dependencies`, {
       method: 'POST',
       body: {
         action: 'add',
@@ -485,9 +490,8 @@ const addDependency = async () => {
       }
     })
 
-    // 2. Если это Python-модуль — сразу накатываем pip-пакет на сервер
     if (formData.value.format === 'py') {
-      await $fetch('/api/pip/install', {
+      await apiFetch('/api/pip/install', {
         method: 'POST',
         body: {
           moduleId: selectedModuleId.value,
@@ -496,8 +500,7 @@ const addDependency = async () => {
       })
     }
 
-    // 3. Обновляем локальный стейт зависимостей
-    const res: any = await $fetch(`/api/enterprises/${enterpriseId}/dynamicModules/${selectedModuleId.value}/dependencies`)
+    const res: any = await apiFetch(`/api/enterprises/${enterpriseId}/dynamicModules/${selectedModuleId.value}/dependencies`)
     formData.value.dependencies = res.dependencies || {}
     formData.value.devDependencies = res.devDependencies || {}
 
@@ -515,7 +518,7 @@ const removeDependency = async (packageName: string) => {
   const enterpriseId = appStore.getEnterpriseId()
   if (!selectedModuleId.value || !enterpriseId) return
   try {
-    await $fetch(`/api/enterprises/${enterpriseId}/dynamicModules/${selectedModuleId.value}/dependencies`, {
+    await apiFetch(`/api/enterprises/${enterpriseId}/dynamicModules/${selectedModuleId.value}/dependencies`, {
       method: 'POST',
       body: {
         action: 'remove',
@@ -523,7 +526,7 @@ const removeDependency = async (packageName: string) => {
         packageType: activeDepTab.value
       }
     })
-    const res: any = await $fetch(`/api/enterprises/${enterpriseId}/dynamicModules/${selectedModuleId.value}/dependencies`)
+    const res: any = await apiFetch(`/api/enterprises/${enterpriseId}/dynamicModules/${selectedModuleId.value}/dependencies`)
     formData.value.dependencies = res.dependencies || {}
     formData.value.devDependencies = res.devDependencies || {}
     addNotification('info', 'Зависимость удалена')
@@ -532,20 +535,17 @@ const removeDependency = async (packageName: string) => {
   }
 }
 
-// Creature.vue
 const clearModuleCache = async () => {
   const enterpriseId = appStore.getEnterpriseId()
   if (!selectedModuleId.value || !enterpriseId) return
 
   try {
     clearingCache.value = true
-
-    // Ветвление: если открыт Python — вызываем pip, если Vue/TS/JS — npm
     const endpoint = formData.value.format === 'py'
         ? '/api/pip/install'
         : '/api/npm/install'
 
-    await $fetch(endpoint, {
+    await apiFetch(endpoint, {
       method: 'POST',
       body: {
         moduleId: selectedModuleId.value,
@@ -561,7 +561,6 @@ const clearModuleCache = async () => {
     clearingCache.value = false
   }
 }
-
 
 function openCreateLocationModal() {
   modalLocationForm.value = {
@@ -598,7 +597,7 @@ async function handleSaveLocation() {
     let createdId = ''
 
     if (parentId && groupId) {
-      const res: any = await $fetch('/api/menu', {
+      const res: any = await apiFetch('/api/menu', {
         method: 'POST',
         body: {
           enterpriseId,
@@ -615,7 +614,7 @@ async function handleSaveLocation() {
       createdId = res?.item?.id || res?.id || ''
       addNotification('info', 'Вложенная папка создана')
     } else {
-      const res: any = await $fetch('/api/menu', {
+      const res: any = await apiFetch('/api/menu', {
         method: 'POST',
         body: {
           enterpriseId,
@@ -664,7 +663,10 @@ const addModuleToMenu = async () => {
   }
   if (!moduleId) return
   const mod = modules.value.find((m: any) => m._id === moduleId)
-  if (!mod) return
+  if (!mod) {
+    addNotification('warning', 'Модуль ещё не виден в списке. Приватные модули в меню пока не добавляются')
+    return
+  }
   try {
     adding.value = true
     await menuStore.addModuleToMenu(mod, selectedGroupId.value, selectedParentId.value, enterpriseId)
@@ -866,7 +868,6 @@ onUnmounted(() => {
             <span v-else>Очистить кеш</span>
           </UIMoloButton>
 
-          <!-- КНОПКА УДАЛЕНИЯ -->
           <UIMoloButton
               v-if="selectedModuleId"
               class="small close"
@@ -1063,7 +1064,7 @@ onUnmounted(() => {
         </div>
 
         <div v-if="formData.format === 'py' && showPyConsole" class="py-console-dock">
-          <UIMoloPythonConsole
+          <PythonConsole
               ref="pyConsoleRef"
               :code="formData.code"
               :file-name="formData.fileName"
