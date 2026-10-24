@@ -1,35 +1,39 @@
 <script setup lang="ts">
-import {ref} from 'vue'
-import {useWindowManager} from '~/composables/window/useWindowManager'
-import {useNotifications} from '~/composables/useNotifications'
+import { ref } from 'vue'
+import { useWindowManager } from '~/composables/window/useWindowManager'
+import { useNotifications } from '~/composables/useNotifications'
+import { useLogger } from '~/composables/useLogger'
 import { useAppStore } from '~~/stores/appStore'
 
-const {openWindow} = useWindowManager()
-const {addNotification} = useNotifications('Создание предприятия')
-const {addLog} = useLogger('Создание предприятия')
+const { openWindow } = useWindowManager()
+const { addNotification } = useNotifications('Создание предприятия')
+const { addLog } = useLogger('Создание предприятия')
 const appStore = useAppStore()
 
 const loading = ref(false)
+const showDetails = ref(false)
 
-// Данные формы
+// Обязательные базовые поля
 const enterpriseName = ref('')
 const inn = ref('')
+const keypass = ref('')
+const ownershipForm = ref('ООО')
+
+// Дополнительные реквизиты (можно заполнить позже)
 const kpp = ref('')
 const ogrn = ref('')
 const legalAddress = ref('')
 const actualAddress = ref('')
-const sameAddress = ref(false)
+const sameAddress = ref(true)
 const phone = ref('')
 const email = ref('')
 const director = ref('')
 const okved = ref('')
-const keypass = ref('')
-const ownershipForm = ref('ООО')
 
-const ownershipOptions = ['ООО', 'АО', 'ПАО', 'ИП', 'НКО']
+const ownershipOptions = ['ООО', 'ИП', 'АО', 'ПАО', 'НКО', 'Самозанятый']
 
 const openTermsOfUse = () => {
-  openWindow('company', 'termsOfUse')
+  openWindow('terms-of-use')
 }
 
 const copyAddress = () => {
@@ -41,41 +45,55 @@ const copyAddress = () => {
 }
 
 const createEnterprise = async () => {
-  addLog('info', 'Отправляю данные на сервер')
+  if (!enterpriseName.value.trim()) {
+    addNotification('warning', 'Укажите название предприятия')
+    return
+  }
+  if (!inn.value.trim()) {
+    addNotification('warning', 'Укажите ИНН')
+    return
+  }
+  if (!keypass.value.trim()) {
+    addNotification('warning', 'Задайте ключ доступа')
+    return
+  }
+
+  addLog('info', 'Регистрация предприятия в системе...')
   loading.value = true
+
   try {
-    const enterpriseData = {
-      enterpriseName: enterpriseName.value,
+    const payload = {
+      enterpriseName: enterpriseName.value.trim(),
       inn: inn.value.trim(),
+      keypass: keypass.value.trim(),
+      ownershipForm: ownershipForm.value,
       kpp: kpp.value.trim(),
       ogrn: ogrn.value.trim(),
-      legalAddress: legalAddress.value,
-      actualAddress: sameAddress.value ? legalAddress.value : actualAddress.value,
+      legalAddress: legalAddress.value.trim(),
+      actualAddress: sameAddress.value ? legalAddress.value.trim() : actualAddress.value.trim(),
       phone: phone.value.replace(/\D/g, ''),
-      email: email.value,
-      director: director.value,
-      okved: okved.value.trim(),
-      keypass: keypass.value,
-      ownershipForm: ownershipForm.value
+      email: email.value.trim(),
+      director: director.value.trim(),
+      okved: okved.value.trim()
     }
 
     const response: any = await $fetch('/api/enterprises/', {
       method: 'POST',
-      body: enterpriseData
+      body: payload
     })
 
-    addLog('success', 'Предприятие и локальная база созданы')
-    addNotification('info', response.message)
+    addLog('success', `Предприятие «${response.enterprise?.enterpriseName}» создано`)
+    addNotification('success', response.message || 'Предприятие успешно создано')
 
-    // Устанавливаем созданное предприятие как текущее в сторе
     if (response.enterprise?._id) {
-      appStore.setEnterprise(response.enterprise._id, response.enterprise)
+      await appStore.setEnterprise(response.enterprise._id, response.enterprise)
     }
 
     resetForm()
   } catch (error: any) {
-    addNotification('error', error?.data?.message || error?.message || 'Ошибка при создании предприятия')
-    addLog('error', `Ошибка: ${error.data?.message || error.message}`)
+    const errMsg = error?.data?.statusMessage || error?.data?.message || error?.message || 'Ошибка создания предприятия'
+    addNotification('error', errMsg)
+    addLog('error', `Ошибка: ${errMsg}`)
   } finally {
     loading.value = false
   }
@@ -84,270 +102,321 @@ const createEnterprise = async () => {
 const resetForm = () => {
   enterpriseName.value = ''
   inn.value = ''
+  keypass.value = ''
+  ownershipForm.value = 'ООО'
   kpp.value = ''
   ogrn.value = ''
   legalAddress.value = ''
   actualAddress.value = ''
-  sameAddress.value = false
+  sameAddress.value = true
   phone.value = ''
   email.value = ''
   director.value = ''
   okved.value = ''
-  keypass.value = ''
-  ownershipForm.value = 'ООО'
+  showDetails.value = false
 }
 </script>
 
 <template>
-  <div class="enterprise-creature">
-    <p class="notice">
-      Перед созданием предприятия и внесением его в базу, просьба ознакомиться с нашими
-      <a class="tou" @click="openTermsOfUse">условиями пользования</a>!
-    </p>
+  <div class="enterprise-creator">
+    <div class="header-banner">
+      <div class="banner-title">
+        <UIMoloSticker name="nomenclature" :size="24" glow />
+        <h2>Новое предприятие</h2>
+      </div>
+      <p class="notice">
+        Заполните основные данные для старта. Дополнительные реквизиты можно внести в любое время позже.
+        Ознакомьтесь с <a class="tou" @click="openTermsOfUse">условиями сервиса</a>.
+      </p>
+    </div>
+
     <hr>
 
     <form @submit.prevent="createEnterprise" class="enterprise-form">
-      <div class="form-grid">
-        <div class="form-group full-width">
+      <!-- Основной компактный блок -->
+      <div class="form-grid primary-grid">
+        <div class="form-group span-2">
           <UIMoloInput
-              label="enterpriseName"
-              tLabel="Полное наименование предприятия"
-              lRequired
-              type="text"
               id="enterpriseName"
-              iRequired
-              placeholder='"Ромашка"'
+              t-label="Наименование организации / ИП"
+              placeholder='Например: "МолоФлоу" или ИП Иванов И. И.'
+              l-required
+              i-required
               v-model="enterpriseName"
           />
         </div>
 
-        <!-- ИНН, КПП, ОГРН в одной строке -->
-        <UIMoloInput
-            label="inn"
-            tLabel="ИНН"
-            lRequired
-            type="text"
-            id="inn"
-            iRequired
-            placeholder="123456789012"
-            max-length="12"
-            v-model="inn"
-        />
-
-        <UIMoloInput
-            label="kpp"
-            tLabel="КПП"
-            lRequired
-            type="text"
-            id="kpp"
-            placeholder="123456789"
-            max-length="9"
-            v-model="kpp"
-        />
-
-        <UIMoloInput
-            label="ogrn"
-            tLabel="ОГРН"
-            lRequired
-            type="text"
-            id="ogrn"
-            iRequired
-            placeholder="1234567890123"
-            max-length="13"
-            v-model="ogrn"
-        />
-
-        <!-- Юридический адрес с поиском -->
-        <div class="form-group full-width">
-          <UIMoloInput
-              label="legalAddress"
-              tLabel="Юридический адрес"
-              lRequired
-              type="text"
-              id="legalAddress"
-              iRequired
-              placeholder="г. Ишимбай, ул. Пушкина, д. 1, оф. 2"
-              v-model="legalAddress"
-              :address="true"
+        <div class="form-group">
+          <UIMoloSelect
+              t-label="Форма собственности"
+              l-required
+              v-model="ownershipForm"
+              :parent="ownershipOptions"
           />
         </div>
 
-        <!-- Чекбокс совпадения адресов -->
-        <div class="form-group full-width checkbox-group">
-          <label>
-            <input type="checkbox" v-model="sameAddress" @change="copyAddress"/>
-            Фактический адрес совпадает с юридическим
-          </label>
-        </div>
-
-        <!-- Фактический адрес с поиском -->
-        <div class="form-group full-width" v-if="!sameAddress">
+        <div class="form-group span-2">
           <UIMoloInput
-              label="actualAddress"
-              tLabel="Фактический адрес"
-              type="text"
-              v-model="actualAddress"
-              placeholder="г. Ишимбай, ул. Пушкина, д. 1, оф. 2"
-              :address="true"
+              id="inn"
+              t-label="ИНН"
+              placeholder="10 или 12 цифр"
+              max-length="12"
+              l-required
+              i-required
+              v-model="inn"
           />
         </div>
 
-        <!-- Телефон и Email -->
-        <UIMoloInput
-            label="phone"
-            tLabel="Телефон"
-            lRequired
-            type="tel"
-            id="phone"
-            iRequired
-            placeholder="+7 (999) 123-45-67"
-            v-model="phone"
-            :phone="true"
-        />
-
-        <UIMoloInput
-            label="email"
-            tLabel="Email"
-            lRequired
-            type="email"
-            id="email"
-            iRequired
-            placeholder="info@example.ru"
-            v-model="email"
-        />
-
-        <!-- Руководитель -->
-        <UIMoloInput
-            label="director"
-            tLabel="Руководитель"
-            lRequired
-            type="text"
-            id="director"
-            iRequired
-            placeholder="Иванов Иван Иванович"
-            v-model="director"
-        />
-
-        <!-- ОКВЭД -->
-        <UIMoloInput
-            label="okved"
-            tLabel="Основной ОКВЭД"
-            lRequired
-            type="text"
-            id="okved"
-            iRequired
-            placeholder="62.01"
-            v-model="okved"
-        />
-
-        <!-- Ключ доступа -->
-        <UIMoloInput
-            label="keypass"
-            tLabel="Ключ доступа к предприятию"
-            lRequired
-            type="password"
-            id="keypass"
-            iRequired
-            placeholder="Разработайте надёжный ключ, избегая простых комбинаций"
-            v-model="keypass"
-        />
-
-        <!-- Форма собственности -->
-        <UIMoloSelect
-            tLabel="Форма собственности"
-            lRequired
-            v-model="ownershipForm"
-            iRequired
-            :parent="ownershipOptions"
-        />
+        <div class="form-group">
+          <UIMoloInput
+              id="keypass"
+              t-label="Ключ доступа к предприятию"
+              type="password"
+              placeholder="Секретный ключ"
+              l-required
+              i-required
+              v-model="keypass"
+          />
+        </div>
       </div>
 
-      <hr/>
+      <!-- Кнопка раскрытия расширенных реквизитов -->
+      <div class="details-toggle-bar">
+        <button type="button" class="toggle-btn" @click="showDetails = !showDetails">
+          <UIMoloSticker name="arrow" :size="12" :class="{ rotated: showDetails }" />
+          <span>{{ showDetails ? 'Скрыть дополнительные реквизиты' : 'Указать полные реквизиты (КПП, ОГРН, адреса, контакты)' }}</span>
+        </button>
+      </div>
 
-      <UIMoloButton type="submit" class="confirm" :disabled="loading">
-        <div v-if="loading" class="modern-loader"></div>
-        <span v-else>Создать предприятие</span>
-      </UIMoloButton>
+      <!-- Дополнительные параметры -->
+      <transition name="expand">
+        <div v-if="showDetails" class="details-section">
+          <div class="form-grid">
+            <UIMoloInput
+                id="kpp"
+                t-label="КПП"
+                placeholder="9 цифр"
+                max-length="9"
+                v-model="kpp"
+            />
+
+            <UIMoloInput
+                id="ogrn"
+                t-label="ОГРН / ОГРНИП"
+                placeholder="13 или 15 цифр"
+                max-length="15"
+                v-model="ogrn"
+            />
+
+            <UIMoloInput
+                id="okved"
+                t-label="Основной ОКВЭД"
+                placeholder="62.01"
+                v-model="okved"
+            />
+
+            <div class="form-group full-width">
+              <UIMoloInput
+                  id="director"
+                  t-label="ФИО Руководителя"
+                  placeholder="Иванов Иван Иванович"
+                  v-model="director"
+              />
+            </div>
+
+            <div class="form-group full-width">
+              <UIMoloInput
+                  id="legalAddress"
+                  t-label="Юридический адрес"
+                  placeholder="г. Москва, ул. Ленина, д. 10"
+                  v-model="legalAddress"
+                  :address="true"
+              />
+            </div>
+
+            <div class="form-group full-width checkbox-row">
+              <label>
+                <input type="checkbox" v-model="sameAddress" @change="copyAddress" />
+                <span>Фактический адрес совпадает с юридическим</span>
+              </label>
+            </div>
+
+            <div class="form-group full-width" v-if="!sameAddress">
+              <UIMoloInput
+                  id="actualAddress"
+                  t-label="Фактический адрес"
+                  placeholder="Фактическое местонахождение"
+                  v-model="actualAddress"
+                  :address="true"
+              />
+            </div>
+
+            <div class="form-group span-2">
+              <UIMoloInput
+                  id="phone"
+                  t-label="Телефон"
+                  type="tel"
+                  placeholder="+7 (999) 000-00-00"
+                  v-model="phone"
+                  :phone="true"
+              />
+            </div>
+
+            <div class="form-group">
+              <UIMoloInput
+                  id="email"
+                  t-label="Email"
+                  type="email"
+                  placeholder="info@company.ru"
+                  v-model="email"
+              />
+            </div>
+          </div>
+        </div>
+      </transition>
+
+      <div class="actions-footer">
+        <UIMoloButton type="submit" variant="confirm" :disabled="loading" class="submit-btn">
+          <div v-if="loading" class="modern-loader"></div>
+          <template v-else>
+            <span>Создать предприятие</span>
+          </template>
+        </UIMoloButton>
+      </div>
     </form>
   </div>
 </template>
 
 <style scoped>
-.enterprise-creature {
+.enterprise-creator {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  color: white;
-  overflow-y: initial;
+  gap: 16px;
   padding: 20px;
 }
 
+.header-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.banner-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.banner-title h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
 .notice {
-  color: rgba(255, 255, 255, 0.8);
+  margin: 0;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.65);
 }
 
 .tou {
-  color: #1eef6f;
+  color: var(--accent, #1fb6ff);
   cursor: pointer;
-  text-decoration: none;
-  font-weight: 500;
-}
-
-.tou:hover {
   text-decoration: underline;
   text-underline-offset: 3px;
 }
 
 .enterprise-form {
-  flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
-  overflow-x: inherit;
+  gap: 14px;
 }
 
 .form-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
 }
 
 .form-group {
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
 }
 
-.form-group.full-width {
+.span-2 {
+  grid-column: span 2;
+}
+
+.full-width {
   grid-column: span 3;
 }
 
-.checkbox-group {
+.details-toggle-bar {
   display: flex;
-  flex-direction: row;
   align-items: center;
-  gap: 0.5rem;
+  padding: 4px 0;
 }
 
-.checkbox-group label {
+.toggle-btn {
+  background: transparent;
+  border: 0;
+  color: var(--accent, #1fb6ff);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 4px 0;
+  transition: opacity 0.2s;
+}
+
+.toggle-btn:hover {
+  opacity: 0.85;
+}
+
+.toggle-btn .rotated {
+  transform: rotate(90deg);
+}
+
+.details-section {
+  padding: 14px;
+  border: 1px solid var(--half_opacity_border, rgba(255, 255, 255, 0.08));
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.checkbox-row {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  font-weight: normal;
+  padding: 4px 0;
+}
+
+.checkbox-row label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.85);
   cursor: pointer;
 }
 
-hr {
-  width: 100%;
-  border: 1px solid var(--half_opacity_border);
+.actions-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 10px;
+  border-top: 1px solid var(--half_opacity_border, rgba(255, 255, 255, 0.1));
+}
+
+.submit-btn {
+  min-width: 180px;
 }
 
 .modern-loader {
-  width: 12px;
-  height: 12px;
-  border: 3px solid rgba(0, 0, 0, 0.1);
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.2);
   border-radius: 50%;
-  border-top-color: #020b18;
+  border-top-color: #fff;
   animation: spin 0.8s linear infinite;
   margin: 0 auto;
 }
@@ -358,34 +427,12 @@ hr {
   }
 }
 
-@media (max-width: 768px) {
+@media (max-width: 680px) {
   .form-grid {
     grid-template-columns: 1fr;
   }
-
-  .form-group.full-width {
+  .span-2, .full-width {
     grid-column: span 1;
-  }
-}
-
-@media (max-width: 480px) {
-  .enterprise-creature {
-    padding: 12px;
-    gap: 8px;
-  }
-
-  .enterprise-form {
-    gap: 1rem;
-  }
-
-  .checkbox-group input[type="checkbox"] {
-    width: 20px;
-    height: 20px;
-    flex-shrink: 0;
-  }
-
-  .checkbox-group label {
-    font-size: 14px;
   }
 }
 </style>

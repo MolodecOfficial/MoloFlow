@@ -4,14 +4,13 @@ import type { WindowItem, OpenWindowOptions } from '~/types/window'
 import { useWindowManager } from '~/composables/window/useWindowManager'
 import { useWindowDrag } from '~/composables/window/useWindowDrag'
 import { useWindowResize } from '~/composables/window/useWindowResize'
-import { ref, computed, onMounted, onUnmounted, watch, provide } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, provide, nextTick } from 'vue'
 import { useAppStore } from '~~/stores/appStore'
 import { getAllThemes, getAllButtonStyles, THEME_STORAGE_KEY, BUTTON_STYLE_STORAGE_KEY } from '~~/types/window-themes'
 import { normalizeUrl, extractHostname } from '~/utils/urlHelper'
 
 const appStore = useAppStore()
 
-// Роль вычисляется динамически из единого store приложения
 const role = computed(() => {
   return appStore.currentMemberRole || appStore.currentUser?.role || 'Пользователь'
 })
@@ -97,7 +96,6 @@ function submitUrl() {
   isEditingUrl.value = false
 }
 
-// Быстрое открытие в реальной новой вкладке браузера при зажатом Ctrl/Cmd
 function handleBadgeClick(e: MouseEvent) {
   if ((e.ctrlKey || e.metaKey) && props.window?.data?.url) {
     window.open(props.window.data.url, '_blank', 'noopener,noreferrer')
@@ -361,22 +359,23 @@ watch(() => props.window?.zIndex, (newZIndex) => {
       <div class="window-header" @mousedown="handleDragStart">
         <div class="window-title">{{ props.window?.title || 'Окно' }}</div>
 
-        <!-- Служебный ключ для Управляющего и Администратора -->
+        <!-- Служебный URL/ключ для Управляющего и Администратора -->
         <div
             class="header-logger"
             v-if="role === 'Управляющий' || role === 'Администратор'"
             @mousedown.stop
         >
           <template v-if="!isEditingUrl">
-   <span
-       class="logger-label"
-       @click="handleBadgeClick"
-       :title="props.window?.data?.url
-    ? 'Клик: редактировать | Ctrl+Клик: открыть в новой вкладке (' + props.window.data.url + ')'
-    : 'Кликните, чтобы задать URL'"
-   >
-  {{ props.window?.data?.url ? '🔗 ' + props.window?.data?.url : props.window?.key }}
-</span>
+            <span
+                class="logger-label"
+                @click="handleBadgeClick"
+                :title="props.window?.data?.url
+                ? 'Клик: редактировать | Ctrl+Клик: открыть в новой вкладке (' + props.window.data.url + ')'
+                : 'Кликните, чтобы задать URL'"
+            >
+              <UIMoloSticker v-if="props.window?.data?.url" name="link" :size="11" />
+              <span>{{ props.window?.data?.url || props.window?.key }}</span>
+            </span>
           </template>
           <template v-else>
             <input
@@ -393,7 +392,7 @@ watch(() => props.window?.zIndex, (newZIndex) => {
 
         <div class="window-controls">
           <button class="control-btn refresh" @click="refreshContent" @mousedown.stop title="Обновить">
-            ↻
+            <UIMoloSticker name="refresh" :size="16" />
           </button>
           <button
               class="control-btn minimize"
@@ -402,7 +401,7 @@ watch(() => props.window?.zIndex, (newZIndex) => {
               title="Свернуть"
               v-if="!isModal"
           >
-            <span class="control-icon">_</span>
+            _
           </button>
           <button
               class="control-btn maximize"
@@ -411,7 +410,7 @@ watch(() => props.window?.zIndex, (newZIndex) => {
               :title="isMaximized ? 'Восстановить' : 'На весь экран'"
               v-if="!isModal"
           >
-            <span class="control-icon">⛶</span>
+            <UIMoloSticker :name="isMaximized ? 'fullscreen-exit' : 'fullscreen'" :size="16" />
           </button>
           <button
               class="control-btn close"
@@ -419,7 +418,7 @@ watch(() => props.window?.zIndex, (newZIndex) => {
               @mousedown.stop
               title="Закрыть"
           >
-            <span class="control-icon">×</span>
+            <UIMoloSticker name="x" :size="16" />
           </button>
         </div>
       </div>
@@ -466,7 +465,6 @@ watch(() => props.window?.zIndex, (newZIndex) => {
   align-items: center;
   position: fixed;
   border-radius: 0;
-
   z-index: 1;
 }
 
@@ -490,18 +488,12 @@ watch(() => props.window?.zIndex, (newZIndex) => {
   border-radius: var(--window-border-radius, 10px);
   display: flex;
   flex-direction: column;
-  overflow: visible;
+  overflow: hidden;
   position: relative;
   width: 100%;
   height: 100%;
-  backdrop-filter:
-      blur(20px)
-      saturate(100%)
-      brightness(100%);
-  -webkit-backdrop-filter:
-      blur(30px)
-      saturate(180%)
-      brightness(110%);
+  backdrop-filter: blur(20px) saturate(100%) brightness(100%);
+  -webkit-backdrop-filter: blur(30px) saturate(180%) brightness(110%);
   box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, 0.29),
       inset 0 -1px 0 rgba(255, 255, 255, 0.03),
@@ -554,7 +546,7 @@ watch(() => props.window?.zIndex, (newZIndex) => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 5px 5px;
+  padding: 5px 8px;
   gap: 15px;
   background: var(--window-header-bg, var(--half_opacity_bg));
   border-bottom: 1px solid var(--window-header-border, var(--half_opacity_border));
@@ -565,32 +557,52 @@ watch(() => props.window?.zIndex, (newZIndex) => {
 
 .window-title {
   color: var(--window-header-text, white);
-  font-size: 18px;
+  font-size: 15px;
   font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   flex: 1;
   min-width: 0;
-  padding: 0 5px;
+  padding: 0 4px;
 }
 
+/* Корректный скролл окна */
 .window-content {
   flex: 1;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
   position: relative;
   min-height: 0;
-  display: flex;        /* Добавляем */
-  flex-direction: column;/* Добавляем */
+  display: flex;
+  flex-direction: column;
 }
 
 .window-content > .content {
-  flex: 1;
+  flex: 1 0 auto;
   width: 100%;
-  height: 100%;
+  min-height: 100%;
+  height: auto;
   display: flex;
   flex-direction: column;
-  min-height: 0;
+}
+
+.window-content::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.window-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.window-content::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+}
+
+.window-content::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
 }
 
 .header-logger {
@@ -606,9 +618,6 @@ watch(() => props.window?.zIndex, (newZIndex) => {
   margin: 0 8px;
   backdrop-filter: blur(2px);
   border: 1px solid var(--half_opacity_border);
-}
-.header-logger {
-  cursor: pointer;
   transition: all 0.2s ease;
 }
 
@@ -618,7 +627,9 @@ watch(() => props.window?.zIndex, (newZIndex) => {
 }
 
 .logger-label {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   max-width: 220px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -634,10 +645,6 @@ watch(() => props.window?.zIndex, (newZIndex) => {
   font-size: 11px;
   width: 200px;
   padding: 0;
-}
-
-.header-logger span {
-  text-transform: capitalize;
 }
 
 .window-controls {
@@ -656,30 +663,18 @@ watch(() => props.window?.zIndex, (newZIndex) => {
   width: 28px;
   height: 28px;
   border-radius: 4px;
-  font-size: 20px;
-  line-height: 1;
   cursor: pointer;
   transition: all 0.2s ease;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-}
-
-.control-btn .control-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  line-height: 1;
+  padding: 0;
 }
 
 .control-btn:hover {
   background: var(--button-button-hover-bg, rgba(255, 255, 255, 0.1));
   color: var(--button-button-hover-text-color, var(--button-button-text-color));
-}
-
-.control-btn.maximize:hover .restore-icon {
-  filter: brightness(0) invert(0.5) sepia(1) saturate(30) hue-rotate(200deg);
 }
 
 .resize-handle {
@@ -702,9 +697,6 @@ watch(() => props.window?.zIndex, (newZIndex) => {
   border: 1px solid #888888;
 }
 
-/* ========================================
-   АДАПТИВНОСТЬ ОКОН
-======================================== */
 @media (max-width: 900px) {
   .window-container {
     width: calc(100vw - 32px) !important;
@@ -751,10 +743,6 @@ watch(() => props.window?.zIndex, (newZIndex) => {
     gap: 8px;
   }
 
-  .window-title {
-    font-size: 15px;
-  }
-
   .header-logger {
     display: none;
   }
@@ -762,7 +750,6 @@ watch(() => props.window?.zIndex, (newZIndex) => {
   .control-btn {
     width: 38px;
     height: 38px;
-    font-size: 18px;
   }
 
   .window-content {

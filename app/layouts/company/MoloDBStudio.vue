@@ -1,3 +1,4 @@
+<!-- components/apps/molodb/MoloDBStudio.vue -->
 <script setup>
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useLogger } from '~~/app/composables/useLogger'
@@ -5,10 +6,8 @@ import UIMoloMonaco from '~/components/UI/MoloMonaco.vue'
 
 const { addLog } = useLogger('MoloDB')
 
-// useMoloDbAdmin прокидывается глобально (moduleComposables.client.ts)
 const admin = typeof useMoloDbAdmin === 'function' ? useMoloDbAdmin() : null
 
-// ───────────────────────── общее состояние ─────────────────────────
 const booting = ref(true)
 const fatal = ref('')
 const dbs = ref([])
@@ -19,8 +18,8 @@ const view = ref('collection') // collection | endpoints
 const tab = ref('data') // data | structure | code
 const openDbs = reactive({})
 const sel = reactive({ db: '', col: '' })
+const syncing = ref(false)
 
-// Уведомления через MoloNotice
 const notice = reactive({
   show: false,
   title: '',
@@ -40,9 +39,9 @@ const TYPES = [
 const TYPE_TITLE = Object.fromEntries(TYPES.map((t) => [t.v, t.t]))
 const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']
 const ACCESS = [
-  { v: 'members', t: 'Участники предприятия', d: 'нужен вход в MoloFlow' },
-  { v: 'key', t: 'По секретному ключу', d: 'для вебхуков и внешних сервисов' },
-  { v: 'public', t: 'Открытый', d: 'любой, с лимитом запросов' }
+  { v: 'members', t: 'Участники предприятия', d: 'вход в MoloFlow' },
+  { v: 'key', t: 'По секретному ключу', d: 'вебхуки и интеграции' },
+  { v: 'public', t: 'Открытый', d: 'публичный доступ' }
 ]
 
 const msg = (e) => e?.message || e?.data?.message || 'Что-то пошло не так'
@@ -68,7 +67,26 @@ const activeDb = computed(() => (dbs.value || []).find((d) => d.name === sel.db)
 const activeCol = computed(() => (activeDb.value?.collections || []).find((c) => c.name === sel.col) || null)
 const colTitle = (c) => c?.title || c?.name || ''
 
-// ───────────────────────── загрузка ─────────────────────────
+async function syncData() {
+  syncing.value = true
+  addLog('info', 'Запуск синхронизации данных предприятия с MoloDB...')
+  try {
+    const res = await admin.syncEnterpriseData()
+    addLog('success', res.message || 'Синхронизация завершена')
+    notify(res.message || 'Данные синхронизированы с MoloDB', 'success')
+    await loadAll()
+    sel.db = 'company'
+    sel.col = 'profile'
+    openDbs['company'] = true
+    await loadRows()
+  } catch (e) {
+    addLog('error', `Ошибка синхронизации: ${msg(e)}`)
+    notify(msg(e), 'error', 'Синхронизация')
+  } finally {
+    syncing.value = false
+  }
+}
+
 async function loadAll() {
   addLog('info', 'Загрузка баз данных предприятия...')
   const r = await admin.list()
@@ -126,6 +144,7 @@ onMounted(async () => {
     booting.value = false
   }
 })
+
 onUnmounted(() => window.removeEventListener('keydown', onKey))
 
 function pick(db, col) {
@@ -139,7 +158,6 @@ function showEndpoints() {
   view.value = 'endpoints'
 }
 
-// ───────────────────────── данные коллекции ─────────────────────────
 const PAGE = 25
 const rows = ref([])
 const total = ref(0)
@@ -188,6 +206,7 @@ watch(
       loadRows()
     }
 )
+
 watch(search, () => {
   clearTimeout(searchTimer)
   searchTimer = setTimeout(() => {
@@ -234,7 +253,6 @@ function fmtCell(f, v) {
   return String(v)
 }
 
-// ───────────────────────── редактор записи ─────────────────────────
 const rec = reactive({ open: false, id: '', values: {}, error: '', saving: false, confirmDelete: false })
 
 function openRecord(row) {
@@ -315,10 +333,9 @@ async function deleteRecord() {
   })
 }
 
-// ───────────────────────── структура ─────────────────────────
 const draft = ref(null)
 const dbDraft = reactive({ title: '', description: '' })
-const confirmDrop = ref('') // '' | 'col' | 'db'
+const confirmDrop = ref('')
 const saving = ref(false)
 
 const split = (s) => String(s || '').split(',').map((x) => x.trim()).filter(Boolean)
@@ -472,7 +489,6 @@ async function dropDatabase() {
   })
 }
 
-// ───────────────────────── новая база / коллекция ─────────────────────────
 const nd = reactive({ open: false, name: '', title: '', description: '', error: '', saving: false })
 const nc = reactive({ open: false, name: '', title: '', error: '', saving: false })
 const NAME_RE = /^[a-z][a-z0-9_]{0,23}$/
@@ -537,7 +553,6 @@ async function createCol() {
   }
 }
 
-// ───────────────────────── эндпоинты ─────────────────────────
 const ep = reactive({
   open: false, _id: '', slug: '', description: '', methods: ['POST'], moduleId: '', file: '',
   access: 'members', enabled: true, regenerateKey: false, files: [], error: '', saving: false
@@ -627,7 +642,6 @@ async function removeEndpoint(e) {
   })
 }
 
-// ───────────────────────── подключение: готовые сниппеты ─────────────────────────
 const lang = ref('js')
 const sample = (f) =>
     ({
@@ -652,17 +666,17 @@ const snippet = computed(() => {
   const flt = ff ? { [ff.name]: sample(ff) } : {}
   const acc = /^[a-z_][a-z0-9_]*$/i.test(c) ? `.${c}` : `.collection('${c}')`
   if (lang.value === 'js')
-    return `// Vue / JS модуль — импортировать ничего не нужно
+    return `// Vue / JS модуль
 const items = useMoloDb('${d}')${acc}
 
 const created = await items.insert(${j(doc)})
 const list    = await items.find(${j(flt)}, { sort: '-createdAt', limit: 20 })
-const page    = await items.page({}, { search: 'текст', limit: 25, skip: 0 })   // { items, total }
+const page    = await items.page({}, { search: 'текст', limit: 25, skip: 0 })
 await items.update(created._id, ${j(doc)})
 await items.update(${j(flt)}, {}, { upsert: true })
 await items.delete(created._id)`
   if (lang.value === 'server')
-    return `// серверный файл модуля — объект db уже доступен
+    return `// Серверный файл модуля
 export async function handler(context) {
   const items = db('${d}')${acc}
 
@@ -673,25 +687,18 @@ export async function handler(context) {
   return { status: 201, body: { created, count: list.length } }
 }`
   if (lang.value === 'py')
-    return `# Python-бот — moloflow_db.py создаётся автоматически рядом с кодом
+    return `# Python-клиент
 from moloflow_db import db
 
 items = db("${d}").${/^[a-z_][a-z0-9_]*$/i.test(c) ? c : `collection("${c}")`}
 
 created = items.insert(${pyJson(doc)})
 rows = items.find(${pyJson(flt)}, sort="-createdAt", limit=20)
-items.update(created["_id"], ${pyJson(doc)})
-
-# внутри async-кода (aiogram) — версии с буквой a:
-created = await items.ainsert(${pyJson(doc)})
-rows = await items.afind(${pyJson(flt)}, limit=20)`
-  return `POST /api/enterprises/${admin?.enterpriseId() || '<id предприятия>'}/moloDb/${d}/${c}
+items.update(created["_id"], ${pyJson(doc)})`
+  return `POST /api/enterprises/${admin?.enterpriseId() || '<id>'}/moloDb/${d}/${c}
 Content-Type: application/json
 
-${JSON.stringify({ op: 'insert', doc }, null, 2)}
-
-// остальные операции: find, findOne, get, count, insertMany, update, delete
-${JSON.stringify({ op: 'find', filter: flt, sort: '-createdAt', limit: 20 }, null, 2)}`
+${JSON.stringify({ op: 'insert', doc }, null, 2)}`
 })
 
 async function copy(text) {
@@ -719,466 +726,613 @@ function onKey(e) {
 </script>
 
 <template>
-  <div class="mdb">
-    <div v-if="booting" class="mdb-center">
-      <UIMoloSticker name="history" :size="20" glow />
-      <span>Загрузка баз MoloDB…</span>
+  <div class="mdb-layout">
+    <!-- Центр загрузки / фатальной ошибки -->
+    <div v-if="booting" class="mdb-state-center">
+      <UIMoloSticker name="refresh" :size="24" class="spin-anim" />
+      <span>Инициализация окружения MoloDB…</span>
     </div>
-    <div v-else-if="fatal" class="mdb-center err">{{ fatal }}</div>
+    <div v-else-if="fatal" class="mdb-state-center err">
+      <UIMoloSticker name="alert" :size="28" />
+      <span>{{ fatal }}</span>
+    </div>
 
     <template v-else>
-      <!-- ═════ боковая панель ═════ -->
-      <aside class="side">
-        <header class="side-head">
-          <UIMoloSticker name="nomenclature" :size="20" glow />
-          <h2>MoloDB</h2>
-          <UIMoloButton v-if="canManage" variant="small" title="Новая база" @click="openNewDb">
-            <UIMoloSticker name="plus" :size="12" />
-          </UIMoloButton>
+      <!-- БОКОВАЯ ПАНЕЛЬ -->
+      <aside class="mdb-sidebar">
+        <header class="sidebar-head">
+          <div class="brand">
+            <UIMoloSticker name="nomenclature" :size="18" glow />
+            <span class="brand-title">MoloDB</span>
+          </div>
+
+          <div class="head-actions">
+            <UIMoloButton
+                v-if="canManage"
+                class="small"
+                title="Синхронизировать реквизиты предприятия в базу"
+                :disabled="syncing"
+                @click="syncData"
+            >
+              <UIMoloSticker name="download" :size="12" :class="{ 'spin-anim': syncing }" />
+            </UIMoloButton>
+            <UIMoloButton
+                v-if="canManage"
+                class="small confirm"
+                title="Создать базу данных"
+                @click="openNewDb"
+            >
+              <UIMoloSticker name="plus" :size="12" />
+            </UIMoloButton>
+          </div>
         </header>
 
-        <nav class="side-list">
-          <div v-for="db in dbs" :key="db.name" class="db">
-            <button class="db-row" @click="openDbs[db.name] = !openDbs[db.name]">
-              <UIMoloSticker name="arrow" :size="12" class="chev" :class="{ open: openDbs[db.name] }" />
-              <span class="db-name">{{ db.title || db.name }}</span>
-              <span class="count">{{ (db.collections || []).length }}</span>
+        <!-- Дерево баз и коллекций -->
+        <nav class="sidebar-tree">
+          <div v-for="db in dbs" :key="db.name" class="tree-db-node">
+            <button class="db-header-row" @click="openDbs[db.name] = !openDbs[db.name]">
+              <UIMoloSticker name="arrow" :size="11" class="chev-icon" :class="{ open: openDbs[db.name] }" />
+              <UIMoloSticker name="folder" :size="14" />
+              <span class="db-title">{{ db.title || db.name }}</span>
+              <span class="badge-pill">{{ (db.collections || []).length }}</span>
             </button>
-            <ul v-show="openDbs[db.name]" class="cols">
+
+            <ul v-show="openDbs[db.name]" class="cols-tree-branch">
               <li v-for="c in (db.collections || [])" :key="c.name">
                 <button
-                    class="col"
-                    :class="{ on: view === 'collection' && sel.db === db.name && sel.col === c.name }"
+                    class="col-tree-row"
+                    :class="{ active: view === 'collection' && sel.db === db.name && sel.col === c.name }"
                     @click="pick(db, c)"
                 >
-                  <UIMoloSticker name="table" :size="13" />
-                  <span>{{ colTitle(c) }}</span>
+                  <UIMoloSticker name="table" :size="12" />
+                  <span class="col-name">{{ colTitle(c) }}</span>
                 </button>
               </li>
+
               <li v-if="canManage">
-                <button class="col add" @click="openNewCol(db)">
-                  <UIMoloSticker name="plus" :size="12" />
+                <button class="col-tree-row add-col-row" @click="openNewCol(db)">
+                  <UIMoloSticker name="plus" :size="11" />
                   <span>Коллекция</span>
                 </button>
               </li>
             </ul>
           </div>
-          <p v-if="!dbs.length" class="side-empty">Баз пока нет.</p>
+
+          <div v-if="!dbs.length" class="sidebar-empty">
+            <span>Баз данных не найдено</span>
+          </div>
         </nav>
 
-        <footer v-if="canManage" class="side-foot">
-          <button class="nav" :class="{ on: view === 'endpoints' }" @click="showEndpoints">
-            <UIMoloSticker name="it" :size="15" />
-            <span>Эндпоинты</span>
-            <span class="count">{{ eps.length }}</span>
+        <!-- Нижняя панель эндпоинтов -->
+        <footer v-if="canManage" class="sidebar-foot">
+          <button
+              class="endpoint-nav-btn"
+              :class="{ active: view === 'endpoints' }"
+              @click="showEndpoints"
+          >
+            <UIMoloSticker name="it" :size="14" />
+            <span>HTTP Эндпоинты</span>
+            <span class="badge-pill">{{ eps.length }}</span>
           </button>
         </footer>
       </aside>
 
-      <!-- ═════ основная область ═════ -->
-      <main class="main">
-        <!-- нет баз -->
-        <section v-if="view === 'collection' && !activeCol" class="empty">
-          <UIMoloSticker name="nomenclature" :size="48" glow />
-          <h3>{{ activeDb ? 'В этой базе ещё нет коллекций' : 'Создайте свою первую базу данных' }}</h3>
-          <p>
-            База хранит ваши данные в таблицах-коллекциях со своими полями. К ней можно обращаться из
-            Vue-модулей, серверных файлов, Python-ботов и по HTTP.
-          </p>
-          <UIMoloButton v-if="canManage && !activeDb" variant="confirm" @click="openNewDb">
-            <UIMoloSticker name="plus" :size="14" />
-            Создать базу
-          </UIMoloButton>
-          <UIMoloButton v-else-if="canManage && activeDb" variant="confirm" @click="openNewCol(activeDb)">
-            <UIMoloSticker name="plus" :size="14" />
-            Добавить коллекцию
-          </UIMoloButton>
-          <p v-else class="muted">Базы создаёт разработчик предприятия.</p>
+      <!-- ОСНОВНАЯ ЗОНА -->
+      <main class="mdb-viewport">
+        <!-- ПУСТОЙ ЭКРАН -->
+        <section v-if="view === 'collection' && !activeCol" class="viewport-empty">
+          <div class="empty-glass-card">
+            <UIMoloSticker name="nomenclature" :size="42" glow />
+            <h3>{{ activeDb ? 'В выбранной базе ещё нет таблиц' : 'База данных не инициализирована' }}</h3>
+            <p>
+              MoloDB хранит типизированные документы со схемой полей, валидацией и доступом по ролям.
+            </p>
+            <div class="empty-actions" v-if="canManage">
+              <UIMoloButton v-if="!activeDb" class="small confirm" @click="openNewDb">
+                <UIMoloSticker name="plus" :size="13" />
+                <span>Создать базу</span>
+              </UIMoloButton>
+              <UIMoloButton v-if="!activeDb" class="small" :disabled="syncing" @click="syncData">
+                <UIMoloSticker name="download" :size="13" :class="{ 'spin-anim': syncing }" />
+                <span>Импортировать данные</span>
+              </UIMoloButton>
+              <UIMoloButton v-if="activeDb" class="small confirm" @click="openNewCol(activeDb)">
+                <UIMoloSticker name="plus" :size="13" />
+                <span>Добавить коллекцию</span>
+              </UIMoloButton>
+            </div>
+          </div>
         </section>
 
-        <!-- коллекция -->
+        <!-- ПРОСМОТР КОЛЛЕКЦИИ -->
         <template v-else-if="view === 'collection'">
-          <header class="head">
-            <div>
-              <div class="crumb">{{ activeDb?.title || activeDb?.name }}</div>
-              <h1>{{ colTitle(activeCol) }}</h1>
+          <header class="viewport-header">
+            <div class="header-breadcrumb">
+              <div class="crumbs">
+                <span class="db-badge">{{ activeDb?.title || activeDb?.name }}</span>
+                <span class="sep">/</span>
+                <span class="col-curr">{{ colTitle(activeCol) }}</span>
+              </div>
             </div>
-            <div class="btn-group">
-              <UIMoloButton variant="small" :class="{ confirm: tab === 'data' }" @click="tab = 'data'">
-                <UIMoloSticker name="table" :size="13" />
-                Данные
+
+            <div class="header-tabs">
+              <UIMoloButton
+                  class="small"
+                  :class="{ confirm: tab === 'data' }"
+                  @click="tab = 'data'"
+              >
+                <UIMoloSticker name="table" :size="12" />
+                <span>Данные</span>
               </UIMoloButton>
-              <UIMoloButton v-if="canManage" variant="small" :class="{ confirm: tab === 'structure' }" @click="tab = 'structure'">
-                <UIMoloSticker name="pen" :size="13" />
-                Структура
+
+              <UIMoloButton
+                  v-if="canManage"
+                  class="small"
+                  :class="{ confirm: tab === 'structure' }"
+                  @click="tab = 'structure'"
+              >
+                <UIMoloSticker name="pen" :size="12" />
+                <span>Структура</span>
               </UIMoloButton>
-              <UIMoloButton variant="small" :class="{ confirm: tab === 'code' }" @click="tab = 'code'">
-                <UIMoloSticker name="dev-json" :size="13" />
-                Подключение
+
+              <UIMoloButton
+                  class="small"
+                  :class="{ confirm: tab === 'code' }"
+                  @click="tab = 'code'"
+              >
+                <UIMoloSticker name="dev-json" :size="12" />
+                <span>API</span>
               </UIMoloButton>
             </div>
           </header>
 
-          <!-- Данные -->
-          <section v-if="tab === 'data'" class="pane">
-            <div class="bar">
-              <div class="search-box">
+          <!-- 1. ДАННЫЕ ТАБЛИЦЫ -->
+          <section v-if="tab === 'data'" class="tab-pane data-pane">
+            <div class="data-toolbar">
+              <div class="search-wrap">
                 <UIMoloInput
                     v-model="search"
                     compact
-                    placeholder="Поиск по текстовым полям..."
+                    placeholder="Быстрый поиск по строкам..."
                 />
               </div>
-              <span class="muted grow">{{ total }} {{ total === 1 ? 'запись' : 'записей' }}</span>
-              <UIMoloButton variant="small" title="Обновить" @click="loadRows">
-                <UIMoloSticker name="history" :size="13" />
-              </UIMoloButton>
-              <UIMoloButton
-                  variant="confirm"
-                  class="small"
-                  :disabled="!activeColFields.length"
-                  @click="openRecord(null)"
-              >
-                <UIMoloSticker name="plus" :size="13" />
-                Запись
-              </UIMoloButton>
+
+              <div class="records-counter">
+                <span class="count-val">{{ total }}</span>
+                <span class="count-lbl">{{ total === 1 ? 'запись' : 'записей' }}</span>
+              </div>
+
+              <div class="actions-right">
+                <UIMoloButton
+                    class="small"
+                    title="Обновить таблицу"
+                    :disabled="rowsLoading"
+                    @click="loadRows"
+                >
+                  <UIMoloSticker name="refresh" :size="12" :class="{ 'spin-anim': rowsLoading }" />
+                </UIMoloButton>
+
+                <UIMoloButton
+                    class="small confirm"
+                    :disabled="!activeColFields.length"
+                    @click="openRecord(null)"
+                >
+                  <UIMoloSticker name="plus" :size="12" />
+                  <span>Добавить запись</span>
+                </UIMoloButton>
+              </div>
             </div>
 
-            <p v-if="!activeColFields.length" class="note">
-              У коллекции пока нет полей.
-              <button v-if="canManage" class="link" @click="tab = 'structure'">Добавить поля</button>
-            </p>
-            <p v-if="rowsError" class="note err">{{ rowsError }}</p>
+            <div v-if="!activeColFields.length" class="empty-banner">
+              <span>Схема коллекции не сформирована.</span>
+              <button v-if="canManage" class="text-link" @click="tab = 'structure'">Добавить поля структуры</button>
+            </div>
 
-            <div v-if="activeColFields.length" class="table-wrap" :class="{ busy: rowsLoading }">
-              <table>
+            <div v-if="rowsError" class="error-banner">
+              <UIMoloSticker name="alert" :size="14" />
+              <span>{{ rowsError }}</span>
+            </div>
+
+            <div v-if="activeColFields.length" class="table-container" :class="{ busy: rowsLoading }">
+              <table class="molo-data-grid">
                 <thead>
                 <tr>
                   <th v-for="f in shownFields" :key="f.name">
-                    <button v-if="f.type !== 'json'" class="th" @click="sortBy(f.name)">
+                    <button v-if="f.type !== 'json'" class="sort-header-btn" @click="sortBy(f.name)">
                       <span>{{ f.label || f.name }}</span>
                       <UIMoloSticker
                           v-if="sortDir(f.name)"
                           :name="sortDir(f.name) === 'asc' ? 'up' : 'down'"
-                          :size="12"
+                          :size="10"
                       />
                     </button>
-                    <span v-else>{{ f.label || f.name }}</span>
+                    <span v-else class="static-header">{{ f.label || f.name }}</span>
                   </th>
-                  <th>
-                    <button class="th" @click="sortBy('createdAt')">
+                  <th class="time-header">
+                    <button class="sort-header-btn" @click="sortBy('createdAt')">
                       <span>Создано</span>
                       <UIMoloSticker
                           v-if="sortDir('createdAt')"
                           :name="sortDir('createdAt') === 'asc' ? 'up' : 'down'"
-                          :size="12"
+                          :size="10"
                       />
                     </button>
                   </th>
                 </tr>
                 </thead>
                 <tbody>
-                <tr v-for="r in rows" :key="r._id" @click="openRecord(r)">
+                <tr v-for="r in rows" :key="r._id" class="grid-data-row" @click="openRecord(r)">
                   <td
                       v-for="f in shownFields"
                       :key="f.name"
-                      :class="['t-' + f.type, { nil: r[f.name] === undefined || r[f.name] === null || r[f.name] === '' }]"
+                      :class="['cell-' + f.type, { 'cell-empty': r[f.name] === undefined || r[f.name] === null || r[f.name] === '' }]"
                   >
-                    <span v-if="f.type === 'select' && r[f.name]" class="chip">{{ r[f.name] }}</span>
+                    <span v-if="f.type === 'select' && r[f.name]" class="pill-badge">{{ r[f.name] }}</span>
                     <span v-else>{{ fmtCell(f, r[f.name]) }}</span>
                   </td>
-                  <td class="nil">{{ fmtDate(r.createdAt) }}</td>
+                  <td class="cell-date">{{ fmtDate(r.createdAt) }}</td>
                 </tr>
-                <tr v-if="!rows.length && !rowsLoading" class="none">
-                  <td :colspan="shownFields.length + 1">{{ search ? 'Ничего не найдено' : 'Записей пока нет' }}</td>
+
+                <tr v-if="!rows.length && !rowsLoading" class="grid-empty-row">
+                  <td :colspan="shownFields.length + 1">
+                    {{ search ? 'По вашему запросу совпадений не обнаружено' : 'В этой таблице пока нет данных' }}
+                  </td>
                 </tr>
                 </tbody>
               </table>
             </div>
 
-            <footer v-if="total > PAGE" class="pager">
-              <UIMoloButton variant="small" :disabled="skip === 0" @click="go(-1)">Назад</UIMoloButton>
-              <span class="muted">{{ pageFrom }}–{{ pageTo }} из {{ total }}</span>
-              <UIMoloButton variant="small" :disabled="skip + PAGE >= total" @click="go(1)">Дальше</UIMoloButton>
+            <footer v-if="total > PAGE" class="pagination-footer">
+              <UIMoloButton class="small" :disabled="skip === 0" @click="go(-1)">← Назад</UIMoloButton>
+              <span class="pager-info">{{ pageFrom }}–{{ pageTo }} из {{ total }}</span>
+              <UIMoloButton class="small" :disabled="skip + PAGE >= total" @click="go(1)">Далее →</UIMoloButton>
             </footer>
           </section>
 
-          <!-- Структура -->
-          <section v-else-if="tab === 'structure' && draft" class="pane scroll">
-            <div class="card">
-              <div class="card-head">
-                <h3>Поля коллекции</h3>
-                <UIMoloButton variant="small" @click="addField">
-                  <UIMoloSticker name="plus" :size="12" />
-                  Добавить поле
-                </UIMoloButton>
-              </div>
-
-              <div v-for="(f, i) in (draft.fields || [])" :key="i" class="field">
-                <div class="field-main">
-                  <UIMoloInput
-                      v-model="f.name"
-                      compact
-                      placeholder="имя_поля"
-                      :readonly="f.saved"
-                      :title="f.saved ? 'Имя сохранённого поля менять нельзя' : ''"
-                  />
-                  <UIMoloInput
-                      v-model="f.label"
-                      compact
-                      placeholder="Подпись (необязательно)"
-                  />
-                  <div class="type-sel">
-                    <UIMoloSelect
-                        v-model="f.type"
-                        compact
-                        :disabled="f.saved"
-                        :title="f.saved ? 'Тип сохранённого поля менять нельзя' : ''"
-                    >
-                      <option v-for="t in TYPES" :key="t.v" :value="t.v">{{ t.t }}</option>
-                    </UIMoloSelect>
-                  </div>
-
-                  <div class="field-checks">
-                    <UIMoloToggle v-model="f.required" compact label="Обязательное" />
-                    <UIMoloToggle
-                        v-if="['string', 'number', 'select', 'date'].includes(f.type)"
-                        v-model="f.unique"
-                        compact
-                        label="Уникальное"
-                    />
-                  </div>
-
-                  <div class="field-actions">
-                    <UIMoloButton variant="small" title="Выше" @click="moveField(i, -1)">
-                      <UIMoloSticker name="up" :size="12" />
-                    </UIMoloButton>
-                    <UIMoloButton variant="small" title="Ниже" @click="moveField(i, 1)">
-                      <UIMoloSticker name="down" :size="12" />
-                    </UIMoloButton>
-                    <UIMoloButton variant="close" class="small" title="Убрать поле" @click="removeField(i)">
-                      <UIMoloSticker name="trash" :size="12" />
+          <!-- 2. СТРУКТУРА ПОЛЕЙ -->
+          <section v-else-if="tab === 'structure' && draft" class="tab-pane structure-pane">
+            <div class="structure-content-scroll">
+              <!-- Секция полей -->
+              <UIMoloSection>
+                <template #header>
+                  <div class="sec-header-line">
+                    <div class="sec-title-wrap">
+                      <UIMoloSticker name="table" :size="14" />
+                      <strong>Поля коллекции</strong>
+                    </div>
+                    <UIMoloButton class="small confirm" @click="addField">
+                      <UIMoloSticker name="plus" :size="12" />
+                      <span>Новое поле</span>
                     </UIMoloButton>
                   </div>
-                </div>
+                </template>
 
-                <div class="field-extra">
-                  <UIMoloInput
-                      v-model="f.default"
-                      compact
-                      :placeholder="f.type === 'date' ? 'По умолчанию (now = сейчас)' : f.type === 'boolean' ? 'true / false' : 'Значение по умолчанию'"
-                  />
-                  <UIMoloInput
-                      v-if="f.type === 'select'"
-                      v-model="f.options"
-                      compact
-                      placeholder="Варианты через запятую: новый, в работе, готово"
-                  />
-                  <template v-if="f.type === 'number'">
-                    <UIMoloInput v-model="f.min" compact type="number" placeholder="мин" />
-                    <UIMoloInput v-model="f.max" compact type="number" placeholder="макс" />
-                  </template>
-                  <UIMoloInput
-                      v-if="f.type === 'string' || f.type === 'text'"
-                      v-model="f.maxLength"
-                      compact
-                      type="number"
-                      placeholder="макс. длина"
-                  />
-                </div>
-              </div>
+                <template #main>
+                  <div class="fields-list-stack">
+                    <div v-for="(f, i) in (draft.fields || [])" :key="i" class="field-item-card">
+                      <!-- Основная строка конфигурации -->
+                      <div class="field-row-primary">
+                        <div class="input-col name-col">
+                          <UIMoloInput
+                              v-model="f.name"
+                              compact
+                              placeholder="system_key"
+                              :readonly="f.saved"
+                              t-label="Идентификатор"
+                          />
+                        </div>
+
+                        <div class="input-col label-col">
+                          <UIMoloInput
+                              v-model="f.label"
+                              compact
+                              placeholder="Подпись"
+                              t-label="Название поля"
+                          />
+                        </div>
+
+                        <div class="input-col type-col">
+                          <UIMoloSelect
+                              v-model="f.type"
+                              compact
+                              :disabled="f.saved"
+                              t-label="Тип данных"
+                          >
+                            <option v-for="t in TYPES" :key="t.v" :value="t.v">{{ t.t }}</option>
+                          </UIMoloSelect>
+                        </div>
+
+                        <div class="toggles-col">
+                          <UIMoloToggle v-model="f.required" compact label="Обязательное" />
+                          <UIMoloToggle
+                              v-if="['string', 'number', 'select', 'date'].includes(f.type)"
+                              v-model="f.unique"
+                              compact
+                              label="Уникальное"
+                          />
+                        </div>
+
+                        <div class="actions-col">
+                          <UIMoloButton class="small" title="Переместить выше" @click="moveField(i, -1)">
+                            <UIMoloSticker name="up" :size="10" />
+                          </UIMoloButton>
+                          <UIMoloButton class="small" title="Переместить ниже" @click="moveField(i, 1)">
+                            <UIMoloSticker name="down" :size="10" />
+                          </UIMoloButton>
+                          <UIMoloButton class="small close" title="Удалить поле" @click="removeField(i)">
+                            <UIMoloSticker name="trash" :size="10" />
+                          </UIMoloButton>
+                        </div>
+                      </div>
+
+                      <!-- Дополнительные параметры поля -->
+                      <div class="field-row-secondary">
+                        <div class="extra-field-item">
+                          <UIMoloInput
+                              v-model="f.default"
+                              compact
+                              :placeholder="f.type === 'date' ? 'now' : 'Значение по умолчанию'"
+                              t-label="По умолчанию"
+                          />
+                        </div>
+
+                        <div v-if="f.type === 'select'" class="extra-field-item grow">
+                          <UIMoloInput
+                              v-model="f.options"
+                              compact
+                              placeholder="новый, в работе, завершено"
+                              t-label="Варианты (через запятую)"
+                          />
+                        </div>
+
+                        <template v-if="f.type === 'number'">
+                          <div class="extra-field-item num">
+                            <UIMoloInput v-model="f.min" compact type="number" placeholder="min" t-label="Мин" />
+                          </div>
+                          <div class="extra-field-item num">
+                            <UIMoloInput v-model="f.max" compact type="number" placeholder="max" t-label="Макс" />
+                          </div>
+                        </template>
+
+                        <div v-if="f.type === 'string' || f.type === 'text'" class="extra-field-item num">
+                          <UIMoloInput
+                              v-model="f.maxLength"
+                              compact
+                              type="number"
+                              placeholder="255"
+                              t-label="Длина (симв.)"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+              </UIMoloSection>
+
+              <!-- Настройки коллекции -->
+              <UIMoloSection>
+                <template #header>
+                  <div class="sec-title-wrap">
+                    <UIMoloSticker name="settings" :size="14" />
+                    <strong>Параметры коллекции</strong>
+                  </div>
+                </template>
+                <template #main>
+                  <div class="grid-form-two-col">
+                    <UIMoloInput v-model="draft.title" compact t-label="Название коллекции" placeholder="Заказы" />
+                    <UIMoloInput v-model="draft.maxDocs" compact type="number" t-label="Лимит строк" placeholder="50000" />
+                    <UIMoloInput v-model="draft.ttlDays" compact type="number" t-label="Хранение (дней)" placeholder="Бессрочно" />
+                    <div class="toggle-wrapper-aligned">
+                      <UIMoloToggle v-model="draft.strict" compact label="Строгая схема" true-label="Да" false-label="Любые поля" />
+                    </div>
+                    <UIMoloInput v-model="draft.readRoles" compact t-label="Роли чтения" placeholder="все участники" />
+                    <UIMoloInput v-model="draft.writeRoles" compact t-label="Роли записи" placeholder="все участники" />
+                  </div>
+                </template>
+              </UIMoloSection>
+
+              <!-- Параметры текущей БД -->
+              <UIMoloSection>
+                <template #header>
+                  <div class="sec-header-line">
+                    <div class="sec-title-wrap">
+                      <UIMoloSticker name="folder" :size="14" />
+                      <strong>База данных «{{ activeDb?.title || activeDb?.name }}»</strong>
+                    </div>
+                    <UIMoloButton class="small action" :disabled="!dbDirty" @click="saveDbInfo">
+                      Сохранить свойства БД
+                    </UIMoloButton>
+                  </div>
+                </template>
+                <template #main>
+                  <div class="grid-form-two-col">
+                    <UIMoloInput v-model="dbDraft.title" compact t-label="Отображаемое имя базы" />
+                    <UIMoloInput v-model="dbDraft.description" compact t-label="Описание" />
+                  </div>
+                </template>
+              </UIMoloSection>
+
+              <!-- Опасная зона -->
+              <UIMoloSection class="danger-section">
+                <template #header>
+                  <div class="sec-title-wrap text-danger">
+                    <UIMoloSticker name="trash" :size="14" />
+                    <strong>Опасная зона</strong>
+                  </div>
+                </template>
+                <template #main>
+                  <div class="danger-actions-row">
+                    <UIMoloButton class="small close" @click="dropCollection">
+                      <UIMoloSticker name="trash" :size="11" />
+                      <span>{{ confirmDrop === 'col' ? 'Подтвердите удаление коллекции' : 'Удалить коллекцию' }}</span>
+                    </UIMoloButton>
+
+                    <UIMoloButton class="small close" @click="dropDatabase">
+                      <UIMoloSticker name="trash" :size="11" />
+                      <span>{{ confirmDrop === 'db' ? 'Подтвердите удаление всей БД' : 'Удалить базу данных' }}</span>
+                    </UIMoloButton>
+
+                    <UIMoloButton v-if="confirmDrop" class="small" @click="confirmDrop = ''">Отмена</UIMoloButton>
+                  </div>
+                </template>
+              </UIMoloSection>
             </div>
 
-            <div class="card">
-              <h3>Настройки коллекции</h3>
-              <div class="grid2">
-                <UIMoloInput v-model="draft.title" t-label="Название" placeholder="Например: Сообщения" />
-                <UIMoloInput v-model="draft.maxDocs" type="number" t-label="Лимит записей" placeholder="по умолчанию 50 000" />
-                <UIMoloInput v-model="draft.ttlDays" type="number" t-label="Хранить, дней" placeholder="бессрочно" />
-                <div class="toggle-cell">
-                  <UIMoloToggle v-model="draft.strict" label="Только поля схемы" true-label="Да" false-label="Любые" />
-                </div>
-                <UIMoloInput v-model="draft.readRoles" t-label="Кто читает (роли)" placeholder="все участники" />
-                <UIMoloInput v-model="draft.writeRoles" t-label="Кто пишет (роли)" placeholder="все участники" />
+            <!-- Плавающая плашка сохранения структуры -->
+            <footer class="floating-savebar" :class="{ visible: dirty }">
+              <div class="savebar-text">
+                <UIMoloSticker name="alert" :size="14" />
+                <span>В структуру внесены изменения</span>
               </div>
-              <p class="hint">Роли через запятую (например «Программист, Управляющий»). Администратор имеет доступ всегда.</p>
-            </div>
-
-            <div class="card">
-              <h3>База «{{ activeDb?.title || activeDb?.name }}»</h3>
-              <div class="grid2">
-                <UIMoloInput v-model="dbDraft.title" t-label="Название" />
-                <UIMoloInput v-model="dbDraft.description" t-label="Описание" />
-              </div>
-              <UIMoloButton variant="action" class="fit" :disabled="!dbDirty" @click="saveDbInfo">
-                Сохранить параметры базы
-              </UIMoloButton>
-            </div>
-
-            <div class="card danger-zone">
-              <h3>Опасная зона</h3>
-              <div class="row-gap">
-                <UIMoloButton variant="close" @click="dropCollection">
-                  <UIMoloSticker name="trash" :size="13" />
-                  {{ confirmDrop === 'col' ? 'Да, удалить коллекцию и все её данные' : 'Удалить коллекцию' }}
+              <div class="btn-group">
+                <UIMoloButton class="small" @click="resetDraft">Сбросить</UIMoloButton>
+                <UIMoloButton class="small confirm" :loading="saving" @click="saveStructure">
+                  Применить изменения
                 </UIMoloButton>
-                <UIMoloButton variant="close" @click="dropDatabase">
-                  <UIMoloSticker name="trash" :size="13" />
-                  {{ confirmDrop === 'db' ? 'Да, удалить базу данных целиком' : 'Удалить базу' }}
-                </UIMoloButton>
-                <UIMoloButton v-if="confirmDrop" variant="small" @click="confirmDrop = ''">Отмена</UIMoloButton>
               </div>
-            </div>
-
-            <footer class="savebar" :class="{ show: dirty }">
-              <span>Есть несохранённые изменения</span>
-              <UIMoloButton variant="small" @click="resetDraft">Сбросить</UIMoloButton>
-              <UIMoloButton variant="confirm" :loading="saving" @click="saveStructure">
-                Сохранить структуру
-              </UIMoloButton>
             </footer>
           </section>
 
-          <!-- Подключение -->
-          <section v-else-if="tab === 'code'" class="pane scroll">
-            <div class="seg">
-              <button :class="{ on: lang === 'js' }" @click="lang = 'js'">Vue / JS</button>
-              <button :class="{ on: lang === 'server' }" @click="lang = 'server'">Серверный файл</button>
-              <button :class="{ on: lang === 'py' }" @click="lang = 'py'">Python</button>
-              <button :class="{ on: lang === 'http' }" @click="lang = 'http'">HTTP</button>
-            </div>
-            <div class="code">
-              <UIMoloButton class="copy small" title="Копировать" @click="copy(snippet)">
-                <UIMoloSticker name="copy" :size="13" />
-              </UIMoloButton>
-              <pre>{{ snippet }}</pre>
+          <!-- 3. ПОДКЛЮЧЕНИЕ / СНИППЕТЫ -->
+          <section v-else-if="tab === 'code'" class="tab-pane code-pane">
+            <div class="code-env-bar">
+              <div class="seg-buttons">
+                <UIMoloButton class="small" :class="{ confirm: lang === 'js' }" @click="lang = 'js'">Vue / JS</UIMoloButton>
+                <UIMoloButton class="small" :class="{ confirm: lang === 'server' }" @click="lang = 'server'">Сервер</UIMoloButton>
+                <UIMoloButton class="small" :class="{ confirm: lang === 'py' }" @click="lang = 'py'">Python</UIMoloButton>
+                <UIMoloButton class="small" :class="{ confirm: lang === 'http' }" @click="lang = 'http'">HTTP (cURL)</UIMoloButton>
+              </div>
             </div>
 
-            <div class="card">
-              <h3>Операторы запросов MoloDB</h3>
-              <table class="ops">
-                <tbody>
-                <tr><td><code>{ поле: значение }</code></td><td>Равно</td></tr>
-                <tr><td><code>$ne $gt $gte $lt $lte</code></td><td>Не равно, больше, меньше</td></tr>
-                <tr><td><code>$in $nin</code></td><td>Одно из списка / не из списка</td></tr>
-                <tr><td><code>$exists</code></td><td>Поле заполнено или отсутствует</td></tr>
-                <tr><td><code>$contains $startsWith</code></td><td>Текст содержит / начинается с (без учёта регистра)</td></tr>
-                <tr><td><code>$and $or $nor</code></td><td>Логические объединения условий</td></tr>
-                </tbody>
-              </table>
-              <p class="hint">Системные поля: <code>_id</code>, <code>createdAt</code>, <code>updatedAt</code>.</p>
+            <div class="code-viewport-block">
+              <UIMoloButton class="small copy-btn" title="Скопировать сниппет" @click="copy(snippet)">
+                <UIMoloSticker name="copy" :size="12" />
+                <span>Копировать</span>
+              </UIMoloButton>
+              <pre class="code-pre"><code>{{ snippet }}</code></pre>
             </div>
           </section>
         </template>
 
-        <!-- Эндпоинты -->
+        <!-- РАЗДЕЛ HTTP ЭНДПОИНТОВ -->
         <template v-else-if="view === 'endpoints'">
-          <header class="head">
-            <div>
-              <div class="crumb">HTTP</div>
-              <h1>Эндпоинты</h1>
+          <header class="viewport-header">
+            <div class="header-breadcrumb">
+              <span class="col-curr">HTTP Эндпоинты</span>
             </div>
-            <UIMoloButton variant="confirm" @click="openEndpoint(null)">
-              <UIMoloSticker name="plus" :size="14" />
-              Новый эндпоинт
+            <UIMoloButton class="small confirm" @click="openEndpoint(null)">
+              <UIMoloSticker name="plus" :size="12" />
+              <span>Создать эндпоинт</span>
             </UIMoloButton>
           </header>
-          <section class="pane scroll">
-            <p class="lead">
-              Эндпоинт — это сетевой адрес, выполняющий серверный код вашего модуля.
-              Внутри контекста всегда доступен объект <code>db</code> и данные запроса <code>context</code>.
-            </p>
 
-            <div v-if="!eps.length" class="empty small">
-              <UIMoloSticker name="it" :size="32" />
-              <h3>Эндпоинтов пока нет</h3>
-              <p>Создайте js/ts-модуль с функцией <code>handler(context)</code> и привяжите его к адресу.</p>
+          <section class="tab-pane endpoints-pane">
+            <div v-if="!eps.length" class="empty-banner">
+              <span>Эндпоинты не созданы. Подключите скрипт модуля для выполнения внешних запросов.</span>
             </div>
 
-            <article v-for="e in eps" :key="e._id" class="ep" :class="{ off: !e.enabled }">
-              <div class="ep-top">
-                <code class="ep-url">/api/x/…/{{ e.slug }}</code>
-                <span v-for="m in e.methods" :key="m" class="chip m" :class="m.toLowerCase()">{{ m }}</span>
-                <span class="chip acc" :class="e.access">{{ ACCESS.find((a) => a.v === e.access)?.t }}</span>
-                <span class="grow"/>
-                <UIMoloButton variant="small" title="Копировать адрес" @click="copy(admin.endpointUrl(e.slug))">
-                  <UIMoloSticker name="copy" :size="12" />
-                </UIMoloButton>
-                <UIMoloButton variant="small" title="Изменить" @click="openEndpoint(e)">
-                  <UIMoloSticker name="pen" :size="12" />
-                </UIMoloButton>
-                <UIMoloButton variant="close" class="small" @click="removeEndpoint(e)">
-                  {{ epDel === e._id ? 'Удалить?' : '' }}
-                  <UIMoloSticker v-if="epDel !== e._id" name="trash" :size="12" />
-                </UIMoloButton>
+            <div class="endpoints-list-grid">
+              <div v-for="e in eps" :key="e._id" class="endpoint-card" :class="{ disabled: !e.enabled }">
+                <div class="endpoint-top-line">
+                  <div class="route-tag">
+                    <UIMoloSticker name="link" :size="12" />
+                    <code>/api/x/…/{{ e.slug }}</code>
+                  </div>
+
+                  <div class="methods-badges">
+                    <span v-for="m in e.methods" :key="m" class="method-chip" :class="m.toLowerCase()">{{ m }}</span>
+                  </div>
+
+                  <span class="access-chip">{{ ACCESS.find((a) => a.v === e.access)?.t }}</span>
+
+                  <div class="endpoint-quick-actions">
+                    <UIMoloButton class="small" title="Скопировать URL" @click="copy(admin.endpointUrl(e.slug))">
+                      <UIMoloSticker name="copy" :size="11" />
+                    </UIMoloButton>
+                    <UIMoloButton class="small" title="Параметры" @click="openEndpoint(e)">
+                      <UIMoloSticker name="pen" :size="11" />
+                    </UIMoloButton>
+                    <UIMoloButton class="small close" title="Удалить" @click="removeEndpoint(e)">
+                      <UIMoloSticker v-if="epDel !== e._id" name="trash" :size="11" />
+                      <span v-else>Да?</span>
+                    </UIMoloButton>
+                  </div>
+                </div>
+
+                <p v-if="e.description" class="endpoint-desc">{{ e.description }}</p>
+
+                <div class="endpoint-meta-line">
+                  <div class="meta-item">
+                    <UIMoloSticker name="it" :size="12" />
+                    <span>{{ modName(e.moduleId) }}<template v-if="e.file"> → {{ e.file }}</template></span>
+                  </div>
+                  <div class="meta-item">
+                    <UIMoloToggle :model-value="e.enabled" compact label="Активен" @change="toggleEndpoint(e)" />
+                  </div>
+                </div>
               </div>
-              <p v-if="e.description" class="ep-desc">{{ e.description }}</p>
-              <div class="ep-meta">
-                <span>{{ modName(e.moduleId) }}<template v-if="e.file"> → {{ e.file }}</template></span>
-                <span v-if="e.stats?.calls">{{ e.stats.calls }} вызовов, последний {{ fmtDate(e.stats.lastCallAt) }} ({{ e.stats.lastStatus }})</span>
-                <span v-else>ещё не вызывался</span>
-                <UIMoloToggle :model-value="e.enabled" compact label="Активен" @change="toggleEndpoint(e)" />
-              </div>
-              <div v-if="e.access === 'key' && e.secret" class="ep-key">
-                <UIMoloSticker name="lock" :size="13" />
-                <code>{{ revealed[e._id] ? e.secret : '••••••••••••••••' }}</code>
-                <button class="link" @click="revealed[e._id] = !revealed[e._id]">
-                  {{ revealed[e._id] ? 'скрыть' : 'показать' }}
-                </button>
-                <button class="link" @click="copy(e.secret)">копировать</button>
-                <span class="muted">передавайте в заголовке <code>x-api-key</code></span>
-              </div>
-            </article>
+            </div>
           </section>
         </template>
       </main>
     </template>
 
-    <!-- ═════ модалка записи ═════ -->
+    <!-- МОДАЛКА: РЕДАКТИРОВАНИЕ ЗАПИСИ -->
     <UIMoloModal
         v-model="rec.open"
         :title="rec.id ? 'Редактирование записи' : 'Новая запись'"
-        width="680px"
+        width="640px"
         confirm-text="Сохранить"
         cancel-text="Отмена"
         :loading="rec.saving"
+        close-on-overlay
         @confirm="saveRecord"
     >
       <template #body>
-        <div class="modal-form">
+        <div class="modal-form-stack">
           <template v-for="f in activeColFields" :key="f.name">
             <UIMoloToggle
                 v-if="f.type === 'boolean'"
                 v-model="rec.values[f.name]"
                 :label="f.label || f.name"
             />
+
             <UIMoloInput
                 v-else-if="f.type === 'date'"
                 v-model="rec.values[f.name]"
                 type="datetime-local"
+                compact
                 :t-label="f.label || f.name"
                 :l-required="f.required"
             />
+
             <UIMoloInput
                 v-else-if="f.type === 'number'"
                 v-model="rec.values[f.name]"
                 type="number"
+                compact
                 :t-label="f.label || f.name"
                 :l-required="f.required"
             />
-            <div v-else-if="f.type === 'select'" class="molo-form-group">
-              <UIMoloSelect
-                  v-model="rec.values[f.name]"
-                  :t-label="f.label || f.name"
-                  :l-required="f.required"
-              >
-                <option value="">— Не выбрано —</option>
-                <option v-for="o in (f.options || [])" :key="o" :value="o">{{ o }}</option>
-              </UIMoloSelect>
-            </div>
-            <div v-else-if="f.type === 'text' || f.type === 'json'" class="molo-form-group">
-              <label class="lbl">{{ f.label || f.name }} <i v-if="f.required">*</i> <small>{{ TYPE_TITLE[f.type] }}</small></label>
-              <div class="monaco-field-container">
+
+            <UIMoloSelect
+                v-else-if="f.type === 'select'"
+                v-model="rec.values[f.name]"
+                compact
+                :t-label="f.label || f.name"
+                :l-required="f.required"
+            >
+              <option value="">— Не выбрано —</option>
+              <option v-for="o in (f.options || [])" :key="o" :value="o">{{ o }}</option>
+            </UIMoloSelect>
+
+            <div v-else-if="f.type === 'text' || f.type === 'json'" class="form-monaco-field">
+              <label class="field-label">
+                {{ f.label || f.name }}
+                <span v-if="f.required" class="required">*</span>
+                <small class="type-hint">{{ TYPE_TITLE[f.type] }}</small>
+              </label>
+              <div class="monaco-wrapper-box">
                 <UIMoloMonaco
                     :initial-code="rec.values[f.name] || ''"
                     :language="f.type === 'json' ? 'json' : 'markdown'"
@@ -1186,455 +1340,435 @@ function onKey(e) {
                 />
               </div>
             </div>
+
             <UIMoloInput
                 v-else
                 v-model="rec.values[f.name]"
+                compact
                 :t-label="f.label || f.name"
                 :l-required="f.required"
                 :max-length="f.maxLength || 1000"
             />
           </template>
-          <p v-if="rec.id" class="muted mono small">{{ rec.id }}</p>
-          <p v-if="rec.error" class="note err">{{ rec.error }}</p>
+
+          <div v-if="rec.error" class="error-banner">
+            <span>{{ rec.error }}</span>
+          </div>
         </div>
       </template>
+
       <template #footer>
-        <UIMoloButton v-if="rec.id" variant="close" class="small" @click="deleteRecord">
-          {{ rec.confirmDelete ? 'Удалить навсегда?' : 'Удалить' }}
+        <UIMoloButton v-if="rec.id" class="small close" @click="deleteRecord">
+          {{ rec.confirmDelete ? 'Подтвердить удаление' : 'Удалить' }}
         </UIMoloButton>
       </template>
     </UIMoloModal>
 
-    <!-- ═════ модалка новой базы ═════ -->
+    <!-- МОДАЛКА: СОЗДАНИЕ БД -->
     <UIMoloModal
         v-model="nd.open"
         title="Создание базы данных"
         width="440px"
-        confirm-text="Создать"
+        confirm-text="Создать базу"
         cancel-text="Отмена"
         :loading="nd.saving"
+        close-on-overlay
         @confirm="createDb"
     >
       <template #body>
-        <div class="modal-form">
-          <UIMoloInput
-              v-model="nd.name"
-              t-label="Идентификатор базы (латиница)"
-              placeholder="botlog"
-              l-required
-          />
-          <UIMoloInput
-              v-model="nd.title"
-              t-label="Название"
-              placeholder="Журнал бота"
-          />
-          <UIMoloInput
-              v-model="nd.description"
-              t-label="Описание"
-              placeholder="Логирование входящих команд"
-          />
-          <p v-if="nd.error" class="note err">{{ nd.error }}</p>
+        <div class="modal-form-stack">
+          <UIMoloInput v-model="nd.name" compact t-label="Идентификатор базы (латиница)" placeholder="analytics" l-required />
+          <UIMoloInput v-model="nd.title" compact t-label="Название" placeholder="Аналитика предприятия" />
+          <UIMoloInput v-model="nd.description" compact t-label="Описание" placeholder="Логи и внутренние отчеты" />
+          <div v-if="nd.error" class="error-banner">{{ nd.error }}</div>
         </div>
       </template>
     </UIMoloModal>
 
-    <!-- ═════ модалка новой коллекции ═════ -->
+    <!-- МОДАЛКА: СОЗДАНИЕ КОЛЛЕКЦИИ -->
     <UIMoloModal
         v-model="nc.open"
         title="Создание коллекции"
         width="440px"
-        confirm-text="Создать"
+        confirm-text="Создать коллекцию"
         cancel-text="Отмена"
         :loading="nc.saving"
+        close-on-overlay
         @confirm="createCol"
     >
       <template #body>
-        <div class="modal-form">
-          <UIMoloInput
-              v-model="nc.name"
-              t-label="Имя коллекции (латиница)"
-              placeholder="messages"
-              l-required
-          />
-          <UIMoloInput
-              v-model="nc.title"
-              t-label="Название"
-              placeholder="Сообщения"
-          />
-          <p v-if="nc.error" class="note err">{{ nc.error }}</p>
+        <div class="modal-form-stack">
+          <UIMoloInput v-model="nc.name" compact t-label="Имя таблицы (латиница)" placeholder="orders" l-required />
+          <UIMoloInput v-model="nc.title" compact t-label="Отображаемое название" placeholder="Заказы клиентов" />
+          <div v-if="nc.error" class="error-banner">{{ nc.error }}</div>
         </div>
       </template>
     </UIMoloModal>
 
-    <!-- ═════ модалка эндпоинта ═════ -->
+    <!-- МОДАЛКА: НАСТРОЙКА ЭНДПОИНТА -->
     <UIMoloModal
         v-model="ep.open"
-        :title="ep._id ? 'Настройка эндпоинта' : 'Новый HTTP эндпоинт'"
-        width="560px"
+        :title="ep._id ? 'Настройка HTTP эндпоинта' : 'Новый HTTP эндпоинт'"
+        width="540px"
         confirm-text="Сохранить"
         cancel-text="Отмена"
         :loading="ep.saving"
+        close-on-overlay
         @confirm="saveEndpoint"
     >
       <template #body>
-        <div class="modal-form">
-          <UIMoloInput
-              v-model="ep.slug"
-              t-label="Адрес (/api/x/{предприятие}/…)"
-              placeholder="orders/create"
-              l-required
-          />
-          <UIMoloInput
-              v-model="ep.description"
-              t-label="Описание"
-              placeholder="Приём внешних вебхуков"
-          />
-          <div class="molo-form-group">
-            <label class="lbl">Методы</label>
-            <div class="seg wrap">
-              <button
+        <div class="modal-form-stack">
+          <UIMoloInput v-model="ep.slug" compact t-label="Адрес (/api/x/{предприятие}/…)" placeholder="orders/webhook" l-required />
+          <UIMoloInput v-model="ep.description" compact t-label="Описание" placeholder="Прием внешних заказов" />
+
+          <div class="methods-selector-block">
+            <span class="field-label">Методы запроса</span>
+            <div class="methods-row">
+              <UIMoloButton
                   v-for="m in METHODS"
                   :key="m"
-                  type="button"
-                  :class="{ on: ep.methods.includes(m) }"
+                  class="small"
+                  :class="{ confirm: ep.methods.includes(m) }"
                   @click="toggleMethod(m)"
               >
                 {{ m }}
-              </button>
+              </UIMoloButton>
             </div>
           </div>
-          <div class="molo-form-group">
-            <UIMoloSelect
-                v-model="ep.moduleId"
-                t-label="Модуль (JS / TS)"
-                @change="loadModuleFiles('')"
-            >
-              <option value="">— Выберите модуль —</option>
-              <option v-for="m in (mods || [])" :key="m._id" :value="m._id">{{ m.name }}</option>
-            </UIMoloSelect>
+
+          <UIMoloSelect v-model="ep.moduleId" compact t-label="Модуль обработчика" @change="loadModuleFiles('')">
+            <option value="">— Выберите модуль —</option>
+            <option v-for="m in (mods || [])" :key="m._id" :value="m._id">{{ m.name }}</option>
+          </UIMoloSelect>
+
+          <UIMoloSelect v-if="ep.moduleId" v-model="ep.file" compact t-label="Исполняемый файл">
+            <option value="">Основной файл модуля</option>
+            <option v-for="f in ep.files" :key="fileTitle(f)" :value="fileTitle(f)">{{ fileTitle(f) }}</option>
+          </UIMoloSelect>
+
+          <div class="access-selector-block">
+            <span class="field-label">Доступ к эндпоинту</span>
+            <div class="access-radios">
+              <label v-for="a in ACCESS" :key="a.v" class="radio-label">
+                <input v-model="ep.access" type="radio" :value="a.v" />
+                <span class="radio-title">{{ a.t }}</span>
+                <small class="radio-hint">{{ a.d }}</small>
+              </label>
+            </div>
           </div>
-          <div v-if="ep.moduleId" class="molo-form-group">
-            <UIMoloSelect v-model="ep.file" t-label="Исполняемый файл">
-              <option value="">Основной файл модуля</option>
-              <option v-for="f in ep.files" :key="fileTitle(f)" :value="fileTitle(f)">{{ fileTitle(f) }}</option>
-            </UIMoloSelect>
-          </div>
-          <div class="molo-form-group">
-            <label class="lbl">Уровень доступа</label>
-            <label v-for="a in ACCESS" :key="a.v" class="radio">
-              <input v-model="ep.access" type="radio" :value="a.v" />
-              <span>{{ a.t }} <small>{{ a.d }}</small></span>
-            </label>
-          </div>
+
           <UIMoloToggle
               v-if="ep.access === 'key' && ep._id"
               v-model="ep.regenerateKey"
-              label="Сгенерировать новый секретный ключ"
+              compact
+              label="Сгенерировать новый ключ"
           />
-          <UIMoloToggle v-model="ep.enabled" label="Включен" />
-          <p v-if="ep.error" class="note err">{{ ep.error }}</p>
+
+          <UIMoloToggle v-model="ep.enabled" compact label="Включить эндпоинт" />
+
+          <div v-if="ep.error" class="error-banner">{{ ep.error }}</div>
         </div>
       </template>
     </UIMoloModal>
-
-    <!-- ═════ уведомления (UIMoloNotice) ═════ -->
-    <div class="notices-container">
-      <UIMoloNotice
-          v-if="notice.show"
-          :notice_type="notice.type"
-          :notice_title="notice.title"
-          :notice_text="notice.text"
-          :duration="3800"
-          @close="notice.show = false"
-      />
-    </div>
   </div>
 </template>
 
 <style scoped>
-.mdb {
-  --accent: var(--window-accent, #1fb6ff);
-  --line: var(--half_opacity_border, rgba(255, 255, 255, 0.12));
-  --s1: rgba(255, 255, 255, 0.04);
-  --s2: rgba(255, 255, 255, 0.08);
-  --muted: rgba(255, 255, 255, 0.55);
-  --ok: #3fd68a;
-  --err: #ff5d73;
-  --amber: #f5b84a;
-  position: relative;
+.mdb-layout {
+  --line: rgba(255, 255, 255, 0.08);
+  --line-strong: rgba(255, 255, 255, 0.14);
+  --bg-sidebar: rgba(18, 20, 26, 0.65);
+  --bg-row-hover: rgba(255, 255, 255, 0.04);
+  --text-muted: rgba(255, 255, 255, 0.5);
+  --accent: var(--window-accent, #38bdf8);
+
   display: grid;
-  grid-template-columns: 236px minmax(0, 1fr);
+  grid-template-columns: 240px minmax(0, 1fr);
   height: 100%;
+  width: 100%;
   min-height: 0;
-  color: var(--window-content-text, #e6eefb);
+  color: var(--window-content-text, #f1f5f9);
   font-size: 13px;
-  line-height: 1.45;
+  overflow: hidden;
 }
 
-.mdb * {
-  box-sizing: border-box;
-}
-
-.mdb-center {
+/* Состояния загрузки / ошибок */
+.mdb-state-center {
   grid-column: 1 / -1;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  color: var(--muted);
+  gap: 12px;
+  color: var(--text-muted);
+}
+.mdb-state-center.err {
+  color: #ff5d73;
 }
 
-.mdb-center.err {
-  color: var(--err);
-  padding: 24px;
-  text-align: center;
-}
-
-code, .mono {
-  font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
-  font-size: 12px;
-}
-
-code {
-  background: var(--s2);
-  padding: 1px 5px;
-  border-radius: 4px;
-}
-
-.muted {
-  color: var(--muted);
-}
-
-.grow {
-  flex: 1;
-}
-
-.small {
-  font-size: 11px;
-}
-
-/* боковая панель */
-.side {
+/* БОКОВАЯ ПАНЕЛЬ */
+.mdb-sidebar {
   display: flex;
   flex-direction: column;
-  min-height: 0;
+  background: var(--bg-sidebar);
   border-right: 1px solid var(--line);
-  background: var(--s1);
+  min-height: 0;
 }
 
-.side-head {
+.sidebar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  flex-shrink: 0;
+}
+
+.sidebar-head .brand {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 12px 12px 8px;
+}
+.brand-title {
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: 0.3px;
 }
 
-.side-head h2 {
-  margin: 0;
-  flex: 1;
-  font-size: 15px;
-  font-weight: 600;
+.head-actions {
+  display: flex;
+  gap: 4px;
 }
 
-.side-list {
+.sidebar-tree {
   flex: 1;
   overflow-y: auto;
-  padding: 4px 8px 8px;
+  padding: 8px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
-.db-row, .col, .nav {
+.tree-db-node {
+  display: flex;
+  flex-direction: column;
+}
+
+.db-header-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  width: 100%;
+  gap: 6px;
   padding: 6px 8px;
-  border: 0;
-  border-radius: 7px;
+  border-radius: 6px;
   background: transparent;
+  border: 0;
   color: inherit;
   font: inherit;
-  text-align: left;
   cursor: pointer;
+  text-align: left;
+  transition: background 0.15s ease;
+}
+.db-header-row:hover {
+  background: var(--bg-row-hover);
 }
 
-.db-row:hover, .col:hover, .nav:hover {
-  background: var(--s2);
+.chev-icon {
+  color: var(--text-muted);
+  transition: transform 0.15s ease;
 }
-
-.db-name {
-  flex: 1;
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.chev {
-  transition: transform 0.15s;
-  color: var(--muted);
-}
-
-.chev.open {
+.chev-icon.open {
   transform: rotate(90deg);
 }
 
-.count {
-  min-width: 20px;
-  padding: 0 6px;
-  border-radius: 999px;
-  background: var(--s2);
-  color: var(--muted);
-  font-size: 11px;
-  text-align: center;
+.db-title {
+  flex: 1;
+  font-weight: 600;
+  font-size: 12.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.cols {
-  margin: 0 0 6px;
-  padding: 0 0 0 20px;
+.badge-pill {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-muted);
+}
+
+.cols-tree-branch {
+  margin: 2px 0 6px 14px;
+  padding: 0 0 0 8px;
   list-style: none;
+  border-left: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
-.col {
-  color: rgba(255, 255, 255, 0.8);
+.col-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border-radius: 5px;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s ease;
 }
-
-.col.on, .nav.on {
-  background: color-mix(in srgb, var(--accent) 18%, transparent);
+.col-tree-row:hover {
+  background: var(--bg-row-hover);
+  color: #fff;
+}
+.col-tree-row.active {
+  background: rgba(56, 189, 248, 0.12);
   color: var(--accent);
+  font-weight: 600;
+}
+.col-tree-row.add-col-row {
+  color: rgba(255, 255, 255, 0.35);
+  font-size: 11px;
 }
 
-.col.add {
-  color: var(--muted);
-}
-
-.side-empty {
-  padding: 12px;
-  color: var(--muted);
-}
-
-.side-foot {
+.sidebar-foot {
   padding: 8px;
   border-top: 1px solid var(--line);
 }
-
-.nav {
-  font-weight: 500;
+.endpoint-nav-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: 6px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.endpoint-nav-btn:hover {
+  background: var(--bg-row-hover);
+}
+.endpoint-nav-btn.active {
+  background: rgba(56, 189, 248, 0.12);
+  color: var(--accent);
 }
 
-.nav .count {
+/* ОСНОВНАЯ ЗОНА */
+.mdb-viewport {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+
+.viewport-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.015);
+  flex-shrink: 0;
+}
+
+.header-breadcrumb .crumbs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.db-badge {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.sep {
+  color: var(--text-muted);
+}
+.col-curr {
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.header-tabs {
+  display: flex;
+  gap: 4px;
+}
+
+/* Вкладки */
+.tab-pane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Тулбар данных */
+.data-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--line);
+  flex-shrink: 0;
+}
+.search-wrap {
+  width: 260px;
+}
+.records-counter {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.count-val {
+  font-weight: 600;
+  color: #fff;
+}
+.actions-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   margin-left: auto;
 }
 
-/* основная область */
-.main {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  min-height: 0;
-}
-
-.head {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 14px 18px 12px;
-  border-bottom: 1px solid var(--line);
-}
-
-.head h1 {
-  margin: 0;
-  font-size: 20px;
-  font-weight: 600;
-}
-
-.crumb {
-  color: var(--muted);
-  font-size: 12px;
-  margin-bottom: 2px;
-}
-
-.btn-group {
-  display: flex;
-}
-
-.pane {
-  display: flex;
-  flex-direction: column;
+/* Сетка таблицы */
+.table-container {
   flex: 1;
-  gap: 12px;
-  min-height: 0;
-  padding: 14px 18px;
-}
-
-.pane.scroll {
-  overflow-y: auto;
-}
-
-.bar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.search-box {
-  width: 260px;
-}
-
-.link {
-  border: 0;
-  background: transparent;
-  color: var(--accent);
-  font: inherit;
-  cursor: pointer;
-  padding: 0 2px;
-}
-
-.note {
-  margin: 0;
-  padding: 9px 12px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--s1);
-  color: var(--muted);
-}
-
-.note.err {
-  border-color: var(--err);
-  color: var(--err);
-}
-
-/* таблица */
-.table-wrap {
-  flex: 1;
-  min-height: 0;
   overflow: auto;
-  border: 1px solid var(--line);
-  border-radius: 10px;
+  position: relative;
+}
+.table-container.busy {
+  opacity: 0.5;
 }
 
-.table-wrap.busy {
-  opacity: 0.6;
-}
-
-table {
+.molo-data-grid {
   width: 100%;
   border-collapse: collapse;
+  font-size: 12.5px;
 }
 
-th {
+.molo-data-grid th {
   position: sticky;
   top: 0;
-  z-index: 1;
+  z-index: 2;
+  background: #11141a;
+  border-bottom: 1px solid var(--line-strong);
   padding: 0;
-  text-align: left;
-  font-weight: 600;
-  background: color-mix(in srgb, var(--s2) 100%, #0b121c);
-  border-bottom: 1px solid var(--line);
 }
 
-th > span, .th {
+.sort-header-btn {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -1642,435 +1776,472 @@ th > span, .th {
   padding: 8px 12px;
   border: 0;
   background: transparent;
-  color: inherit;
+  color: var(--text-muted);
   font: inherit;
   font-weight: 600;
-  text-align: left;
-  white-space: nowrap;
-}
-
-.th {
   cursor: pointer;
+  text-align: left;
+}
+.sort-header-btn:hover {
+  color: #fff;
+}
+.static-header {
+  display: block;
+  padding: 8px 12px;
+  color: var(--text-muted);
+  font-weight: 600;
 }
 
-td {
-  max-width: 280px;
-  padding: 8px 12px;
+.molo-data-grid td {
+  padding: 7px 12px;
   border-bottom: 1px solid var(--line);
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  max-width: 280px;
 }
 
-tbody tr {
+.grid-data-row {
   cursor: pointer;
+  transition: background 0.1s ease;
+}
+.grid-data-row:hover {
+  background: var(--bg-row-hover);
 }
 
-tbody tr:hover td {
-  background: var(--s1);
+.cell-empty {
+  color: var(--text-muted);
 }
-
-tr.none td {
-  cursor: default;
-  text-align: center;
-  color: var(--muted);
-  padding: 28px;
+.cell-date {
+  font-size: 11px;
+  color: var(--text-muted);
+  width: 140px;
 }
-
-td.nil {
-  color: var(--muted);
-}
-
-td.t-number {
-  font-variant-numeric: tabular-nums;
-}
-
-.chip {
+.pill-badge {
   display: inline-block;
   padding: 1px 8px;
   border-radius: 999px;
-  background: var(--s2);
-  font-size: 12px;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 11px;
 }
 
-.pager {
+.grid-empty-row td {
+  text-align: center;
+  padding: 40px;
+  color: var(--text-muted);
+}
+
+.pagination-footer {
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 12px;
+  padding: 8px;
+  border-top: 1px solid var(--line);
+  flex-shrink: 0;
+}
+.pager-info {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* Структура */
+.structure-pane {
+  position: relative;
+  overflow: hidden;
+}
+.structure-content-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px 16px 80px;
+  display: flex;
+  flex-direction: column;
   gap: 14px;
 }
 
-/* структура */
-.card {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 14px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--s1);
-}
-
-.card-head {
+.sec-header-line {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  width: 100%;
+}
+.sec-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
 }
 
-.card h3 {
-  margin: 0;
-  font-size: 14px;
+.fields-list-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
-.field {
+.field-item-card {
   display: flex;
   flex-direction: column;
   gap: 8px;
   padding: 10px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 7px;
   background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--line);
 }
 
-.field-main {
+.field-row-primary {
   display: grid;
-  grid-template-columns: 140px 180px 130px auto auto;
-  align-items: center;
-  gap: 8px;
+  grid-template-columns: 140px 170px 130px auto auto;
+  align-items: flex-end;
+  gap: 10px;
 }
 
-.type-sel {
-  width: 130px;
-}
-
-.field-checks {
+.toggles-col {
   display: flex;
   align-items: center;
   gap: 12px;
+  height: 32px;
 }
 
-.field-actions {
-  display: inline-flex;
+.actions-col {
+  display: flex;
   gap: 4px;
   margin-left: auto;
+  height: 32px;
+  align-items: center;
 }
 
-.field-extra {
+.field-row-secondary {
   display: flex;
-  gap: 8px;
+  align-items: center;
+  gap: 10px;
   flex-wrap: wrap;
+  padding-top: 4px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.05);
 }
 
-.grid2 {
+.extra-field-item {
+  width: 200px;
+}
+.extra-field-item.grow {
+  flex: 1;
+  min-width: 200px;
+}
+.extra-field-item.num {
+  width: 90px;
+}
+
+.grid-form-two-col {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px 14px;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
 }
 
-.toggle-cell {
+.toggle-wrapper-aligned {
   display: flex;
   align-items: flex-end;
+  height: 100%;
   padding-bottom: 4px;
 }
 
-.hint {
-  margin: 0;
-  color: var(--muted);
-  font-size: 12px;
+.danger-section {
+  border-color: rgba(239, 68, 68, 0.3) !important;
 }
-
-.danger-zone {
-  border-color: color-mix(in srgb, var(--err) 40%, var(--line));
+.text-danger {
+  color: #ef4444;
 }
-
-.row-gap {
+.danger-actions-row {
   display: flex;
-  gap: 8px;
+  gap: 10px;
   flex-wrap: wrap;
 }
 
-.savebar {
-  position: sticky;
-  bottom: 0;
+/* Плавающая панель */
+.floating-savebar {
+  position: absolute;
+  bottom: 12px;
+  left: 20px;
+  right: 20px;
+  padding: 10px 16px;
+  border-radius: 8px;
+  background: #111b27;
+  border: 1px solid var(--accent);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-top: auto;
-  padding: 10px 14px;
-  border: 1px solid var(--accent);
-  border-radius: 10px;
-  background: #0f1b29;
-  transform: translateY(150%);
+  justify-content: space-between;
+  transform: translateY(120%);
   opacity: 0;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   pointer-events: none;
-  transition: transform 0.2s, opacity 0.2s;
+  z-index: 10;
 }
-
-.savebar.show {
-  transform: none;
+.floating-savebar.visible {
+  transform: translateY(0);
   opacity: 1;
   pointer-events: auto;
 }
-
-.savebar span {
-  flex: 1;
-  color: var(--amber);
+.savebar-text {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #fbbf24;
+  font-weight: 500;
 }
 
-/* сегменты и сниппеты */
-.seg {
-  display: inline-flex;
-  align-self: flex-start;
+/* Вкладка API */
+.code-pane {
+  padding: 14px 16px;
+  gap: 12px;
+  overflow-y: auto;
+}
+.code-env-bar {
+  display: flex;
+}
+.seg-buttons {
+  display: flex;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.03);
   padding: 3px;
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  background: var(--s1);
-  gap: 2px;
-}
-
-.seg.wrap {
-  flex-wrap: wrap;
-}
-
-.seg button {
-  padding: 5px 12px;
-  border: 0;
   border-radius: 6px;
-  background: transparent;
-  color: var(--muted);
-  font: inherit;
-  cursor: pointer;
+  border: 1px solid var(--line);
 }
-
-.seg button.on {
-  background: var(--accent);
-  color: #04141f;
-  font-weight: 600;
-}
-
-.code {
+.code-viewport-block {
   position: relative;
   border: 1px solid var(--line);
-  border-radius: 10px;
-  background: rgba(0, 0, 0, 0.3);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.4);
+  overflow: hidden;
 }
-
-.code pre {
-  margin: 0;
-  padding: 14px 44px 14px 14px;
-  overflow-x: auto;
-  font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
-  font-size: 12px;
-  line-height: 1.6;
-  tab-size: 2;
-}
-
-.copy {
+.copy-btn {
   position: absolute;
   top: 8px;
   right: 8px;
+  z-index: 2;
 }
-
-.ops td {
-  padding: 6px 8px;
-  border-bottom: 1px solid var(--line);
-  white-space: normal;
-}
-
-.ops tr {
-  cursor: default;
-}
-
-.ops tbody tr:hover td {
-  background: transparent;
-}
-
-/* эндпоинты */
-.lead {
+.code-pre {
   margin: 0;
-  max-width: 70ch;
-  color: var(--muted);
+  padding: 14px;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-x: auto;
 }
 
-.ep {
+/* Эндпоинты */
+.endpoints-pane {
+  padding: 14px 16px;
+  overflow-y: auto;
+}
+.endpoints-list-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.endpoint-card {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 12px 14px;
+  padding: 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.02);
   border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--s1);
 }
-
-.ep.off {
-  opacity: 0.6;
+.endpoint-card.disabled {
+  opacity: 0.55;
 }
-
-.ep-top {
+.endpoint-top-line {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
 }
-
-.ep-url {
-  font-size: 13px;
-  background: transparent;
-  padding: 0;
+.route-tag {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   color: var(--accent);
 }
-
-.ep-desc {
-  margin: 0;
-}
-
-.ep-meta {
+.methods-badges {
   display: flex;
-  gap: 16px;
-  flex-wrap: wrap;
-  align-items: center;
-  color: var(--muted);
-  font-size: 12px;
+  gap: 4px;
 }
-
-.ep-key {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  font-size: 12px;
+.method-chip {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.06);
 }
-
-.chip.m {
-  font-weight: 600;
+.method-chip.get { color: #3fd68a; }
+.method-chip.post { color: #38bdf8; }
+.method-chip.delete { color: #ff5d73; }
+.method-chip.put, .method-chip.patch { color: #fbbf24; }
+.access-chip {
   font-size: 11px;
+  color: var(--text-muted);
+}
+.endpoint-quick-actions {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+.endpoint-desc {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.endpoint-meta-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+.meta-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
-.chip.m.get { color: var(--ok); }
-.chip.m.post { color: var(--accent); }
-.chip.m.delete { color: var(--err); }
-.chip.m.put, .chip.m.patch { color: var(--amber); }
-
-.chip.acc.public { color: var(--amber); }
-.chip.acc.key { color: var(--accent); }
-
-/* пустые состояния */
-.empty {
-  display: flex;
+/* Пустые состояния */
+.viewport-empty {
   flex: 1;
-  flex-direction: column;
+  display: flex;
   align-items: center;
   justify-content: center;
-  gap: 12px;
   padding: 24px;
+}
+.empty-glass-card {
+  max-width: 440px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   text-align: center;
-}
-
-.empty.small {
-  flex: none;
+  gap: 12px;
   padding: 28px;
-  border: 1px dashed var(--line);
-  border-radius: 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--line);
 }
-
-.empty h3 {
+.empty-glass-card h3 {
   margin: 0;
   font-size: 16px;
 }
-
-.empty p {
-  max-width: 52ch;
+.empty-glass-card p {
   margin: 0;
-  color: var(--muted);
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+.empty-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+.empty-banner {
+  padding: 14px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px dashed var(--line);
+  color: var(--text-muted);
+  text-align: center;
+}
+.error-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #ff6b6b;
+  font-size: 12px;
+}
+.text-link {
+  background: transparent;
+  border: 0;
+  color: var(--accent);
+  cursor: pointer;
+  padding: 0 4px;
 }
 
-/* модальная форма */
-.modal-form {
+/* Модальные окна */
+.modal-form-stack {
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
-
-.molo-form-group {
+.field-label {
+  font-size: 11px;
+  color: #8c8c9e;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.required {
+  color: #ef4444;
+}
+.type-hint {
+  color: var(--text-muted);
+}
+.monaco-wrapper-box {
+  height: 200px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+  margin-top: 4px;
+}
+.methods-selector-block,
+.access-selector-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.methods-row {
+  display: flex;
+  gap: 6px;
+}
+.access-radios {
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
-
-.lbl {
-  font-size: 0.85rem;
-  font-weight: 500;
-  color: rgba(255, 255, 255, 0.8);
-}
-
-.lbl i {
-  color: var(--err);
-  font-style: normal;
-}
-
-.lbl small {
-  color: var(--muted);
-  font-size: 11px;
-}
-
-.radio {
+.radio-label {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 4px 0;
   cursor: pointer;
-  color: rgba(255, 255, 255, 0.85);
+}
+.radio-title {
+  font-size: 12.5px;
+}
+.radio-hint {
+  color: var(--text-muted);
+  font-size: 11px;
 }
 
-.radio small {
-  color: var(--muted);
+/* Анимация вращения */
+.spin-anim {
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
-.monaco-field-container {
-  height: 240px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  overflow: hidden;
-}
-
-/* плавающий контейнер уведомлений */
-.notices-container {
-  position: fixed;
-  bottom: 20px;
-  right: 20px;
-  z-index: 3000;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  pointer-events: none;
-}
-
-.notices-container > * {
-  pointer-events: auto;
-}
-
-@media (max-width: 760px) {
-  .mdb {
+@media (max-width: 820px) {
+  .mdb-layout {
     grid-template-columns: 1fr;
-    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-rows: 200px 1fr;
   }
-
-  .side {
-    max-height: 40vh;
+  .mdb-sidebar {
     border-right: 0;
     border-bottom: 1px solid var(--line);
   }
-
-  .field-main {
+  .field-row-primary {
     grid-template-columns: 1fr;
   }
-
-  .grid2 {
+  .grid-form-two-col {
     grid-template-columns: 1fr;
-  }
-
-  .head {
-    flex-wrap: wrap;
   }
 }
 </style>

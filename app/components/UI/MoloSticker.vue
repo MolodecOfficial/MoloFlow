@@ -1,21 +1,22 @@
 <!-- components/ui/MoloSticker.vue -->
 <script setup lang="ts">
-import {computed} from 'vue'
+import { computed } from 'vue'
 
 export type StickerName =
-// разделы
+// разделы и шаблоны
     | 'departments' | 'it' | 'finance' | 'bank' | 'bank_accounts' | 'counterparties'
     | 'nomenclature' | 'warehouse' | 'glossary' | 'construction' | 'store' | 'sales'
     | 'management' | 'production' | 'services'
-    // файлы и действия
+    // файлы, действия и тулбары
     | 'folder' | 'folder-open' | 'history' | 'lock' | 'edit' | 'trash' | 'phone'
-    | 'zoom-in' | 'zoom-out' | 'rotate' | 'print' | 'download' | 'fullscreen' | 'fullscreen-exit'
-    // графики
+    | 'zoom-in' | 'zoom-out' | 'rotate' | 'print' | 'download' | 'upload' | 'fullscreen' | 'fullscreen-exit'
+    | 'refresh' | 'check' | 'search' | 'filter' | 'cloud' | 'settings' | 'alert' | 'link'
+    // графики и аналитика
     | 'chart-area' | 'chart-line' | 'chart-bar' | 'chart-hbar' | 'chart-donut'
     | 'chart-histogram' | 'chart-empty' | 'sigma' | 'table' | 'trophy' | 'trend-up' | 'trend-down'
     // dev-инструменты
     | 'dev-json' | 'dev-regex' | 'dev-encode' | 'dev-notes' | 'dev-calculator' | 'dev-clock' | 'dev-calendar'
-    // редактор PDF
+    // редактор и базовые глифы
     | 'cursor' | 'type' | 'highlighter' | 'pen' | 'square' | 'circle' | 'arrow' | 'image'
     | 'signature' | 'stamp' | 'undo' | 'redo' | 'fit' | 'save' | 'rotate-cw' | 'rotate-ccw'
     | 'file-plus' | 'up' | 'down' | 'copy' | 'sidebar' | 'x' | 'plus'
@@ -27,22 +28,19 @@ const props = withDefaults(
       name: StickerName | string
       size?: number | string
       glow?: boolean
-      /** Цвет иконки. По умолчанию наследуется от текста (currentColor) */
       color?: string
-      /** Толщина линии (viewBox 24×24) */
       strokeWidth?: number | string
     }>(),
     {
       size: 16,
       glow: false,
       color: undefined,
-      strokeWidth: 1.9
+      strokeWidth: 1.8
     }
 )
 
 const resolvedSize = computed(() => (typeof props.size === 'number' ? `${props.size}px` : props.size))
 
-/* Алиасы: старые имена → актуальная иконка */
 const ALIASES: Record<string, string> = {
   bank_accounts: 'bank',
   warehouse: 'nomenclature',
@@ -50,12 +48,12 @@ const ALIASES: Record<string, string> = {
   rotate: 'rotate-cw',
   edit: 'pen',
   close: 'x',
-  printer: 'print'
+  printer: 'print',
+  sync: 'refresh'
 }
 
-/* Единый стиль: viewBox 24×24, линия currentColor, скруглённые концы и углы */
 const ICONS: Record<string, PathDef[]> = {
-  /* ───── разделы ───── */
+  /* ───── Разделы и шаблоны ───── */
   departments: [
     'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2',
     'M9 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8z',
@@ -124,7 +122,7 @@ const ICONS: Record<string, PathDef[]> = {
     'M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z'
   ],
 
-  /* ───── файлы и действия ───── */
+  /* ───── Файлы и действия ───── */
   folder: [
     'M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z'
   ],
@@ -164,8 +162,14 @@ const ICONS: Record<string, PathDef[]> = {
     'm21 21-4.3-4.3',
     'M8 11h6'
   ],
-  'rotate-cw': ['M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8', 'M21 3v5h-5'],
-  'rotate-ccw': ['M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8', 'M3 3v5h5'],
+  'rotate-cw': [
+    'M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8',
+    'M21 3v5h-5'
+  ],
+  'rotate-ccw': [
+    'M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8',
+    'M3 3v5h5'
+  ],
   print: [
     'M6 9V2h12v7',
     'M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2',
@@ -175,6 +179,11 @@ const ICONS: Record<string, PathDef[]> = {
     'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4',
     'm7 10 5 5 5-5',
     'M12 15V3'
+  ],
+  upload: [
+    'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4',
+    'm17 8-5-5-5 5',
+    'M12 3v12'
   ],
   fullscreen: [
     'M8 3H5a2 2 0 0 0-2 2v3',
@@ -188,11 +197,43 @@ const ICONS: Record<string, PathDef[]> = {
     'M3 16h3a2 2 0 0 1 2 2v3',
     'M16 21v-3a2 2 0 0 1 2-2h3'
   ],
+  refresh: [
+    'M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8',
+    'M3 3v5h5',
+    'M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16',
+    'M21 21v-5h-5'
+  ],
+  check: [
+    'M20 6 9 17l-5-5'
+  ],
+  search: [
+    'M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16z',
+    'm21 21-4.3-4.3'
+  ],
+  filter: [
+    'M22 3H2l8 9.46V19l4 2v-8.54L22 3z'
+  ],
+  cloud: [
+    'M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z'
+  ],
+  settings: [
+    'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z',
+    'M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1Z'
+  ],
+  alert: [
+    'M12 9v4',
+    'M12 17h.01',
+    'm21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z'
+  ],
+  link: [
+    'M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71',
+    'M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71'
+  ],
 
-  /* ───── графики ───── */
+  /* ───── Графики ───── */
   'chart-area': [
     'M3 3v16a2 2 0 0 0 2 2h16',
-    {d: 'M7 17l4-5 3 3 5-6v8H7z', fill: true, o: 0.18},
+    { d: 'M7 17l4-5 3 3 5-6v8H7z', fill: true, o: 0.18 },
     'M7 17l4-5 3 3 5-6'
   ],
   'chart-line': [
@@ -223,9 +264,9 @@ const ICONS: Record<string, PathDef[]> = {
   ],
   'chart-empty': [
     'M3 3v16a2 2 0 0 0 2 2h16',
-    {d: 'M8 17v-4', dash: '2 2.4'},
-    {d: 'M13 17V8', dash: '2 2.4'},
-    {d: 'M18 17v-6', dash: '2 2.4'}
+    { d: 'M8 17v-4', dash: '2 2.4' },
+    { d: 'M13 17V8', dash: '2 2.4' },
+    { d: 'M18 17v-6', dash: '2 2.4' }
   ],
   sigma: [
     'M18 7V5a1 1 0 0 0-1-1H6.5a.5.5 0 0 0-.4.8l4.5 6a2 2 0 0 1 0 2.4l-4.5 6a.5.5 0 0 0 .4.8H17a1 1 0 0 0 1-1v-2'
@@ -247,7 +288,7 @@ const ICONS: Record<string, PathDef[]> = {
   'trend-up': ['M16 7h6v6', 'm22 7-8.5 8.5-5-5L2 17'],
   'trend-down': ['M16 17h6v-6', 'm22 17-8.5-8.5-5 5L2 7'],
 
-  /* ───── dev-инструменты ───── */
+  /* ───── Dev-инструменты ───── */
   'dev-json': [
     'M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5c0 1.1.9 2 2 2h1',
     'M16 21h1a2 2 0 0 0 2-2v-5c0-1.1.9-2 2-2a2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1'
@@ -287,7 +328,7 @@ const ICONS: Record<string, PathDef[]> = {
     'M3 10h18'
   ],
 
-  /* ───── редактор PDF ───── */
+  /* ───── Редактор и базовые глифы ───── */
   cursor: [
     'M4.037 4.688a.495.495 0 0 1 .651-.651l16 6.5a.5.5 0 0 1-.063.947l-6.124 1.58a2 2 0 0 0-1.438 1.435l-1.579 6.126a.5.5 0 0 1-.947.063z'
   ],
@@ -351,7 +392,7 @@ const paths = computed(() => {
     if (import.meta.dev) console.warn(`[MoloSticker] неизвестная иконка: "${props.name}"`)
     return null
   }
-  return list.map((p) => (typeof p === 'string' ? {d: p} : p) as { d: string; dash?: string; fill?: boolean; o?: number })
+  return list.map((p) => (typeof p === 'string' ? { d: p } : p) as { d: string; dash?: string; fill?: boolean; o?: number })
 })
 </script>
 
@@ -383,9 +424,7 @@ const paths = computed(() => {
             :stroke="p.fill ? 'none' : undefined"
         />
       </template>
-
-      <!-- неизвестное имя: пунктирная заглушка -->
-      <rect v-else x="4" y="4" width="16" height="16" rx="3" stroke-dasharray="3 3"/>
+      <rect v-else x="4" y="4" width="16" height="16" rx="3" stroke-dasharray="3 3" />
     </svg>
   </span>
 </template>

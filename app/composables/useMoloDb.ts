@@ -73,17 +73,18 @@ export function useMoloDb(dbName: string) {
     })
 }
 
-/** Управление базами и эндпоинтами — для интерфейса MoloDB (нужно право MODULES_DEV). */
 export function useMoloDbAdmin() {
     return {
         enterpriseId: () => session().enterpriseId,
-
         list: () => request<{ databases: any[]; limits: Record<string, number> }>('/moloDb'),
         createDb: (def: any) => request('/moloDb', { method: 'POST', body: def }),
         updateDb: (name: string, def: any, opts: { confirmDelete?: boolean } = {}) =>
             request(`/moloDb/${name}`, { method: 'PUT', body: { ...def, confirmDelete: opts.confirmDelete === true } }),
         deleteDb: (name: string) => request(`/moloDb/${name}`, { method: 'DELETE' }),
         data: (db: string, col: string, body: any) => request(`/moloDb/${db}/${col}`, { method: 'POST', body }),
+
+        // НОВЫЙ МЕТОД СИНХРОНИЗАЦИИ
+        syncEnterpriseData: () => request<{ success: boolean; message: string }>('/moloDb/sync', { method: 'POST' }),
 
         endpoints: {
             list: async () => {
@@ -93,18 +94,14 @@ export function useMoloDbAdmin() {
             save: async (ep: any) => (await request<{ endpoint: any }>('/moloEndpoints', { method: 'POST', body: ep }))?.endpoint,
             remove: (id: string) => request(`/moloEndpoints/${id}`, { method: 'DELETE' })
         },
-
-        /** js/ts-модули предприятия — к ним можно привязать эндпоинт */
         modules: async () => {
             const res: any = await request('/dynamicModules?minimal=1')
             return (res.modules || []).filter((m: any) => m.format === 'js' || m.format === 'ts')
         },
-        /** серверные файлы модуля */
         moduleFiles: async (moduleId: string) => {
             const res: any = await request(`/dynamicModules/${moduleId}/files`)
             return (res.files || []).filter((f: any) => f.isServerFile)
         },
-
         endpointUrl: (slug: string) => `${location.origin}/api/x/${session().enterpriseId}/${slug}`
     }
 }
