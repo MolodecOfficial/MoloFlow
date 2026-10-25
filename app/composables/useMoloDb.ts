@@ -80,11 +80,11 @@ export function useMoloDbAdmin() {
         createDb: (def: any) => request('/moloDb', { method: 'POST', body: def }),
         updateDb: (name: string, def: any, opts: { confirmDelete?: boolean } = {}) =>
             request(`/moloDb/${name}`, { method: 'PUT', body: { ...def, confirmDelete: opts.confirmDelete === true } }),
-        deleteDb: (name: string) => request(`/moloDb/${name}`, { method: 'DELETE' }),
+        deleteDb: (name: string) => request(`/moloDb/${name}?confirm=true`, { method: 'DELETE' }),
         data: (db: string, col: string, body: any) => request(`/moloDb/${db}/${col}`, { method: 'POST', body }),
 
-        // НОВЫЙ МЕТОД СИНХРОНИЗАЦИИ
-        syncEnterpriseData: () => request<{ success: boolean; message: string }>('/moloDb/sync', { method: 'POST' }),
+        // Пересборка системных справочников из БД предприятия
+        syncEnterpriseData: () => request<{ success: boolean; message: string }>('/sync', { method: 'POST' }),
 
         endpoints: {
             list: async () => {

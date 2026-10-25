@@ -1,25 +1,28 @@
 import { defineEventHandler } from 'h3'
-import { WorkspaceDocument } from '../../../models/workspaceDocument.model'
+import { tenantModels } from '~~/server/utils/tenantDb'
+import { resolveActor } from '~~/server/utils/moloDb/access'
 import {
     assertContentSize, contentSize, encodeData, extractSearchText, getEnterpriseId, getRouteId,
-    httpError, maybeAutoSnapshot, parseName, resolveFolderId, serializeDocument, readJsonBody } from '../../../utils/workspace'
+    httpError, maybeAutoSnapshot, parseName, resolveFolderId, serializeDocument, readJsonBody
+} from '~~/server/utils/workspace'
 
 // PATCH /api/workspace/documents/:id?enterpriseId=   body: { name?, folderId?, data? }
-// Любое подмножество полей. Ответ — только метаданные (data назад не отправляем).
-// Если data не изменилась — ничего не пишется и версия не создаётся.
+// Ответ — только метаданные. Если data не изменилась, ничего не пишется и версия не создаётся.
 export default defineEventHandler(async (event) => {
     const enterpriseId = getEnterpriseId(event)
+    await resolveActor(event, enterpriseId, 'data')
     const id = getRouteId(event)
     const body = await readJsonBody(event)
+    const { WorkspaceDocument } = tenantModels(enterpriseId)
 
     const hasName = 'name' in body
     const hasFolder = 'folderId' in body
     const hasData = 'data' in body
     if (!hasName && !hasFolder && !hasData) throw httpError(400, 'Нечего обновлять')
 
-    const query = WorkspaceDocument.findOne({ _id: id, enterpriseId })
+    const query = WorkspaceDocument.findOne({ _id: id })
     if (!hasData) query.select('-content')
-    const doc = await query.lean()
+    const doc: any = await query.lean()
     if (!doc) throw httpError(404, 'Документ не найден')
 
     const set: Record<string, any> = {}
@@ -50,10 +53,10 @@ export default defineEventHandler(async (event) => {
 
     if (Object.keys(set).length) {
         set.updatedAt = new Date()
-        await WorkspaceDocument.updateOne({ _id: id, enterpriseId }, { $set: set })
+        await WorkspaceDocument.updateOne({ _id: id }, { $set: set })
     }
 
-    const fresh = await WorkspaceDocument.findOne({ _id: id, enterpriseId }).select('-content').lean()
+    const fresh = await WorkspaceDocument.findOne({ _id: id }).select('-content').lean()
     if (!fresh) throw httpError(404, 'Документ не найден')
     return serializeDocument(fresh)
 })

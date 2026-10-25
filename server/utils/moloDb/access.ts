@@ -7,8 +7,11 @@
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
 import { createError, getHeader, type H3Event } from 'h3'
 import { checkEnterpriseAccess } from '~~/server/utils/enterpriseAuth'
-import { PERMISSIONS } from '~/types/permissions'
+import { PERMISSIONS, ROLE_DEFAULT_PERMISSIONS } from '~/types/permissions'
 import type { DbActor } from './store'
+import { tenantModels } from '~~/server/utils/tenantDb'
+
+const TOKEN_ID_RE = /^[a-f0-9]{24}$/i
 
 export type DbNeed = 'data' | 'schema'
 export interface ResolvedActor extends DbActor {
@@ -50,6 +53,8 @@ async function verifyModuleToken(token: string): Promise<{ enterpriseId: string;
     const parts = token.split('.')
     if (parts.length !== 3) return null
     const [enterpriseId, moduleId, sig] = parts
+    if (!TOKEN_ID_RE.test(enterpriseId) || !TOKEN_ID_RE.test(moduleId)) return null
+
     const expected = sign(await signingSecret(), `${enterpriseId}.${moduleId}`)
     const a = Buffer.from(sig)
     const b = Buffer.from(expected)
@@ -59,8 +64,7 @@ async function verifyModuleToken(token: string): Promise<{ enterpriseId: string;
     const key = `${enterpriseId}:${moduleId}`
     const hit = activeCache.get(key)
     if (hit && Date.now() - hit.at < 30_000) return hit.ok ? { enterpriseId, moduleId } : null
-    const { DynamicModule } = await import('~~/server/models/dynamicModules.model')
-    const ok = !!(await DynamicModule.exists({ _id: moduleId, enterpriseId, isActive: true }))
+    const ok = !!(await tenantModels(enterpriseId).DynamicModule.exists({ _id: moduleId, isActive: true }))
     activeCache.set(key, { at: Date.now(), ok })
     return ok ? { enterpriseId, moduleId } : null
 }
@@ -80,11 +84,14 @@ export async function resolveActor(event: H3Event, enterpriseId: string, need: D
         return { kind: 'module', id: info.moduleId }
     }
 
-    const { effectiveRole, userId, user } = await checkEnterpriseAccess(
-        event,
-        enterpriseId,
-        need === 'schema' ? { requiredPermission: PERMISSIONS.MODULES_DEV } : undefined
-    )
+    const { effectiveRole, userId, user } = await checkEnterpriseAccess(event, enterpriseId)
+    if (need === 'schema') {
+        const privileged = effectiveRole === 'Администратор' || effectiveRole === 'Управляющий'
+        const permissions = ROLE_DEFAULT_PERMISSIONS[effectiveRole] || []
+        if (!privileged && !permissions.includes(PERMISSIONS.MODULES_DEV)) {
+            throw createError({ statusCode: 403, message: 'Недостаточно прав: требуется роль администратора/управляющего или разрешение на разработку модулей' })
+        }
+    }
     return { kind: 'user', id: userId, role: effectiveRole, name: user?.name }
 }
 

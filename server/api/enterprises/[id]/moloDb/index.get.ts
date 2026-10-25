@@ -1,8 +1,8 @@
 // server/api/enterprises/[id]/moloDb/index.get.ts
 // Список баз предприятия со схемами коллекций (доступно любому участнику).
 import { defineEventHandler, getRouterParam, createError } from 'h3'
-import { MoloDatabase } from '~~/server/models/moloDatabase.model'
 import { resolveActor, toHttpError } from '~~/server/utils/moloDb/access'
+import { tenantModels } from '~~/server/utils/tenantDb'
 import { LIMITS } from '~~/server/utils/moloDb/schema'
 
 export default defineEventHandler(async (event) => {
@@ -11,10 +11,11 @@ export default defineEventHandler(async (event) => {
         if (!enterpriseId) throw createError({ statusCode: 400, message: 'Не указано предприятие' })
         await resolveActor(event, enterpriseId, 'data')
 
-        const docs = await MoloDatabase.find({ enterpriseId }).sort({ name: 1 }).lean()
+        const { MoloDatabase } = tenantModels(enterpriseId)
+        const docs: any[] = await MoloDatabase.find().sort({ name: 1 }).lean()
         return {
             success: true,
-            databases: docs.map((d: any) => ({
+            databases: docs.map((d) => ({
                 name: d.name,
                 title: d.title || '',
                 description: d.description || '',

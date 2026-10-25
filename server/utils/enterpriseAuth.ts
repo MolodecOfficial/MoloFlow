@@ -42,18 +42,39 @@ export async function checkEnterpriseAccess(
     }
 
     const user = await User.findById(userId).lean()
-    const isDirector = enterprise.director && user && (enterprise.director === user.name || enterprise.director === String(user._id))
+    const isCreator = String((enterprise as any).creatorId?._id || (enterprise as any).creatorId || '') === String(userId)
+    // Поле director — ФИО юридического руководителя, не идентификатор доступа.
+    // Для совместимости признаём директора по ID, но не выдаём права по совпадению имени.
+    const isDirector = enterprise.director && user && enterprise.director === String(user._id)
 
-    const member = enterprise.members?.find(
+    let member = enterprise.members?.find(
         (m: any) => String(m.userId?._id || m.userId) === String(userId)
     )
 
+    // Создатель всегда администратор своего предприятия. Восстанавливаем членство
+    // для старых документов, где creatorId уже есть, но запись members отсутствует.
+    if (isCreator && (!member || member.role !== 'Администратор')) {
+        if (member) {
+            await Enterprise.updateOne(
+                { _id: enterprise._id, 'members.userId': new Types.ObjectId(userId) },
+                { $set: { 'members.$.role': 'Администратор' } }
+            )
+            member = { ...member, role: 'Администратор' } as any
+        } else {
+            await Enterprise.updateOne(
+                { _id: enterprise._id, members: { $not: { $elemMatch: { userId: new Types.ObjectId(userId) } } } },
+                { $push: { members: { userId: new Types.ObjectId(userId), role: 'Администратор', joinedAt: new Date() } } }
+            )
+            member = { userId: new Types.ObjectId(userId), role: 'Администратор', joinedAt: new Date() } as any
+        }
+    }
+
     let memberRole: UserRole = (member?.role as UserRole) || 'Сотрудник'
-    if (isDirector || user?.role === 'Администратор') {
+    if (isCreator || isDirector || user?.role === 'Администратор') {
         memberRole = 'Администратор'
     }
 
-    if (!member && !isDirector && user?.role !== 'Администратор') {
+    if (!member && !isCreator && !isDirector && user?.role !== 'Администратор') {
         throw createError({ statusCode: 403, statusMessage: 'У вас нет доступа к данному предприятию' })
     }
 

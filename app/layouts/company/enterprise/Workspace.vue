@@ -9,6 +9,7 @@ import imageIcon from '~~/app/assets/icons/image.svg'
 import { useDirectoryInterpolator, type DirectoryLookupItem } from '~/composables/useDirectoryInterpolator'
 import DirectoryResolutionModal from '~/components/directory/DirectoryResolutionModal.vue'
 import { useWorkspaceStore, type DocType, type DocData, type SpaceFolder, type SpaceDocument, type DocVersionMeta } from '~~/stores/workspaceStore'
+import { useAppStore } from '~~/stores/appStore'
 import MoloSticker from '~/components/ui/MoloSticker.vue'
 import mammoth from 'mammoth'
 
@@ -22,6 +23,29 @@ const props = defineProps<{
 
 const emit = defineEmits(['close'])
 
+// The window manager does not always pass enterpriseId as a component prop.
+// Resolve it from the canonical app store and persisted enterprise session as fallback.
+const appStore = useAppStore()
+function getWorkspaceEnterpriseId(): string {
+  const fromProps = typeof props.enterpriseId === 'string' ? props.enterpriseId.trim() : ''
+  if (/^[a-f\d]{24}$/i.test(fromProps)) return fromProps
+
+  const fromStore = String(appStore.getEnterpriseId?.() || '').trim()
+  if (/^[a-f\d]{24}$/i.test(fromStore)) return fromStore
+
+  if (import.meta.client) {
+    try {
+      const raw = localStorage.getItem('currentEnterprise')
+      const enterprise = raw ? JSON.parse(raw) : null
+      const storedId = String(enterprise?._id || enterprise?.id || '').trim()
+      if (/^[a-f\d]{24}$/i.test(storedId)) return storedId
+    } catch (error) {
+      console.warn('[Workspace] Не удалось прочитать currentEnterprise:', error)
+    }
+  }
+  return ''
+}
+
 const DOC_ICONS: Record<DocType, string> = {
   excel: excelIcon,
   word: wordIcon,
@@ -31,6 +55,7 @@ const DOC_ICONS: Record<DocType, string> = {
 }
 
 const workspaceStore = useWorkspaceStore()
+watch(() => workspaceStore.lastError, (msg) => { if (msg) addNotification('error', msg) })
 const {
   folders,
   documents,
@@ -251,7 +276,7 @@ async function onFolderDrop(e: DragEvent, targetFolderId: string | null) {
     try {
       await $fetch(`/api/workspace/documents/${docId}`, {
         method: 'PATCH',
-        query: { enterpriseId: props.enterpriseId },
+        query: { enterpriseId: getWorkspaceEnterpriseId() },
         body: { folderId: targetFolderId }
       })
       doc.folderId = targetFolderId
@@ -314,7 +339,7 @@ async function handleExternalFilesDrop(fileList: FileList, folderId: string | nu
 
       const meta = await $fetch<any>('/api/workspace/documents', {
         method: 'POST',
-        query: { enterpriseId: props.enterpriseId },
+        query: { enterpriseId: getWorkspaceEnterpriseId() },
         body: {
           type: docType,
           name: name.replace(/\.[^/.]+$/, ''),
@@ -334,6 +359,7 @@ async function handleExternalFilesDrop(fileList: FileList, folderId: string | nu
       addNotification('success', `Файл «${file.name}» загружен`)
     } catch {
       addLog('error', `Не удалось обработать «${file.name}»`)
+      addNotification('error', `Файл «${file.name}» не сохранён в базу`)
     }
   }
 }
@@ -366,7 +392,7 @@ async function loadVersions(docId: string) {
   versionsLoading.value = true
   try {
     versions.value = await $fetch<DocVersionMeta[]>(`/api/workspace/documents/${docId}/versions`, {
-      query: { enterpriseId: props.enterpriseId }
+      query: { enterpriseId: getWorkspaceEnterpriseId() }
     })
   } catch {
     addNotification('error', 'Не удалось загрузить историю версий')
@@ -392,7 +418,7 @@ async function createManualSnapshot() {
   try {
     const version = await $fetch<DocVersionMeta>(`/api/workspace/documents/${activeId.value}/versions`, {
       method: 'POST',
-      query: { enterpriseId: props.enterpriseId },
+      query: { enterpriseId: getWorkspaceEnterpriseId() },
       body: { comment }
     })
     versions.value = [version, ...versions.value]
@@ -419,7 +445,7 @@ async function confirmRestoreVersion() {
   try {
     const res = await $fetch<any>(`/api/workspace/documents/${docId}/versions/${ver.id}/restore`, {
       method: 'POST',
-      query: { enterpriseId: props.enterpriseId }
+      query: { enterpriseId: getWorkspaceEnterpriseId() }
     })
     const doc = documents.value.find(d => d.id === docId)
     if (doc) {
@@ -442,7 +468,7 @@ async function createFolder() {
   try {
     const folder = await $fetch<SpaceFolder>('/api/workspace/folders', {
       method: 'POST',
-      query: { enterpriseId: props.enterpriseId },
+      query: { enterpriseId: getWorkspaceEnterpriseId() },
       body: { name, parentId: activeFolderId.value }
     })
     folders.value.push(folder)
@@ -473,7 +499,7 @@ async function confirmFolderRename() {
   try {
     await $fetch(`/api/workspace/folders/${id}`, {
       method: 'PATCH',
-      query: { enterpriseId: props.enterpriseId },
+      query: { enterpriseId: getWorkspaceEnterpriseId() },
       body: { name }
     })
   } catch {
@@ -498,7 +524,7 @@ async function removeFolder(id: string) {
   try {
     await $fetch(`/api/workspace/folders/${id}`, {
       method: 'DELETE',
-      query: { enterpriseId: props.enterpriseId }
+      query: { enterpriseId: getWorkspaceEnterpriseId() }
     })
   } catch {
     addNotification('error', 'Не удалось удалить папку')
@@ -533,6 +559,11 @@ function toggleFullscreen() {
 
 async function createDocument(type: DocType) {
   createMenuOpen.value = false
+  const enterpriseId = getWorkspaceEnterpriseId()
+  if (!enterpriseId) {
+    addNotification('error', 'Не выбрано предприятие. Переключитесь на предприятие и повторите попытку.')
+    return
+  }
 
   if (type === 'pdf' || type === 'image') {
     const input = document.createElement('input')
@@ -549,7 +580,7 @@ async function createDocument(type: DocType) {
   try {
     const meta = await $fetch<any>('/api/workspace/documents', {
       method: 'POST',
-      query: { enterpriseId: props.enterpriseId },
+      query: { enterpriseId },
       body: {
         type,
         name: type === 'excel' ? 'Новая таблица' : (type === 'primary' ? 'Новая накладная' : 'Новый документ'),
@@ -571,7 +602,7 @@ async function createDocument(type: DocType) {
     workspaceStore.openDoc(doc.id)
     addLog('info', 'Создан новый документ')
   } catch {
-    addNotification('error', 'Не удалось создать документ')
+    addNotification('error', 'Документ не создан: база не ответила. Проверь подключение и попробуй снова')
   }
 }
 
@@ -588,7 +619,7 @@ async function removeDocument(id: string) {
   try {
     await $fetch(`/api/workspace/documents/${id}`, {
       method: 'DELETE',
-      query: { enterpriseId: props.enterpriseId }
+      query: { enterpriseId: getWorkspaceEnterpriseId() }
     })
   } catch {
     addNotification('error', 'Не удалось удалить документ')
@@ -646,7 +677,7 @@ async function confirmRename() {
   try {
     await $fetch(`/api/workspace/documents/${id}`, {
       method: 'PATCH',
-      query: { enterpriseId: props.enterpriseId },
+      query: { enterpriseId: getWorkspaceEnterpriseId() },
       body: { name }
     })
   } catch {

@@ -19,14 +19,9 @@ export function resolveAuthToken(): string | null {
     return localStorage.getItem('token') || localStorage.getItem('enterprise_token') || null
 }
 
-/**
- * Достаёт userId из всех возможных источников:
- * store -> localStorage.user -> localStorage.userId -> payload JWT
- */
 export function resolveUserId(storeUserId?: string | null): string | null {
     if (storeUserId) return String(storeUserId)
     if (typeof window === 'undefined') return null
-
     try {
         const raw = localStorage.getItem('user')
         if (raw) {
@@ -35,17 +30,14 @@ export function resolveUserId(storeUserId?: string | null): string | null {
             if (id) return String(id)
         }
     } catch {}
-
     const direct = localStorage.getItem('userId')
     if (direct) return String(direct)
-
     const token = resolveAuthToken()
     if (token) {
         const payload = decodeJwtPayload(token)
         const id = payload?.userId || payload?._id || payload?.id
         if (id) return String(id)
     }
-
     return null
 }
 
@@ -61,15 +53,14 @@ export function resolveUserName(): string | null {
     return null
 }
 
-
 export function buildAuthHeaders(storeUserId?: string | null): Record<string, string> {
     const headers: Record<string, string> = {}
-    // Токен из localStorage. Если его нет (вход без токена), шлём _id пользователя:
-    // authIdentity принимает его в legacy-режиме. Так вход не блокируется.
     const token = resolveAuthToken() || resolveUserId(storeUserId)
     if (token) {
         headers['Authorization'] = `Bearer ${token}`
         headers['x-enterprise-token'] = token
     }
+    const userId = resolveUserId(storeUserId)
+    if (userId) headers['x-user-id'] = userId
     return headers
 }

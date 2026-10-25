@@ -1,8 +1,9 @@
 // server/api/enterprises/[id]/moloDb/[db]/index.delete.ts
-// Удаление базы вместе со всеми записями (нужно право MODULES_DEV).
-import { defineEventHandler, getRouterParam, createError } from 'h3'
-import { MoloDatabase } from '~~/server/models/moloDatabase.model'
+// Удаление базы вместе со всеми записями (нужно право MODULES_DEV, ?confirm=true обязателен).
+import { defineEventHandler, getRouterParam, getQuery, createError } from 'h3'
 import { resolveActor, toHttpError } from '~~/server/utils/moloDb/access'
+import { tenantModels } from '~~/server/utils/tenantDb'
+import { COMPANY_DB } from '~~/server/utils/enterpriseDb'
 import { invalidateDefCache, purgeRecords } from '~~/server/utils/moloDb/store'
 
 export default defineEventHandler(async (event) => {
@@ -12,12 +13,24 @@ export default defineEventHandler(async (event) => {
         if (!enterpriseId || !dbName) throw createError({ statusCode: 400, message: 'Не указана база' })
         await resolveActor(event, enterpriseId, 'schema')
 
-        const res = await MoloDatabase.deleteOne({ enterpriseId, name: dbName })
-        if (!res.deletedCount) throw createError({ statusCode: 404, message: `База «${dbName}» не найдена` })
+        if (dbName === COMPANY_DB) {
+            throw createError({ statusCode: 403, message: 'Системную базу «company» нельзя удалить' })
+        }
+        if (getQuery(event).confirm !== 'true') {
+            throw createError({ statusCode: 409, message: `Удаление базы «${dbName}» необратимо. Подтвердите удаление.` })
+        }
 
-        const records = await purgeRecords(enterpriseId, dbName)
+        const { MoloDatabase } = tenantModels(enterpriseId)
+        if (!(await MoloDatabase.exists({ name: dbName }))) {
+            throw createError({ statusCode: 404, message: `База «${dbName}» не найдена` })
+        }
+
+        // Сначала записи, потом определение: при сбое базу можно удалить повторно
+        const deletedRecords = await purgeRecords(enterpriseId, dbName)
+        await MoloDatabase.deleteOne({ name: dbName })
         invalidateDefCache(enterpriseId, dbName)
-        return { success: true, deletedRecords: records }
+
+        return { success: true, deletedRecords }
     } catch (e) {
         throw toHttpError(e)
     }

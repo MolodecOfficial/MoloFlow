@@ -1,10 +1,14 @@
 import { defineEventHandler } from 'h3'
-import { WorkspaceFolder } from '../../../models/workspaceFolder.model'
-import { getEnterpriseId, serializeFolder } from '../../../utils/workspace'
+import { tenantModels } from '~~/server/utils/tenantDb'
+import { resolveActor } from '~~/server/utils/moloDb/access'
+import { getEnterpriseId, serializeFolder } from '~~/server/utils/workspace'
 
 // GET /api/workspace/folders?enterpriseId=
 export default defineEventHandler(async (event) => {
     const enterpriseId = getEnterpriseId(event)
-    const folders = await WorkspaceFolder.find({ enterpriseId }).sort({ createdAt: 1 }).lean()
+    await resolveActor(event, enterpriseId, 'data')
+    const { WorkspaceFolder } = tenantModels(enterpriseId)
+
+    const folders = await WorkspaceFolder.find().sort({ createdAt: 1 }).lean()
     return folders.map(serializeFolder)
 })

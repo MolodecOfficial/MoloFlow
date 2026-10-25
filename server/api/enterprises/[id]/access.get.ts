@@ -1,58 +1,34 @@
-import { defineEventHandler, getRouterParam, createError, getHeader } from 'h3'
-import mongoose from 'mongoose'
-import { Enterprise } from '~~/server/models/enterprise.model'
-import '~~/server/models/user.model'
+// server/api/enterprises/[id]/access.get.ts
+// Доступ к предприятию определяется ТОЛЬКО по подписанному токену пользователя.
+// Заголовки x-user-id / x-user-name больше не используются, открытого доступа без участников нет.
+import { defineEventHandler, getRouterParam, createError } from 'h3'
+import { Types } from 'mongoose'
+import Enterprise from '~~/server/models/enterprise.model'
+import { checkEnterpriseAccess } from '~~/server/utils/enterpriseAuth'
 
 export default defineEventHandler(async (event) => {
     const enterpriseId = getRouterParam(event, 'id')
-
-    // Получаем ID или имя текущего пользователя из заголовка или сессии
-    const currentUserId = getHeader(event, 'x-user-id') || event.context.user?._id
-    const currentUserName = getHeader(event, 'x-user-name') || event.context.user?.name
-
-    if (!enterpriseId) {
-        throw createError({ statusCode: 400, statusMessage: 'Не указан ID предприятия' })
+    if (!enterpriseId || !Types.ObjectId.isValid(enterpriseId)) {
+        throw createError({ statusCode: 400, statusMessage: 'Некорректный ID предприятия' })
     }
 
-    let filter: any = {}
-    if (mongoose.Types.ObjectId.isValid(enterpriseId)) {
-        filter = { _id: enterpriseId }
-    } else if (!isNaN(Number(enterpriseId))) {
-        filter = { inn: Number(enterpriseId) }
-    } else {
-        filter = { _id: enterpriseId }
-    }
+    // Бросит 401 без токена и 403, если пользователь не участник предприятия
+    const { effectiveRole, userId } = await checkEnterpriseAccess(event, enterpriseId)
 
-    const enterprise: any = await Enterprise.findOne(filter)
-        .populate('members.userId', 'name phone role')
+    const enterprise: any = await Enterprise.findById(enterpriseId)
+        .populate('members.userId', 'name phone')
         .lean()
+    if (!enterprise) throw createError({ statusCode: 404, statusMessage: 'Предприятие не найдено' })
 
-    if (!enterprise) {
-        throw createError({ statusCode: 404, statusMessage: 'Предприятие не найдено' })
-    }
-
-    // Проверяем доступ: по ID или если список участников пустой (тогда доступ открыт по токену входа)
-    const memberRecord = enterprise.members?.find((m: any) => {
-        const u = m.userId
-        return (
-            u?._id?.toString() === currentUserId?.toString() ||
-            u?.name === currentUserName
-        )
-    })
-
-    const isOwner = enterprise.ownerId && currentUserId
-        ? enterprise.ownerId.toString() === currentUserId.toString()
-        : false
-
-    // Если в members никого нет — доступ по умолчанию полный (для обратной совместимости)
-    const hasAccess = enterprise.members?.length === 0 || Boolean(isOwner || memberRecord)
-    const userRole = isOwner ? 'Владелец' : (memberRecord?.role || (enterprise.members?.length === 0 ? 'Владелец' : 'Нет доступа'))
+    const isOwner = effectiveRole === 'Администратор'
+    const canManage = ['Администратор', 'Управляющий'].includes(effectiveRole)
 
     return {
         enterprise: {
             _id: enterprise._id,
             enterpriseName: enterprise.enterpriseName,
             inn: enterprise.inn,
+            ownershipForm: enterprise.ownershipForm,
             kpp: enterprise.kpp,
             ogrn: enterprise.ogrn,
             legalAddress: enterprise.legalAddress,
@@ -60,15 +36,15 @@ export default defineEventHandler(async (event) => {
             phone: enterprise.phone,
             email: enterprise.email,
             director: enterprise.director,
-            okved: enterprise.okved,
-            ownershipForm: enterprise.ownershipForm
+            okved: enterprise.okved
         },
         access: {
-            hasAccess,
-            role: userRole,
+            hasAccess: true,
+            role: effectiveRole,
             isOwner,
-            canEdit: ['Владелец', 'Администратор', 'Управляющий'].includes(userRole),
-            canManageMembers: ['Владелец', 'Администратор', 'Управляющий'].includes(userRole)
+            canEdit: canManage,
+            canManageMembers: canManage,
+            requesterId: userId
         },
         members: (enterprise.members || []).map((m: any) => ({
             userId: m.userId?._id,

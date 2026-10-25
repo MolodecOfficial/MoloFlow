@@ -54,6 +54,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     const inflight = new Map<string, Promise<void>>()
     const saveState = ref<'idle' | 'saving' | 'saved' | 'error'>('idle')
     const lastSavedAt = ref<number | null>(null)
+    // Последняя ошибка сохранения или загрузки. Интерфейс показывает её пользователю.
+    const lastError = ref<string | null>(null)
     let persistTimer: ReturnType<typeof setTimeout> | null = null
 
     const activeDocument = computed(() => documents.value.find(d => d.id === activeId.value))
@@ -112,8 +114,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
             doc.data = res.data
             doc.loadState = 'loaded'
             documents.value = [...documents.value]
-        } catch {
+        } catch (e: any) {
             doc.loadState = 'error'
+            lastError.value = e?.data?.message || 'Не удалось загрузить документ из базы'
             documents.value = [...documents.value]
         }
     }
@@ -138,8 +141,18 @@ export const useWorkspaceStore = defineStore('workspace', () => {
                             body: { data: doc.data }
                         })
                     } catch (e: any) {
-                        if (e?.statusCode === 404) break
+                        if (e?.statusCode === 404) {
+                            // Документа на сервере уже нет: убираем его из интерфейса, чтобы не было «призрака»
+                            dirty.delete(docId)
+                            documents.value = documents.value.filter(d => d.id !== docId)
+                            openIds.value = openIds.value.filter(id => id !== docId)
+                            if (activeId.value === docId) activeId.value = openIds.value[openIds.value.length - 1] || null
+                            lastError.value = 'Документ удалён на сервере. Его изменения не сохранены'
+                            break
+                        }
                         dirty.add(docId)
+                        lastError.value = e?.data?.message || e?.statusMessage || 'Изменения не сохранены: база не ответила'
+                        saveState.value = 'error'
                         throw e
                     }
                 }
@@ -281,6 +294,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         openDocuments,
         saveState,
         lastSavedAt,
+        lastError,
         loadWorkspace,
         loadDocumentContent,
         openDoc,

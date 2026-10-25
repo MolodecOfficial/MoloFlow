@@ -1,15 +1,19 @@
-import { defineEventHandler, setResponseStatus } from 'h3'
-import { WorkspaceDocument } from '../../../models/workspaceDocument.model'
+import { versionModel, ensureDocumentCollection, dropDocumentCollection } from '~~/server/utils/workspaceCollections'
+import { createError, defineEventHandler, setResponseStatus } from 'h3'
+import { tenantModels } from '~~/server/utils/tenantDb'
+import { resolveActor } from '~~/server/utils/moloDb/access'
 import {
     assertContentSize, contentSize, encodeData, extractSearchText, getEnterpriseId,
-    httpError, parseDate, parseName, parseType, serializeDocument, readJsonBody } from '../../../utils/workspace'
+    httpError, parseDate, parseName, parseType, serializeDocument, readJsonBody
+} from '~~/server/utils/workspace'
 
 // POST /api/workspace/documents/import?enterpriseId=
 //   body: { items: [{ name, type, data, createdAt?, updatedAt? }] }
-// Разовый перенос документов из localStorage. Возвращает метаданные в том же порядке, что и items.
 export default defineEventHandler(async (event) => {
     const enterpriseId = getEnterpriseId(event)
+    await resolveActor(event, enterpriseId, 'data')
     const body = await readJsonBody(event)
+    const { WorkspaceDocument } = tenantModels(enterpriseId)
 
     const items: any[] = Array.isArray(body.items) ? body.items : []
     if (!items.length) throw httpError(400, 'Нет документов для импорта')
@@ -30,11 +34,17 @@ export default defineEventHandler(async (event) => {
             searchText: extractSearchText(type, content),
             size: contentSize(content),
             createdAt: parseDate(item?.createdAt),
-            updatedAt: parseDate(item?.updatedAt),
+            updatedAt: parseDate(item?.updatedAt)
         }
     })
 
     const created = await WorkspaceDocument.insertMany(prepared)
+    try {
+        for (const d of created) await ensureDocumentCollection(enterpriseId, String((d as any)._id))
+    } catch (e: any) {
+        await WorkspaceDocument.deleteMany({ _id: { $in: created.map((d: any) => d._id) } })
+        throw createError({ statusCode: 500, message: `Импорт отменён: ${e?.message || 'ошибка базы'}` })
+    }
     setResponseStatus(event, 201)
     return created.map(serializeDocument)
 })

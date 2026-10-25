@@ -66,6 +66,7 @@ async function guard(fn) {
 const activeDb = computed(() => (dbs.value || []).find((d) => d.name === sel.db) || null)
 const activeCol = computed(() => (activeDb.value?.collections || []).find((c) => c.name === sel.col) || null)
 const colTitle = (c) => c?.title || c?.name || ''
+const isReadOnlyCollection = computed(() => !!activeCol.value?.readOnly)
 
 async function syncData() {
   syncing.value = true
@@ -95,7 +96,7 @@ async function loadAll() {
     ...db,
     collections: (db.collections || []).map((col) => ({
       ...col,
-      fields: Array.isArray(col.fields) ? col.fields : []
+      fields: Array.isArray(col.fields) ? col.fields : [],
     }))
   }))
 
@@ -149,6 +150,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
 
 function pick(db, col) {
   view.value = 'collection'
+  if (db.name === 'company' && col.name === 'modules') tab.value = 'data'
   sel.db = db.name
   sel.col = col.name
   addLog('info', `Открыта коллекция: [${db.name} -> ${col.name}]`)
@@ -216,7 +218,7 @@ watch(search, () => {
 })
 
 const activeColFields = computed(() => (activeCol.value && Array.isArray(activeCol.value.fields) ? activeCol.value.fields : []))
-const shownFields = computed(() => activeColFields.value.slice(0, 6))
+const shownFields = computed(() => activeColFields.value.slice(0, 8))
 const pageFrom = computed(() => (total.value ? skip.value + 1 : 0))
 const pageTo = computed(() => Math.min(skip.value + PAGE, total.value))
 
@@ -866,7 +868,7 @@ function onKey(e) {
               </UIMoloButton>
 
               <UIMoloButton
-                  v-if="canManage"
+                  v-if="canManage && !isReadOnlyCollection"
                   class="small"
                   :class="{ confirm: tab === 'structure' }"
                   @click="tab = 'structure'"
@@ -897,6 +899,9 @@ function onKey(e) {
                 />
               </div>
 
+              <div v-if="isReadOnlyCollection" class="records-counter" title="Редактирование выполняется в редакторе модулей">
+                <span>Только просмотр</span>
+              </div>
               <div class="records-counter">
                 <span class="count-val">{{ total }}</span>
                 <span class="count-lbl">{{ total === 1 ? 'запись' : 'записей' }}</span>
@@ -913,6 +918,7 @@ function onKey(e) {
                 </UIMoloButton>
 
                 <UIMoloButton
+                    v-if="!isReadOnlyCollection"
                     class="small confirm"
                     :disabled="!activeColFields.length"
                     @click="openRecord(null)"
@@ -961,7 +967,7 @@ function onKey(e) {
                 </tr>
                 </thead>
                 <tbody>
-                <tr v-for="r in rows" :key="r._id" class="grid-data-row" @click="openRecord(r)">
+                <tr v-for="r in rows" :key="r._id" class="grid-data-row" @click="!isReadOnlyCollection && openRecord(r)">
                   <td
                       v-for="f in shownFields"
                       :key="f.name"
@@ -990,7 +996,7 @@ function onKey(e) {
           </section>
 
           <!-- 2. СТРУКТУРА ПОЛЕЙ -->
-          <section v-else-if="tab === 'structure' && draft" class="tab-pane structure-pane">
+          <section v-else-if="tab === 'structure' && draft && !isReadOnlyCollection" class="tab-pane structure-pane">
             <div class="structure-content-scroll">
               <!-- Секция полей -->
               <UIMoloSection>
@@ -1355,12 +1361,6 @@ function onKey(e) {
             <span>{{ rec.error }}</span>
           </div>
         </div>
-      </template>
-
-      <template #footer>
-        <UIMoloButton v-if="rec.id" class="small close" @click="deleteRecord">
-          {{ rec.confirmDelete ? 'Подтвердить удаление' : 'Удалить' }}
-        </UIMoloButton>
       </template>
     </UIMoloModal>
 

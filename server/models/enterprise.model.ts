@@ -1,4 +1,6 @@
-import mongoose, { Schema, Document } from 'mongoose'
+// server/models/enterprise.model.ts
+// Глобальный реестр предприятий: логин, ключ доступа, участники, статус. Остальное — в базе предприятия.
+import mongoose, { Schema, type Document } from 'mongoose'
 
 export interface IEnterpriseMember {
     userId: mongoose.Types.ObjectId
@@ -8,47 +10,37 @@ export interface IEnterpriseMember {
 
 export interface IEnterprise extends Document {
     enterpriseName: string
-    inn: number
-    kpp?: number
-    ogrn: number
-    legalAddress: string
-    actualAddress?: string
-    phone: number
-    email: string
-    director: string
-    okved: number
+    inn: string
     keypass: string
-    ownershipForm: string
+    ownershipForm?: string
+    creatorId?: mongoose.Types.ObjectId
+    status: 'provisioning' | 'active' | 'deleting'
     members: IEnterpriseMember[]
     createdAt: Date
     updatedAt: Date
 }
 
-const EnterpriseMemberSchema = new Schema<IEnterpriseMember>({
+const MemberSchema = new Schema<IEnterpriseMember>({
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     role: { type: String, default: 'Сотрудник' },
     joinedAt: { type: Date, default: Date.now }
 }, { _id: false })
 
 const EnterpriseSchema = new Schema<IEnterprise>({
-    enterpriseName: { type: String, required: true },
-    inn: { type: Number, required: true, unique: true },
-    kpp: { type: Number },
-    ogrn: { type: Number, required: true },
-    legalAddress: { type: String, required: true },
-    actualAddress: { type: String },
-    phone: { type: Number, required: true },
-    email: { type: String, required: true },
-    director: { type: String, required: true },
-    okved: { type: Number, required: true },
+    enterpriseName: { type: String, required: true, trim: true },
+    inn: { type: String, required: true, unique: true, trim: true },
     keypass: { type: String, required: true },
     ownershipForm: { type: String, default: 'ООО' },
-    members: { type: [EnterpriseMemberSchema], default: [] }
+    // Создатель — администратор именно этого предприятия, не глобальная роль аккаунта.
+    creatorId: { type: Schema.Types.ObjectId, ref: 'User', index: true },
+    status: { type: String, enum: ['provisioning', 'active', 'deleting'], default: 'active', index: true },
+    members: { type: [MemberSchema], default: [] }
 }, {
     timestamps: true,
-    collection: 'enterprises'
+    collection: 'enterprises',
+    // Старые поля реквизитов в записях остаются, их читает синхронизация
+    strict: false
 })
 
-export const Enterprise = mongoose.models.Enterprise || mongoose.model<IEnterprise>('Enterprise', EnterpriseSchema)
-
-export default mongoose.model('Enterprise', EnterpriseSchema)
+export const Enterprise: any = (mongoose.models.Enterprise as any) || mongoose.model<IEnterprise>('Enterprise', EnterpriseSchema)
+export default Enterprise

@@ -1,11 +1,11 @@
 // server/api/enterprises/[id]/moloDb/[db]/[col].post.ts
-//
 // Единый эндпоинт данных коллекции. Тело запроса: { op, ...параметры }.
-//   op: find | findOne | get | count | insert | insertMany | update | delete
-// Им пользуются интерфейс MoloDB, клиентские модули (useMoloDb), Python-боты и внешние системы.
+// Системные коллекции (например, modules) работают с реальными данными предприятия.
 import { defineEventHandler, getRouterParam, readBody, createError } from 'h3'
 import { resolveActor, toHttpError } from '~~/server/utils/moloDb/access'
 import { runDbOp } from '~~/server/utils/moloDb/store'
+import { runModulesOp } from '~~/server/utils/moloDb/systemModules'
+import { tenantModels } from '~~/server/utils/tenantDb'
 
 export default defineEventHandler(async (event) => {
     try {
@@ -16,6 +16,17 @@ export default defineEventHandler(async (event) => {
 
         const actor = await resolveActor(event, enterpriseId, 'data')
         const body = (await readBody(event)) || {}
+
+        const def: any = await tenantModels(enterpriseId).MoloDatabase.findOne({ name: db }).select('collections').lean()
+        const colDef = (def?.collections || []).find((c: any) => c.name === col)
+
+        if (colDef?.system === 'dynamicModules') {
+            if (actor.kind === 'module') {
+                throw createError({ statusCode: 403, message: 'Серверный код модуля не управляет модулями предприятия' })
+            }
+            return { success: true, ...(await runModulesOp(event, enterpriseId, body)) }
+        }
+
         return { success: true, ...(await runDbOp({ enterpriseId, db, col, actor }, body)) }
     } catch (e) {
         throw toHttpError(e)

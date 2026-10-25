@@ -1,57 +1,30 @@
 import { defineEventHandler, getRouterParam, getQuery, createError } from 'h3'
-import { Department } from '~~/server/models/department.model'
-import { DirectoryItem } from '~~/server/models/directoryItem.model'
+import { resolveActor, toHttpError } from '~~/server/utils/moloDb/access'
+import { tenantModels } from '~~/server/utils/tenantDb'
+import { allDirectoryModels } from '~~/server/utils/directoryCollections'
 
+// DELETE /api/directory/departments/:key?enterpriseId=
+// Снимает привязку к отделу у записей всех справочников и удаляет сам отдел.
 export default defineEventHandler(async (event) => {
-    const keyParam = getRouterParam(event, 'key')
-    const query = getQuery(event)
-    const enterpriseId = query.enterpriseId as string
+    try {
+        const key = String(getRouterParam(event, 'key') || '').trim().toLowerCase()
+        const enterpriseId = String(getQuery(event).enterpriseId || '')
+        if (!key || !enterpriseId) throw createError({ statusCode: 400, message: 'key и enterpriseId обязательны' })
+        await resolveActor(event, enterpriseId, 'data')
 
-    if (!keyParam || !enterpriseId) {
-        throw createError({
-            statusCode: 400,
-            message: 'Параметры key и enterpriseId обязательны'
-        })
-    }
+        const { Department } = tenantModels(enterpriseId)
+        const dept: any = await Department.findOne({ key }).lean()
+        if (!dept) throw createError({ statusCode: 404, message: 'Отдел не найден' })
 
-    const cleanKey = String(keyParam).trim().toLowerCase()
-
-    // 1. Ищем удаляемый отдел
-    const dept = await Department.findOne({
-        enterpriseId,
-        key: cleanKey
-    })
-
-    if (!dept) {
-        throw createError({
-            statusCode: 404,
-            message: 'Отдел не найден'
-        })
-    }
-
-    // 2. Снимаем привязку отдела у сотрудников и карточек предприятия
-    await DirectoryItem.updateMany(
-        {
-            enterpriseId,
-            $or: [
-                { 'attributes.departmentKey': cleanKey },
-                { 'attributes.department': dept.name }
-            ]
-        },
-        {
-            $unset: {
-                'attributes.departmentKey': 1,
-                'attributes.department': 1
-            }
+        for (const model of await allDirectoryModels(enterpriseId)) {
+            await model.updateMany(
+                { $or: [{ 'attributes.departmentKey': key }, { 'attributes.department': dept.name }] },
+                { $unset: { 'attributes.departmentKey': '', 'attributes.department': '' } }
+            )
         }
-    )
-
-    // 3. Удаляем сам отдел
-    await Department.deleteOne({ _id: dept._id })
-
-    return {
-        success: true,
-        deletedKey: cleanKey,
-        deletedName: dept.name
+        await Department.deleteOne({ _id: dept._id })
+        return { success: true, deletedKey: key, deletedName: dept.name }
+    } catch (e) {
+        throw toHttpError(e)
     }
 })

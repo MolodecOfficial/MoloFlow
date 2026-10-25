@@ -4,6 +4,7 @@ import { useWindowManager } from '~/composables/window/useWindowManager'
 import { useNotifications } from '~/composables/useNotifications'
 import { useLogger } from '~/composables/useLogger'
 import { useAppStore } from '~~/stores/appStore'
+import { buildAuthHeaders } from '~~/server/utils/authContext'
 
 const { openWindow } = useWindowManager()
 const { addNotification } = useNotifications('Создание предприятия')
@@ -79,7 +80,8 @@ const createEnterprise = async () => {
 
     const response: any = await $fetch('/api/enterprises/', {
       method: 'POST',
-      body: payload
+      body: payload,
+      headers: buildAuthHeaders(appStore.currentUser?._id)
     })
 
     addLog('success', `Предприятие «${response.enterprise?.enterpriseName}» создано`)

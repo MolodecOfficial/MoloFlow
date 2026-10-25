@@ -1,11 +1,14 @@
 import { defineEventHandler, setResponseStatus } from 'h3'
-import { WorkspaceFolder } from '../../../models/workspaceFolder.model'
-import { getEnterpriseId, parseName, resolveFolderId, serializeFolder, readJsonBody } from '../../../utils/workspace'
+import { tenantModels } from '~~/server/utils/tenantDb'
+import { resolveActor } from '~~/server/utils/moloDb/access'
+import { getEnterpriseId, parseName, resolveFolderId, serializeFolder, readJsonBody } from '~~/server/utils/workspace'
 
 // POST /api/workspace/folders?enterpriseId=   body: { name, parentId? }
 export default defineEventHandler(async (event) => {
     const enterpriseId = getEnterpriseId(event)
+    await resolveActor(event, enterpriseId, 'data')
     const body = await readJsonBody(event)
+    const { WorkspaceFolder } = tenantModels(enterpriseId)
 
     const name = parseName(body.name)
     const parentId = await resolveFolderId(enterpriseId, body.parentId)

@@ -1,6 +1,6 @@
 import vm from 'node:vm'
-import { DynamicModule } from '~~/server/models/dynamicModules.model'
 import { createError } from 'h3'
+import { tenantModels } from '~~/server/utils/tenantDb'
 import { createSandboxDb } from '~~/server/utils/moloDb/sandboxApi'
 
 export type LogLevel = 'info' | 'success' | 'warning' | 'error'
@@ -66,18 +66,19 @@ export class ModuleSandbox {
         return this
     }
 
+    private async loadModule() {
+        const { DynamicModule } = tenantModels(this.enterpriseId)
+        const module: any = await DynamicModule.findById(this.moduleId).select('+clientBundle').lean()
+        if (!module || module.isActive === false) throw createError({ statusCode: 404, message: 'Module not found' })
+        return module
+    }
+
     async reinstallDependencies(cleanCache = true) {
-        const module = await DynamicModule.findById(this.moduleId)
-        if (!module) throw createError({ statusCode: 404, message: 'Module not found' })
-
-        const deps = module.dependencies instanceof Map
-            ? Object.fromEntries(module.dependencies)
-            : (module.dependencies || {})
-
+        const module = await this.loadModule()
         return {
             success: true,
             message: 'Dependencies reinstalled',
-            dependencies: deps,
+            dependencies: module.dependencies || {},
             cleanedCache: cleanCache
         }
     }
@@ -92,7 +93,6 @@ export class ModuleSandbox {
         const skipAutoHandler = hasTopLevelSelfCall(code, 'handler')
         const skipAutoRun = hasTopLevelSelfCall(code, 'run')
 
-        // Имя источника лога берется из имени конкретного файла или модуля
         const defaultSource = sourceName || moduleName || 'Серверный файл'
         const logs: string[] = []
         const entries: LogEntry[] = []
@@ -102,11 +102,8 @@ export class ModuleSandbox {
             const text = args.map(formatArg).join(' ')
             entries.push({ level, source, text, ts: Date.now() })
             logs.push(`[${source}${level === 'info' ? '' : ' ' + level.toUpperCase()}] ${text}`)
-            const fn = level === 'error' ? console.error : level === 'warning' ? console.warn : console.log
-            fn(`[${source}]`, ...args)
         }
 
-        // Серверный useLogger
         const useLogger = (source?: string) => {
             const src = source || defaultSource
             const addLog = (level: string, ...args: any[]) => {
@@ -127,15 +124,13 @@ export class ModuleSandbox {
             }
         }
 
-        // Серверный useWindowManager: перенаправляет открытие окон на клиент
         const useWindowManager = () => ({
             openWindow: (target: string, data?: any) => {
                 actions.push({ type: 'openWindow', payload: { target, data } })
             }
         })
 
-        // Серверный useNotifications: перенаправляет уведомления на клиент
-        const useNotifications = (src?: string) => ({
+        const useNotifications = () => ({
             info: (msg: string) => actions.push({ type: 'notify', payload: { message: msg, type: 'info' } }),
             success: (msg: string) => actions.push({ type: 'notify', payload: { message: msg, type: 'success' } }),
             warning: (msg: string) => actions.push({ type: 'notify', payload: { message: msg, type: 'warning' } }),
@@ -148,20 +143,16 @@ export class ModuleSandbox {
             debug: (...a: any[]) => push('info', defaultSource, a),
             warn: (...a: any[]) => push('warning', defaultSource, a),
             error: (...a: any[]) => push('error', defaultSource, a),
-            table: (data: any) => push('info', defaultSource, ['TABLE:\n' + formatArg(data)]),
-            time: (label: string) => console.time(label),
-            timeEnd: (label: string) => console.timeEnd(label)
+            table: (data: any) => push('info', defaultSource, ['TABLE:\n' + formatArg(data)])
         }
 
-        // Мини-базы MoloFlow: db('база').коллекция  или  db('база').collection('коллекция')
+        // Мини-базы предприятия: db('база').коллекция
         const db = createSandboxDb(this.enterpriseId, this.moduleId)
         const useMoloDb = (name: string) => db(name)
 
         const exportsObj = {}
         const requireFn = (mod: string) => {
-            if (['path', 'crypto', 'http', 'https', 'url'].includes(mod)) {
-                return require(mod)
-            }
+            if (['path', 'crypto', 'url'].includes(mod)) return require(mod)
             throw new Error(`Module ${mod} is not allowed in sandbox`)
         }
 
@@ -207,14 +198,8 @@ export class ModuleSandbox {
                 useMoloDb
             )
 
-            return {
-                result: toSerializable(result),
-                logs,
-                entries,
-                actions
-            }
+            return { result: toSerializable(result), logs, entries, actions }
         } catch (error: any) {
-            console.error(`[ModuleSandbox] Execution error in "${defaultSource}":`, error)
             push('error', defaultSource, [error?.message || String(error)])
             throw createError({
                 statusCode: 500,
@@ -225,18 +210,16 @@ export class ModuleSandbox {
     }
 
     async runMain(context: any = {}) {
-        const module = await DynamicModule.findById(this.moduleId)
-        if (!module || !module.isActive) throw createError({ statusCode: 404, message: 'Module not found' })
+        const module = await this.loadModule()
         if (!module.code?.trim()) throw createError({ statusCode: 404, message: 'Module has no main code' })
         rejectPython(module.format)
         return this.runCode(module.code, context, module.name, module.name)
     }
 
     async executeFile(fileName: string, data: any = {}) {
-        const module = await DynamicModule.findById(this.moduleId)
-        if (!module || !module.isActive) throw createError({ statusCode: 404, message: 'Module not found' })
+        const module = await this.loadModule()
 
-        const file = module.files?.find((f: any) =>
+        const file = (module.files || []).find((f: any) =>
             f.isServerFile && (f.name === fileName || f.path === fileName || f.name === `${fileName}.ts`)
         )
 

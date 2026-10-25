@@ -1,11 +1,5 @@
-// server/utils/moloDb/store.ts
-//
-// Единая точка выполнения операций над данными мини-баз. Её используют:
-//   • HTTP-эндпоинт  /api/enterprises/[id]/moloDb/[db]/[col]  (интерфейс, клиентские модули, Python)
-//   • песочница серверных модулей  (db внутри server-файла) — без HTTP, напрямую
-// Все записи живут в ОДНОЙ коллекции Mongo (molo_records) и отделены полями
-// enterpriseId + db + col, поэтому нет динамических моделей, лишних индексов и
-// ограничения Mongo в 64 индекса на коллекцию.
+import { getTenantConnection, tenantModels } from '~~/server/utils/tenantDb'
+import { modelForCollection } from '~~/server/utils/directoryCollections'
 import { Types } from 'mongoose'
 import {
     LIMITS,
@@ -44,7 +38,7 @@ export interface RecordsCollection {
 }
 
 export interface StoreDeps {
-    records: () => Promise<RecordsCollection>
+    records: (enterpriseId: string) => Promise<RecordsCollection>
     loadDef: (enterpriseId: string, db: string) => Promise<DatabaseDef | null>
 }
 
@@ -56,24 +50,24 @@ const ADMIN_ROLE = 'Администратор'
 // Подключение к Mongo (лениво, чтобы файл можно было импортировать без БД)
 // ──────────────────────────────────────────────────────────────
 
-let recordsReady: Promise<RecordsCollection> | null = null
+const recordsCache = new Map<string, Promise<RecordsCollection>>()
 
-async function defaultRecords(): Promise<RecordsCollection> {
-    if (recordsReady) return recordsReady
-    recordsReady = (async () => {
-        const { default: mongoose } = await import('mongoose')
-        const db = mongoose.connection.db
+async function defaultRecords(enterpriseId: string): Promise<RecordsCollection> {
+    const cached = recordsCache.get(enterpriseId)
+    if (cached) return cached
+    const p = (async () => {
+        const db = getTenantConnection(enterpriseId).db
         if (!db) throw new MoloDbError('MongoDB ещё не подключена', 503)
         const col = db.collection('molo_records')
-        await col.createIndex({ enterpriseId: 1, db: 1, col: 1, createdAt: -1 }, { name: 'molo_scope_created' })
-        // TTL: записи коллекций со сроком хранения удаляются Mongo автоматически
+        await col.createIndex({ db: 1, col: 1, createdAt: -1 }, { name: 'molo_scope_created' })
         await col.createIndex({ expireAt: 1 }, { name: 'molo_ttl', expireAfterSeconds: 0 })
         return col as unknown as RecordsCollection
     })().catch((e) => {
-        recordsReady = null
+        recordsCache.delete(enterpriseId)
         throw e
     })
-    return recordsReady
+    recordsCache.set(enterpriseId, p)
+    return p
 }
 
 const DEF_TTL_MS = 15_000
@@ -89,8 +83,8 @@ async function defaultLoadDef(enterpriseId: string, db: string): Promise<Databas
     const hit = defCache.get(key)
     if (hit && Date.now() - hit.at < DEF_TTL_MS) return hit.def
 
-    const { MoloDatabase } = await import('~~/server/models/moloDatabase.model')
-    const doc: any = await MoloDatabase.findOne({ enterpriseId, name: db }).lean()
+    const { MoloDatabase } = tenantModels(enterpriseId)
+    const doc: any = await MoloDatabase.findOne({ name: db }).lean()
     const def: DatabaseDef | null = doc
         ? { name: doc.name, title: doc.title, description: doc.description, collections: doc.collections || [] }
         : null
@@ -193,9 +187,224 @@ async function insertRecords(
 // Главная функция
 // ──────────────────────────────────────────────────────────────
 
+function moduleRow(doc: any) {
+    return {
+        _id: String(doc._id),
+        name: doc.name || '',
+        fileName: doc.fileName || '',
+        format: doc.format || '',
+        description: doc.description || '',
+        isPublic: doc.isPublic === true,
+        isActive: doc.isActive !== false,
+        version: doc.version || 1,
+        hasServerCode: doc.hasServerCode === true,
+        tags: doc.tags || [],
+        createdAt: doc.createdAt,
+        updatedAt: doc.updatedAt
+    }
+}
+
+async function readSystemModules(ctx: OpContext, body: any) {
+    const { DynamicModule } = tenantModels(ctx.enterpriseId)
+    const filter: Record<string, any> = {}
+    if (body.id) filter._id = body.id
+    else if (body.filter && typeof body.filter === 'object' && !Array.isArray(body.filter)) {
+        for (const [key, value] of Object.entries(body.filter)) {
+            if (['_id', 'name', 'fileName', 'format', 'isPublic', 'isActive', 'version'].includes(key)) filter[key] = value
+        }
+    }
+    if (body.search) {
+        const q = String(body.search).trim().slice(0, 100)
+        if (q) {
+            const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+            filter.$or = ['name', 'fileName', 'format', 'description', 'tags'].map((key) => ({ [key]: { $regex: escaped, $options: 'i' } }))
+        }
+    }
+    if (body.op === 'count') return { count: await DynamicModule.countDocuments(filter) }
+    if (body.op === 'get' || body.op === 'findOne') {
+        const doc = body.op === 'get'
+            ? await DynamicModule.findById(body.id).lean()
+            : await DynamicModule.findOne(filter).sort({ updatedAt: -1 }).lean()
+        return { item: doc ? moduleRow(doc) : null }
+    }
+    if (body.op !== 'find') throw new MoloDbError('Коллекция «modules» доступна только для чтения', 403)
+    const limit = clampInt(body.limit, 50, 1, LIMITS.queryLimit)
+    const skip = clampInt(body.skip, 0, 0, 100_000)
+    const sortRaw = String(body.sort || '-updatedAt')
+    const sortKey = sortRaw.startsWith('-') ? sortRaw.slice(1) : sortRaw
+    const sortDir = sortRaw.startsWith('-') ? -1 : 1
+    const allowedSort = ['name', 'fileName', 'format', 'isPublic', 'isActive', 'version', 'createdAt', 'updatedAt']
+    const sort: Record<string, 1 | -1> = { [allowedSort.includes(sortKey) ? sortKey : 'updatedAt']: sortDir as 1 | -1 }
+    const [docs, total] = await Promise.all([
+        DynamicModule.find(filter).sort(sort).skip(skip).limit(limit).lean(),
+        DynamicModule.countDocuments(filter)
+    ])
+    return { items: docs.map(moduleRow), total, limit, skip }
+}
+
+/**
+ * Коллекции системных разделов должны читать/писать реальные tenant-коллекции,
+ * а не универсальную molo_records. Это обеспечивает одинаковые данные в API
+ * пространства/справочников и в MoloDB Studio.
+ */
+async function runTenantCollectionOp(ctx: OpContext, body: any): Promise<any> {
+    const { WorkspaceDocument, WorkspaceFolder, DirectoryDefinition } = tenantModels(ctx.enterpriseId)
+    let model: any
+    if (ctx.db === 'workspace') {
+        if (ctx.col === 'workspace_documents') model = WorkspaceDocument
+        else if (ctx.col === 'workspace_folders') model = WorkspaceFolder
+        else if (ctx.col === 'workspace_versions') {
+            // История версий хранится в ws_<documentId>_versions. В Studio она доступна
+            // только для чтения, чтобы не создавать фиктивные записи в molo_records.
+            if (['insert', 'insertMany', 'update', 'delete'].includes(String(body?.op))) {
+                throw new MoloDbError('История версий создаётся автоматически при сохранении документа', 403)
+            }
+            const db = getTenantConnection(ctx.enterpriseId).db
+            if (!db) throw new MoloDbError('MongoDB ещё не подключена', 503)
+            const names = (await db.listCollections({ name: /^ws_.*_versions$/ }, { nameOnly: true }).toArray()).map((x: any) => x.name)
+            let items: any[] = []
+            for (const name of names) items.push(...await db.collection(name).find({ enterpriseId: ctx.enterpriseId }).toArray())
+            const rawFilter = body?.filter && typeof body.filter === 'object' ? body.filter : {}
+            items = items.filter((item) => Object.entries(rawFilter).every(([key, value]) => {
+                if (key === '_id') return String(item._id) === String(value)
+                return (item as any)[key] === value
+            }))
+            if (body?.op === 'count') return { count: items.length }
+            if (body?.op === 'get' || body?.op === 'findOne') {
+                const found = body?.id ? items.find((item) => String(item._id) === String(body.id)) : items[0]
+                return { item: found || null }
+            }
+            if (body?.op === 'find') {
+                const sortText = String(body.sort || '-createdAt')
+                const desc = sortText.startsWith('-')
+                const key = desc ? sortText.slice(1) : sortText
+                items.sort((a, b) => {
+                    const av = (a as any)[key], bv = (b as any)[key]
+                    const cmp = av instanceof Date || bv instanceof Date ? new Date(av).getTime() - new Date(bv).getTime() : String(av ?? '').localeCompare(String(bv ?? ''))
+                    return desc ? -cmp : cmp
+                })
+                const skip = clampInt(body.skip, 0, 0, 100_000)
+                const limit = clampInt(body.limit, 50, 1, LIMITS.queryLimit)
+                const page = items.slice(skip, skip + limit)
+                return { items: page, limit, skip, ...(body.withTotal === false ? {} : { total: items.length }) }
+            }
+            throw new MoloDbError(`Неизвестная операция «${body?.op}»`)
+        } else return null
+    } else if (ctx.db === 'directories') {
+        if (ctx.col === 'directory_definitions') model = DirectoryDefinition
+        else if (/^dir_[\p{L}\p{N}_-]+$/u.test(ctx.col)) model = modelForCollection(ctx.enterpriseId, ctx.col)
+        else return null
+    } else return null
+
+    const op = body?.op
+    const idFilter = (value: any) => {
+        if (value === undefined || value === null || value === '') return undefined
+        return Types.ObjectId.isValid(String(value)) ? new Types.ObjectId(String(value)) : value
+    }
+    const normalizeFilter = (input: any): Record<string, any> => {
+        if (!input || typeof input !== 'object' || Array.isArray(input)) return {}
+        const out: Record<string, any> = {}
+        for (const [key, value] of Object.entries(input)) {
+            if (key === 'enterpriseId' || key === 'createdBy') continue
+            if (key === '_id') out._id = idFilter(value)
+            else out[key] = value
+        }
+        return out
+    }
+    const scope = { enterpriseId: ctx.enterpriseId }
+    const filter = { ...scope, ...normalizeFilter(body.filter) }
+    const cleanDoc = (input: any) => {
+        if (!input || typeof input !== 'object' || Array.isArray(input)) throw new MoloDbError('doc должен быть объектом')
+        const doc = { ...input }
+        delete doc._id
+        delete doc.enterpriseId
+        delete doc.createdBy
+        if (ctx.db === 'workspace' && ctx.col === 'workspace_documents') {
+            doc.type = doc.type || 'primary'
+            doc.content = doc.content ?? ''
+            doc.nameLower = String(doc.nameLower ?? doc.name ?? '').toLowerCase()
+            doc.size = Number(doc.size ?? (typeof doc.content === 'string' ? Buffer.byteLength(doc.content) : 0))
+        }
+        if (ctx.db === 'directories' && ctx.col.startsWith('dir_')) {
+            doc.directorySlug = doc.directorySlug || ctx.col.slice(4)
+            doc.attributes = doc.attributes && typeof doc.attributes === 'object' ? doc.attributes : {}
+        }
+        return { ...doc, enterpriseId: ctx.enterpriseId }
+    }
+    const plain = (value: any) => value ? (typeof value.toObject === 'function' ? value.toObject() : value) : null
+    const limit = clampInt(body.limit, 50, 1, LIMITS.queryLimit)
+    const skip = clampInt(body.skip, 0, 0, 100_000)
+
+    switch (op) {
+        case 'find': {
+            const sortText = String(body.sort || '-updatedAt')
+            const desc = sortText.startsWith('-')
+            const key = desc ? sortText.slice(1) : sortText
+            const sort: Record<string, 1 | -1> = { [key || 'updatedAt']: desc ? -1 : 1 }
+            const [items, total] = await Promise.all([
+                model.find(filter).sort(sort).skip(skip).limit(limit).lean(),
+                body.withTotal === false ? Promise.resolve(undefined) : model.countDocuments(filter)
+            ])
+            return { items, limit, skip, ...(total === undefined ? {} : { total }) }
+        }
+        case 'findOne': {
+            const item = await model.findOne(filter).sort({ updatedAt: -1, createdAt: -1 }).lean()
+            return { item: item || null }
+        }
+        case 'get': {
+            const id = idFilter(body.id)
+            if (!id) throw new MoloDbError('Некорректный ID записи')
+            return { item: await model.findOne({ ...scope, _id: id }).lean() }
+        }
+        case 'count': return { count: await model.countDocuments(filter) }
+        case 'insert': {
+            const item = await model.create(cleanDoc(body.doc))
+            return { item: plain(item) }
+        }
+        case 'insertMany': {
+            if (!Array.isArray(body.docs)) throw new MoloDbError('docs должен быть массивом')
+            if (body.docs.length > LIMITS.batch) throw new MoloDbError(`За один раз можно добавить не больше ${LIMITS.batch} записей`)
+            const items = body.docs.map(cleanDoc)
+            return { items: (await model.insertMany(items)).map(plain) }
+        }
+        case 'update': {
+            const targetFilter = body.id ? { _id: idFilter(body.id) } : normalizeFilter(body.filter)
+            if (!Object.keys(targetFilter).length) throw new MoloDbError('Для изменения записи укажите id или filter')
+            const patch = body.patch && typeof body.patch === 'object' && !Array.isArray(body.patch) ? { ...body.patch } : {}
+            for (const protectedKey of ['_id', 'enterpriseId', 'createdBy']) delete patch[protectedKey]
+            if (body.many) {
+                const result = await model.updateMany({ ...scope, ...targetFilter }, { $set: { ...patch, updatedAt: new Date() } })
+                return { matched: result.matchedCount, modified: result.modifiedCount }
+            }
+            const item = await model.findOneAndUpdate(
+                { ...scope, ...targetFilter },
+                { $set: { ...patch, updatedAt: new Date() } },
+                { new: true, runValidators: true }
+            ).lean()
+            return { matched: item ? 1 : 0, modified: item ? 1 : 0, item: item || null }
+        }
+        case 'delete': {
+            const targetFilter = body.id ? { _id: idFilter(body.id) } : normalizeFilter(body.filter)
+            if (!Object.keys(targetFilter).length && body.all !== true) throw new MoloDbError('Для удаления укажите id/filter или all: true')
+            const result = body.many || body.all
+                ? await model.deleteMany({ ...scope, ...targetFilter })
+                : await model.deleteOne({ ...scope, ...targetFilter })
+            return { deleted: result.deletedCount || 0 }
+        }
+        default: return null
+    }
+}
+
 export async function runDbOp(ctx: OpContext, body: any, deps: StoreDeps = defaultDeps): Promise<any> {
     const op = body?.op
     if (!READ_OPS.has(op) && !WRITE_OPS.has(op)) throw new MoloDbError(`Неизвестная операция «${op}»`)
+
+    const tenantResult = await runTenantCollectionOp(ctx, body)
+    if (tenantResult !== null) return tenantResult
+
+    // MoloDB Studio показывает системные модули из настоящей коллекции `modules`,
+    // а не из molo_records. Изменение модулей остаётся за API редактора модулей.
+    if (ctx.db === 'company' && ctx.col === 'modules') return readSystemModules(ctx, body)
 
     const def = await deps.loadDef(ctx.enterpriseId, ctx.db)
     if (!def) throw new MoloDbError(`База «${ctx.db}» не найдена`, 404)
@@ -204,7 +413,7 @@ export async function runDbOp(ctx: OpContext, body: any, deps: StoreDeps = defau
 
     assertAccess(coll, ctx.actor, READ_OPS.has(op) ? 'read' : 'write')
 
-    const records = await deps.records()
+    const records = await deps.records(ctx.enterpriseId)
     const base = { enterpriseId: ctx.enterpriseId, db: ctx.db, col: ctx.col }
 
     const scoped = (filter: Record<string, any>, search?: any) => {
@@ -300,7 +509,7 @@ export async function runDbOp(ctx: OpContext, body: any, deps: StoreDeps = defau
 
 /** Удаление всех записей базы или отдельных коллекций (при изменении/удалении схемы). */
 export async function purgeRecords(enterpriseId: string, db: string, cols?: string[], deps: StoreDeps = defaultDeps) {
-    const records = await deps.records()
+    const records = await deps.records(enterpriseId)
     const q: Record<string, any> = { enterpriseId, db }
     if (cols) q.col = { $in: cols }
     const res = await records.deleteMany(q)

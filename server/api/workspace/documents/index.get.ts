@@ -1,16 +1,19 @@
 import { defineEventHandler, getQuery } from 'h3'
-import { WorkspaceDocument } from '../../../models/workspaceDocument.model'
-import { escapeRegex, getEnterpriseId, serializeDocument } from '../../../utils/workspace'
+import { tenantModels } from '~~/server/utils/tenantDb'
+import { resolveActor } from '~~/server/utils/moloDb/access'
+import { escapeRegex, getEnterpriseId, serializeDocument } from '~~/server/utils/workspace'
 
 // GET /api/workspace/documents?enterpriseId=[&q=текст]
-// Список БЕЗ содержимого (только метаданные). Содержимое — отдельным запросом GET /documents/:id.
-// q — поиск по названию и по содержимому (Word: текст, Excel: значения ячеек и названия листов).
+// Список БЕЗ содержимого. Содержимое — GET /documents/:id.
 export default defineEventHandler(async (event) => {
     const enterpriseId = getEnterpriseId(event)
+    await resolveActor(event, enterpriseId, 'data')
+    const { WorkspaceDocument } = tenantModels(enterpriseId)
+
     const rawQ = getQuery(event).q
     const q = typeof rawQ === 'string' ? rawQ.trim().toLowerCase().slice(0, 200) : ''
 
-    const filter: Record<string, any> = { enterpriseId }
+    const filter: Record<string, any> = {}
     if (q) {
         const re = escapeRegex(q)
         filter.$or = [{ nameLower: { $regex: re } }, { searchText: { $regex: re } }]

@@ -352,7 +352,6 @@ async function grantAccess() {
     searchQuery.value = ''
     searchResults.value = []
     await loadMembers()
-    // Если изменили роль самому себе — применяем сразу
     void store.refreshAccess()
   } catch (e: any) {
     addNotification('error', e.data?.message || 'Ошибка добавления сотрудника')
@@ -439,7 +438,6 @@ function formatDate(dateStr: string) {
 
 onMounted(async () => {
   store.loadEnterpriseFromStorage()
-  // Подтягиваем актуальную роль, чтобы окно не работало по устаревшим данным
   await store.refreshAccess()
   if (store.getEnterpriseId()) {
     await Promise.all([
@@ -462,7 +460,7 @@ onMounted(async () => {
     </div>
 
     <template v-else-if="enterpriseInfo">
-      <!-- Информация о предприятии -->
+      <!-- Информация о предприятии (Только просмотр) -->
       <UIMoloSection>
         <template #header>
           <span class="enterprise-title">
@@ -486,12 +484,12 @@ onMounted(async () => {
           <div class="details">
             <section class="main-details">
               <span>ИНН: {{ enterpriseInfo.inn }}</span>
-              <span>ОГРН: {{ enterpriseInfo.ogrn }}</span>
-              <span>КПП: {{ enterpriseInfo.kpp }}</span>
+              <span>ОГРН: {{ enterpriseInfo.ogrn || '—' }}</span>
+              <span>КПП: {{ enterpriseInfo.kpp || '—' }}</span>
             </section>
 
             <section class="director">
-              <span>Директор: {{ enterpriseInfo.director }}</span>
+              <span>Директор: {{ enterpriseInfo.director || 'Не назначен' }}</span>
             </section>
           </div>
         </template>
@@ -539,7 +537,7 @@ onMounted(async () => {
         </template>
       </UIMoloSection>
 
-      <!-- Блок из конфигуратора: Доступ и команда предприятия -->
+      <!-- Команда предприятия -->
       <UIMoloSection>
         <template #header>
           <section class="workspace-heading">
@@ -556,7 +554,6 @@ onMounted(async () => {
           <UIMoloLoaders v-if="membersLoading" wndLoader />
 
           <div v-else class="members-dashboard">
-            <!-- Быстрый поиск / выдача доступа -->
             <div class="quick-add-col">
               <span class="sub-title">Быстрое добавление</span>
               <UIMoloInput
@@ -602,7 +599,6 @@ onMounted(async () => {
               </div>
             </div>
 
-            <!-- Список участников с ролями -->
             <div class="members-list-col">
               <span class="sub-title">Текущие сотрудники</span>
               <div v-if="members.length === 0" class="empty-text">
@@ -629,7 +625,7 @@ onMounted(async () => {
         </template>
       </UIMoloSection>
 
-      <!-- Модалка выбора структуры -->
+      <!-- Модалка выбора структуры папок -->
       <UIMoloModal
           v-model="folderSetupOpen"
           title="Создадим рабочую структуру"
@@ -673,14 +669,14 @@ onMounted(async () => {
 
         <template #footer>
           <UIMoloButton
-              class=" close"
+              class="close"
               :disabled="creatingFolders"
               @click="folderSetupOpen = false"
           >
             Отмена
           </UIMoloButton>
           <UIMoloButton
-              class="confirm "
+              class="confirm"
               :disabled="creatingFolders"
               @click="createSelectedFolderStructure"
           >
@@ -709,10 +705,6 @@ onMounted(async () => {
   font-size: 20px;
 }
 
-.btn-group {
-  display: flex;
-  align-items: center;
-}
 
 .details {
   display: flex;
@@ -769,7 +761,6 @@ onMounted(async () => {
   font-size: 13px;
 }
 
-/* Команда / Конфигуратор */
 .members-dashboard {
   display: grid;
   grid-template-columns: 280px 1fr;

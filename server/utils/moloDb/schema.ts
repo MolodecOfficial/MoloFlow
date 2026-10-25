@@ -1,7 +1,3 @@
-// server/utils/moloDb/schema.ts
-//
-// Описание «мини-баз» MoloFlow: типы, лимиты, нормализация схем и валидация записей.
-// Файл чистый (без Mongo и h3), поэтому его легко тестировать и переиспользовать.
 
 export class MoloDbError extends Error {
     statusCode: number
@@ -48,22 +44,23 @@ export interface DatabaseDef {
 }
 
 export const LIMITS = {
-    databases: 20,
-    collections: 30,
-    fields: 60,
-    defaultMaxDocs: 50_000,
-    hardMaxDocs: 500_000,
-    docBytes: 256 * 1024,
-    jsonBytes: 64 * 1024,
-    stringLen: 1000,
-    textLen: 100_000,
-    options: 50,
-    batch: 100,
-    queryLimit: 500
+    databases: 1000,
+    collections: 1000,
+    fields: 1000,
+    defaultMaxDocs: 10_000_000,
+    hardMaxDocs: 50_000_000,
+    // Лимит BSON-документа MongoDB — 16 МБ
+    docBytes: 15 * 1024 * 1024,
+    jsonBytes: 15 * 1024 * 1024,
+    stringLen: 10_000_000,
+    textLen: 15_000_000,
+    options: 1000,
+    batch: 1000,
+    queryLimit: 10_000
 } as const
 
-export const NAME_RE = /^[a-z][a-z0-9_]{0,23}$/
-export const FIELD_NAME_RE = /^[a-zA-Z][a-zA-Z0-9_]{0,31}$/
+export const NAME_RE = /^[a-z][a-z0-9_]{0,48}$/
+export const FIELD_NAME_RE = /^[a-zA-Z][a-zA-Z0-9_]{0,48}$/
 export const RESERVED_NAMES = new Set(['id', '_id', 'createdAt', 'updatedAt', 'data', 'enterpriseId', 'db', 'col', 'expireAt'])
 const SYSTEM_KEYS = new Set(['_id', 'id', 'createdAt', 'updatedAt'])
 const UNIQUE_TYPES = new Set<FieldType>(['string', 'number', 'select', 'date'])
@@ -78,7 +75,7 @@ const labelOf = (f: Pick<FieldDef, 'name' | 'label'>) => f.label || f.name
 // ──────────────────────────────────────────────────────────────
 
 function assertSafeJson(value: any, depth = 0): void {
-    if (depth > 10) throw new Error('слишком глубокая вложенность')
+    if (depth > 20) throw new Error('слишком глубокая вложенность')
     if (Array.isArray(value)) {
         value.forEach((v) => assertSafeJson(v, depth + 1))
     } else if (isPlainObject(value)) {
@@ -102,8 +99,9 @@ export function coerceField(f: FieldDef, v: any): { value?: any; error?: string 
         case 'string':
         case 'text': {
             if (typeof v !== 'string') return { error: `Поле «${name}» должно быть строкой` }
-            const max = f.maxLength ?? (f.type === 'text' ? LIMITS.textLen : LIMITS.stringLen)
-            if (v.length > max) return { error: `Поле «${name}» длиннее ${max} символов` }
+            if (f.maxLength && v.length > f.maxLength) {
+                return { error: `Поле «${name}» длиннее ${f.maxLength} символов` }
+            }
             return { value: v }
         }
         case 'number': {
@@ -133,7 +131,6 @@ export function coerceField(f: FieldDef, v: any): { value?: any; error?: string 
         case 'json': {
             try {
                 assertSafeJson(v)
-                if (JSON.stringify(v).length > LIMITS.jsonBytes) throw new Error(`больше ${LIMITS.jsonBytes / 1024} КБ`)
             } catch (e: any) {
                 return { error: `Поле «${name}»: ${e.message}` }
             }
@@ -145,7 +142,6 @@ export function coerceField(f: FieldDef, v: any): { value?: any; error?: string 
 
 /**
  * Проверяет и приводит запись к типам схемы.
- * partial = true — для обновлений: обязательность и значения по умолчанию не применяются.
  */
 export function validateRecord(
     coll: CollectionDef,
@@ -191,9 +187,6 @@ export function validateRecord(
         else data[f.name] = r.value
     }
 
-    if (!errors.length && JSON.stringify(data).length > LIMITS.docBytes) {
-        errors.push(`Запись больше ${LIMITS.docBytes / 1024} КБ`)
-    }
     return { data, errors }
 }
 
@@ -202,7 +195,7 @@ export function flattenRecord(doc: any): Record<string, any> {
 }
 
 // ──────────────────────────────────────────────────────────────
-// Нормализация схем (то, что приходит от пользователя при создании/изменении базы)
+// Нормализация схем
 // ──────────────────────────────────────────────────────────────
 
 function str(v: any, max: number): string {
@@ -220,9 +213,9 @@ function normalizeField(raw: any, where: string, errs: string[]): FieldDef | nul
         errs.push(`${where}: поле должно быть объектом`)
         return null
     }
-    const name = str(raw.name, 40)
+    const name = str(raw.name, 50)
     if (!FIELD_NAME_RE.test(name) || RESERVED_NAMES.has(name)) {
-        errs.push(`${where}: недопустимое имя поля «${name}» (латиница, цифры и «_», до 32 символов)`)
+        errs.push(`${where}: недопустимое имя поля «${name}»`)
         return null
     }
     const type = raw.type as FieldType
@@ -232,7 +225,7 @@ function normalizeField(raw: any, where: string, errs: string[]): FieldDef | nul
     }
 
     const f: FieldDef = { name, type }
-    const label = str(raw.label, 60)
+    const label = str(raw.label, 100)
     if (label && label !== name) f.label = label
     if (raw.required) f.required = true
 
@@ -242,7 +235,7 @@ function normalizeField(raw: any, where: string, errs: string[]): FieldDef | nul
     }
 
     if (type === 'select') {
-        const opts = Array.isArray(raw.options) ? raw.options.map((o: any) => str(o, 60)).filter(Boolean) : []
+        const opts = Array.isArray(raw.options) ? raw.options.map((o: any) => str(o, 100)).filter(Boolean) : []
         const uniq = [...new Set<string>(opts)].slice(0, LIMITS.options)
         if (!uniq.length) errs.push(`${where}.${name}: укажите варианты для списка`)
         f.options = uniq
@@ -259,7 +252,7 @@ function normalizeField(raw: any, where: string, errs: string[]): FieldDef | nul
     }
 
     if (type === 'string' || type === 'text') {
-        const ml = intIn(raw.maxLength, 1, type === 'text' ? LIMITS.textLen : LIMITS.stringLen)
+        const ml = intIn(raw.maxLength, 1, LIMITS.textLen)
         if (Number.isNaN(ml)) errs.push(`${where}.${name}: недопустимая максимальная длина`)
         else if (ml !== undefined) f.maxLength = ml
     }
@@ -281,19 +274,18 @@ function normalizeCollection(raw: any, where: string, errs: string[]): Collectio
         errs.push(`${where}: коллекция должна быть объектом`)
         return null
     }
-    const name = str(raw.name, 40)
+    const name = str(raw.name, 50)
     if (!NAME_RE.test(name)) {
-        errs.push(`Коллекция «${name}»: имя — строчные латинские буквы, цифры и «_», до 24 символов`)
+        errs.push(`Коллекция «${name}»: недопустимое имя коллекции`)
         return null
     }
     const here = `Коллекция «${name}»`
     const c: CollectionDef = { name, fields: [], strict: raw.strict !== false }
 
-    const title = str(raw.title, 80)
+    const title = str(raw.title, 100)
     if (title) c.title = title
 
     const rawFields = Array.isArray(raw.fields) ? raw.fields : []
-    if (rawFields.length > LIMITS.fields) errs.push(`${here}: не больше ${LIMITS.fields} полей`)
     const seen = new Set<string>()
     for (const rf of rawFields.slice(0, LIMITS.fields)) {
         const f = normalizeField(rf, here, errs)
@@ -303,17 +295,15 @@ function normalizeCollection(raw: any, where: string, errs: string[]): Collectio
         c.fields.push(f)
     }
 
-    const ttl = intIn(raw.ttlDays, 1, 3650)
-    if (Number.isNaN(ttl)) errs.push(`${here}: срок хранения — целое число дней от 1 до 3650`)
-    else if (ttl !== undefined) c.ttlDays = ttl
+    const ttl = intIn(raw.ttlDays, 1, 36500)
+    if (ttl !== undefined) c.ttlDays = ttl
 
     const md = intIn(raw.maxDocs, 1, LIMITS.hardMaxDocs)
-    if (Number.isNaN(md)) errs.push(`${here}: лимит записей — целое число от 1 до ${LIMITS.hardMaxDocs}`)
-    else if (md !== undefined) c.maxDocs = md
+    if (md !== undefined) c.maxDocs = md
 
     if (isPlainObject(raw.access)) {
         const list = (v: any) =>
-            Array.isArray(v) ? [...new Set<string>(v.map((x: any) => str(x, 40)).filter(Boolean))].slice(0, 10) : []
+            Array.isArray(v) ? [...new Set<string>(v.map((x: any) => str(x, 50)).filter(Boolean))].slice(0, 50) : []
         const read = list(raw.access.read)
         const write = list(raw.access.write)
         if (read.length || write.length) c.access = { read, write }
@@ -325,13 +315,12 @@ export function normalizeDatabaseDef(raw: any): DatabaseDef {
     const errs: string[] = []
     if (!isPlainObject(raw)) throw new MoloDbError('Описание базы должно быть объектом')
 
-    const name = str(raw.name, 40)
-    if (!NAME_RE.test(name)) errs.push('Имя базы — строчные латинские буквы, цифры и «_», начинается с буквы, до 24 символов')
+    const name = str(raw.name, 50)
+    if (!NAME_RE.test(name)) errs.push('Имя базы — строчные латинские буквы, цифры и «_», начинается с буквы')
 
-    const def: DatabaseDef = { name, title: str(raw.title, 80), description: str(raw.description, 300), collections: [] }
+    const def: DatabaseDef = { name, title: str(raw.title, 100), description: str(raw.description, 1000), collections: [] }
 
     const rawCols = Array.isArray(raw.collections) ? raw.collections : []
-    if (rawCols.length > LIMITS.collections) errs.push(`В базе не больше ${LIMITS.collections} коллекций`)
     const seen = new Set<string>()
     for (const rc of rawCols.slice(0, LIMITS.collections)) {
         const c = normalizeCollection(rc, 'Коллекция', errs)

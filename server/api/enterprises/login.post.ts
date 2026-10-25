@@ -1,45 +1,31 @@
-import Enterprise from "~~/server/models/enterprise.model";
-import bcrypt from "bcrypt";
+// server/api/enterprises/login.post.ts
+// Вход предприятия по ИНН и ключу доступа. Токен описывает ПРЕДПРИЯТИЕ, личность пользователя он не задаёт.
+import Enterprise from '~~/server/models/enterprise.model'
+import bcrypt from 'bcrypt'
 import jwt from 'jsonwebtoken'
+import { getJwtSecret } from '~~/server/utils/sessionToken'
 
 export default defineEventHandler(async (event) => {
     try {
-        const body = await readBody(event)
-        const { inn, keypass } = body
-
+        const { inn, keypass } = (await readBody(event)) || {}
         if (!inn || !keypass) {
-            throw createError({
-                statusCode: 400,
-                message: 'ИНН и код доступа обязательны'
-            })
+            throw createError({ statusCode: 400, message: 'ИНН и код доступа обязательны' })
         }
 
-        // Убираем Number(), ищем как строку
-        const enterprise = await Enterprise.findOne({ inn: inn })
-
+        const enterprise: any = await Enterprise.findOne({ inn: String(inn).trim() })
         if (!enterprise) {
-            throw createError({
-                statusCode: 404,
-                message: 'Предприятие с таким ИНН не найдено'
-            })
+            throw createError({ statusCode: 404, message: 'Предприятие с таким ИНН не найдено' })
+        }
+        if (enterprise.status && enterprise.status !== 'active') {
+            throw createError({ statusCode: 409, message: 'Предприятие ещё не готово к работе' })
         }
 
-        const isValidKeypass = await bcrypt.compare(keypass, enterprise.keypass)
-
-        if (!isValidKeypass) {
-            throw createError({
-                statusCode: 401,
-                message: 'Неверный код доступа'
-            })
-        }
+        const ok = await bcrypt.compare(String(keypass), enterprise.keypass)
+        if (!ok) throw createError({ statusCode: 401, message: 'Неверный код доступа' })
 
         const token = jwt.sign(
-            {
-                enterpriseId: enterprise._id,
-                inn: enterprise.inn,
-                name: enterprise.enterpriseName
-            },
-            process.env.JWT_SECRET || 'your-secret-key',
+            { type: 'enterprise', enterpriseId: String(enterprise._id) },
+            getJwtSecret(),
             { expiresIn: '24h' }
         )
 
@@ -48,31 +34,15 @@ export default defineEventHandler(async (event) => {
             message: 'Вход выполнен успешно',
             token,
             enterprise: {
-                _id: enterprise._id,
+                _id: String(enterprise._id),
                 enterpriseName: enterprise.enterpriseName,
                 inn: enterprise.inn,
-                kpp: enterprise.kpp,
-                ogrn: enterprise.ogrn,
-                legalAddress: enterprise.legalAddress,
-                actualAddress: enterprise.actualAddress,
-                phone: enterprise.phone,
-                email: enterprise.email,
-                director: enterprise.director,
-                okved: enterprise.okved,
                 ownershipForm: enterprise.ownershipForm
             }
         }
-
     } catch (error: any) {
+        if (error.statusCode) throw error
         console.error('Ошибка входа:', error)
-
-        if (error.statusCode) {
-            throw error
-        }
-
-        throw createError({
-            statusCode: 500,
-            message: 'Внутренняя ошибка сервера: ' + error.message
-        })
+        throw createError({ statusCode: 500, message: 'Внутренняя ошибка сервера' })
     }
 })

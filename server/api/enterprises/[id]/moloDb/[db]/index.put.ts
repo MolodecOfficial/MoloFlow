@@ -2,8 +2,8 @@
 // Изменение базы: название, описание, схема коллекций (нужно право MODULES_DEV).
 // Если среди коллекций есть удалённые, нужно явно передать confirmDelete: true — их записи будут стёрты.
 import { defineEventHandler, getRouterParam, readBody, createError } from 'h3'
-import { MoloDatabase } from '~~/server/models/moloDatabase.model'
 import { resolveActor, toHttpError } from '~~/server/utils/moloDb/access'
+import { tenantModels } from '~~/server/utils/tenantDb'
 import { normalizeDatabaseDef } from '~~/server/utils/moloDb/schema'
 import { invalidateDefCache, purgeRecords } from '~~/server/utils/moloDb/store'
 
@@ -17,9 +17,17 @@ export default defineEventHandler(async (event) => {
         const body = (await readBody(event)) || {}
         const def = normalizeDatabaseDef({ ...body, name: dbName })
 
-        const existing: any = await MoloDatabase.findOne({ enterpriseId, name: dbName }).lean()
+        const { MoloDatabase } = tenantModels(enterpriseId)
+        const existing: any = await MoloDatabase.findOne({ name: dbName }).lean()
         if (!existing) throw createError({ statusCode: 404, message: `База «${dbName}» не найдена` })
 
+        // Системная коллекция модулей всегда остаётся в company и не удаляет настоящие модули.
+        if (dbName === 'company') {
+            const systemModules = (existing.collections || []).find((c: any) => c.name === 'modules')
+            if (systemModules && !def.collections.some((c: any) => c.name === 'modules')) {
+                def.collections.push(systemModules)
+            }
+        }
         const keep = new Set(def.collections.map((c) => c.name))
         const removed = (existing.collections || []).map((c: any) => c.name).filter((n: string) => !keep.has(n))
         if (removed.length && body.confirmDelete !== true) {
@@ -31,7 +39,7 @@ export default defineEventHandler(async (event) => {
         }
 
         await MoloDatabase.updateOne(
-            { enterpriseId, name: dbName },
+            { name: dbName },
             { $set: { title: def.title, description: def.description, collections: def.collections, updatedAt: new Date() } }
         )
         if (removed.length) await purgeRecords(enterpriseId, dbName, removed)

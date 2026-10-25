@@ -1,92 +1,76 @@
-import { DynamicModule } from '~~/server/models/dynamicModules.model'
+// server/api/browser/modules/[id]/import.post.ts
+// Копирует публичный модуль из БД предприятия-владельца в БД предприятия-получателя.
+// Исходный модуль берём через глобальный каталог (ModuleCatalog), код — из его БД.
+import { defineEventHandler, getRouterParam, readBody, createError } from 'h3'
+import { ModuleCatalog } from '~~/server/models/moduleCatalog.model'
+import { resolveActor, toHttpError } from '~~/server/utils/moloDb/access'
+import { tenantModels } from '~~/server/utils/tenantDb'
+import { createModule, isOid, toClientModule, refreshModuleCatalog } from '~~/server/utils/modules'
 
 export default defineEventHandler(async (event) => {
-    const moduleId = getRouterParam(event, 'id')
-    const user = event.context.user
-    const body = await readBody(event)
-    const targetEnterpriseId = body.targetEnterpriseId
+    try {
+        const moduleId = getRouterParam(event, 'id')
+        const body = (await readBody(event)) || {}
+        const targetId = String(body.targetEnterpriseId || '')
 
-    if (!moduleId || !targetEnterpriseId) {
-        throw createError({ statusCode: 400, message: 'Missing moduleId or targetEnterpriseId' })
-    }
+        if (!isOid(moduleId) || !isOid(targetId)) {
+            throw createError({ statusCode: 400, message: 'Некорректный moduleId или targetEnterpriseId' })
+        }
 
-    // Найти публичный модуль (включая все вложенные файлы)
-    const sourceModule = await DynamicModule.findOne({
-        _id: moduleId,
-        isPublic: true,
-        isActive: true
-    }).lean()  // используем lean() для получения plain object
+        const actor = await resolveActor(event, targetId, 'schema')
 
-    if (!sourceModule) {
-        throw createError({ statusCode: 404, message: 'Модуль не найден или недоступен' })
-    }
+        // Перед поиском обновляем индекс: старые публикации могли не попасть в каталог.
+        await refreshModuleCatalog()
 
-    // Проверить, нет ли уже модуля с таким именем в целевом предприятии
-    const existing = await DynamicModule.findOne({
-        enterpriseId: targetEnterpriseId,
-        name: sourceModule.name
-    })
+        // 1. Публичный каталог определяет, из какой БД брать модуль
+        const cat: any = await ModuleCatalog.findById(moduleId).lean()
+        if (!cat || !cat.isPublic || cat.isActive === false) {
+            throw createError({ statusCode: 404, message: 'Публичный модуль не найден или отключён' })
+        }
+        const sourceId = String(cat.enterpriseId)
 
-    if (existing) {
-        throw createError({ statusCode: 409, message: 'Модуль с таким именем уже существует в вашем предприятии' })
-    }
+        const src: any = await tenantModels(sourceId).DynamicModule
+            .findById(moduleId)
+            .select('+clientBundle')
+            .lean()
+        if (!src) throw createError({ statusCode: 404, message: 'Модуль не найден' })
 
-    // Копируем файлы из исходного модуля, удаляя _id и обновляя даты
-    const copiedFiles = (sourceModule.files || []).map((file: any) => ({
-        name: file.name,
-        path: file.path,
-        format: file.format,
-        code: file.code,
-        isServerFile: file.isServerFile || false,
-        size: file.size || 0,
-        createdAt: new Date(),
-        updatedAt: new Date()
-    }))
+        // 2. Имя файла уникально внутри предприятия-получателя
+        const { DynamicModule } = tenantModels(targetId)
+        let fileName: string = src.fileName
+        let name: string = src.name
+        if (await DynamicModule.exists({ fileName })) {
+            fileName = `${src.fileName}_${Date.now().toString(36)}`
+            name = `${src.name} (копия)`
+        }
 
-    // Создать копию модуля со всеми файлами
-    const importedModule = new DynamicModule({
-        name: sourceModule.name,
-        fileName: sourceModule.fileName,
-        description: sourceModule.description,
-        format: sourceModule.format,
-        code: sourceModule.code,
-        enterpriseId: targetEnterpriseId,
-        createdBy: user ? { _id: user.id, name: user.name, role: user.role } : { _id: 'system', name: 'System' },
-        isPublic: false,
-        tags: sourceModule.tags || [],
-        previewImage: sourceModule.previewImage,
-        isOfficial: false,
-        version: 1,
-        stats: { downloads: 0, ratings: { average: 0, count: 0 } },
-        // Копируем зависимости
-        dependencies: sourceModule.dependencies ? new Map(Object.entries(sourceModule.dependencies)) : new Map(),
-        devDependencies: sourceModule.devDependencies ? new Map(Object.entries(sourceModule.devDependencies)) : new Map(),
-        // Копируем дополнительные поля
-        composables: sourceModule.composables || [],
-        allowedModules: sourceModule.allowedModules || ['fs', 'path', 'crypto', 'axios', 'lodash'],
-        apiVersion: sourceModule.apiVersion || 2,
-        buildStatus: 'pending',
-        // Копируем файлы!
-        files: copiedFiles,
-        // Определяем, есть ли серверный код
-        hasServerCode: copiedFiles.some((file: any) => file.isServerFile === true)
-    })
+        // 3. Создаём локально: модуль попадает в БД получателя и в каталог, приватный
+        const doc = await createModule(targetId, { id: actor.id, name: actor.name }, {
+            name,
+            fileName,
+            format: src.format,
+            description: src.description || '',
+            tags: src.tags || [],
+            previewImage: src.previewImage || null,
+            code: src.code || '',
+            files: src.files || [],
+            dependencies: src.dependencies || {},
+            devDependencies: src.devDependencies || {},
+            clientHooks: src.clientHooks || {},
+            composables: src.composables || [],
+            serverEntry: src.serverEntry || '',
+            clientBundle: src.clientBundle || '',
+            isPublic: false
+        })
 
-    await importedModule.save()
+        await ModuleCatalog.updateOne({ _id: moduleId }, { $inc: { 'stats.downloads': 1 } })
 
-    // Увеличить счётчик загрузок исходного модуля
-    await sourceModule.incrementDownloads?.() || await DynamicModule.findByIdAndUpdate(moduleId, {
-        $inc: { 'stats.downloads': 1 },
-        $set: { 'stats.lastUsed': new Date() }
-    })
-
-    // Возвращаем импортированный модуль с файлами
-    const result = importedModule.toObject()
-
-    return {
-        success: true,
-        module: result,
-        filesCopied: copiedFiles.length,
-        message: `Модуль "${sourceModule.name}" успешно импортирован в ваше предприятие. Скопировано файлов: ${copiedFiles.length}`
+        return {
+            success: true,
+            module: toClientModule(doc),
+            message: `Модуль «${name}» импортирован в базу предприятия`
+        }
+    } catch (e) {
+        throw toHttpError(e)
     }
 })
