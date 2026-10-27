@@ -1,6 +1,7 @@
 import { defineEventHandler, getRouterParam, readBody, createError } from 'h3'
 import { resolveActor, toHttpError } from '~~/server/utils/moloDb/access'
 import { findModule, updateModule } from '~~/server/utils/modules'
+import { validateDependencies } from '~~/server/utils/pythonEnv'
 
 // body: { action: 'add' | 'remove', packageName, version?, packageType?: 'dependencies' | 'devDependencies' }
 export default defineEventHandler(async (event) => {
@@ -16,6 +17,9 @@ export default defineEventHandler(async (event) => {
 
         const current: any = await findModule(enterpriseId, key)
         if (!current) throw createError({ statusCode: 404, message: 'Модуль не найден' })
+        if (action === 'add' && current.format === 'py' && packageName) {
+            validateDependencies({ [String(packageName)]: String(version || 'latest') })
+        }
 
         const deps: Record<string, string> = { ...(current.dependencies || {}) }
         const devDeps: Record<string, string> = { ...(current.devDependencies || {}) }

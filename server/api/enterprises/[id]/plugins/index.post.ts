@@ -1,5 +1,5 @@
 import { Plugin } from '~~/server/models/plugin.model'
-import { DynamicModule } from '~~/server/models/dynamicModules.model'
+import { tenantModels } from '~~/server/utils/tenantDb'
 
 export default defineEventHandler(async (event) => {
     const enterpriseId = getRouterParam(event, 'enterpriseId')
@@ -23,7 +23,7 @@ export default defineEventHandler(async (event) => {
     // Плагин обязан ссылаться на реально существующий в этом предприятии
     // модуль. Ищем строго по enterpriseId, чтобы нельзя было привязать
     // плагин к чужому модулю по угаданному fileName.
-    const targetModule = await DynamicModule.findOne({
+    const targetModule = await tenantModels(enterpriseId).DynamicModule.findOne({
         enterpriseId,
         fileName: body.targetFileName,
         isActive: true

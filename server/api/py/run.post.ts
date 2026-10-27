@@ -4,6 +4,10 @@ import { spawn } from 'node:child_process'
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
+import { enterpriseOfModule, loadModule } from '~~/server/utils/moduleLookup'
+import { issueModuleToken } from '~~/server/utils/moloDb/access'
+import { PY_CLIENT_SOURCE } from '~~/server/utils/moloDb/pythonClient'
+import { ensurePythonEnv, systemPython } from '~~/server/utils/pythonEnv'
 
 interface PyFilePayload {
     path: string
@@ -11,6 +15,7 @@ interface PyFilePayload {
 }
 
 interface RunRequestBody {
+    moduleId?: string
     entry?: string
     files?: PyFilePayload[]
     context?: Record<string, any>
@@ -94,7 +99,7 @@ function getRunnerCode(): string {
 
 export default defineEventHandler(async (event) => {
     const body = (await readBody<RunRequestBody>(event)) || {}
-    const { entry = 'main.py', files = [], context = {}, timeoutMs = 30000 } = body
+    const { entry = 'main.py', files = [], context = {}, timeoutMs = 30000, moduleId } = body
 
     if (!files.length && !entry) {
         throw createError({ statusCode: 400, statusMessage: 'Не переданы файлы для запуска' })
@@ -116,12 +121,30 @@ export default defineEventHandler(async (event) => {
             await fs.writeFile(targetPath, f.code || '', 'utf-8')
         }
 
+        // 1.1. Клиент мини-баз MoloFlow: чтобы `from moloflow_db import db` работал и здесь
+        const helperPath = path.join(runDir, 'moloflow_db.py')
+        await fs.access(helperPath).catch(() => fs.writeFile(helperPath, PY_CLIENT_SOURCE, 'utf-8'))
+
         // 2. Создаем файл раннера
         const runnerPath = path.join(runDir, '__molo_runner__.py')
         await fs.writeFile(runnerPath, getRunnerCode(), 'utf-8')
 
         // 3. Запускаем нативный системный Python
-        const pythonCmd = process.env.PYTHON_BIN || (process.platform === 'win32' ? 'python' : 'python3')
+        let pythonCmd = systemPython()
+        const dbEnv: Record<string, string> = {}
+        if (moduleId) {
+            const eid = await enterpriseOfModule(moduleId, (body as any).enterpriseId)
+            const mod: any = eid ? await loadModule(moduleId, eid, { lean: true }) : null
+            if (mod) {
+                pythonCmd = await ensurePythonEnv(String(mod._id), mod.dependencies || {}, {
+                    log: (text) => logs.push({ level: 'system', text: text.trim(), ts: Date.now() })
+                })
+                dbEnv.MOLO_API_URL = (process.env.MOLO_API_URL || `http://127.0.0.1:${process.env.NITRO_PORT || process.env.PORT || '3000'}`).replace(/\/$/, '')
+                dbEnv.MOLO_ENTERPRISE_ID = eid!
+                dbEnv.MOLO_MODULE_ID = String(mod._id)
+                dbEnv.MOLO_DB_TOKEN = await issueModuleToken(eid!, String(mod._id))
+            }
+        }
         const sanitizedEntry = sanitizeRelativePath(entry)
 
         // server/api/py/run.post.ts
@@ -130,6 +153,7 @@ export default defineEventHandler(async (event) => {
             cwd: runDir,
             env: {
                 ...process.env,
+                ...dbEnv,
                 PYTHONUNBUFFERED: '1',
                 PYTHONDONTWRITEBYTECODE: '1',
                 PYTHONIOENCODING: 'utf-8', // <-- Включает UTF-8 для stdout/stderr

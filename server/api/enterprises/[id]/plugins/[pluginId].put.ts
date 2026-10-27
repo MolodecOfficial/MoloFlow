@@ -1,5 +1,5 @@
 import { Plugin } from '~~/server/models/plugin.model'
-import { DynamicModule } from '~~/server/models/dynamicModules.model'
+import { tenantModels } from '~~/server/utils/tenantDb'
 
 export default defineEventHandler(async (event) => {
     const enterpriseId = getRouterParam(event, 'enterpriseId')
@@ -21,7 +21,7 @@ export default defineEventHandler(async (event) => {
     // Если fileName цели меняется — переваливаем привязку заново,
     // с той же валидацией существования, что и при создании.
     if (body.targetFileName && body.targetFileName !== existing.targetFileName) {
-        const targetModule = await DynamicModule.findOne({
+        const targetModule = await tenantModels(enterpriseId).DynamicModule.findOne({
             enterpriseId,
             fileName: body.targetFileName,
             isActive: true

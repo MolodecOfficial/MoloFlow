@@ -22,7 +22,7 @@ export default defineEventHandler(async (event) => {
             throw createError({ statusCode: 409, message: `База «${def.name}» уже существует` })
         }
 
-        await MoloDatabase.create({ ...def, createdBy: { _id: actor.id, name: actor.name || '' } })
+        await MoloDatabase.create({ enterpriseId, ...def, createdBy: { _id: actor.id, name: actor.name || '' } })
         invalidateDefCache(enterpriseId, def.name)
         return { success: true, database: def }
     } catch (e) {

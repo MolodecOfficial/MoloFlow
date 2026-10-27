@@ -7,7 +7,7 @@ import { Enterprise } from '~~/server/models/enterprise.model'
 import { checkEnterpriseAccess } from '~~/server/utils/enterpriseAuth'
 import { PERMISSIONS, ROLE_DEFAULT_PERMISSIONS } from '~/types/permissions'
 
-export const MODULE_FORMATS = ['vue', 'js', 'ts'] as const
+export const MODULE_FORMATS = ['vue', 'js', 'ts', 'py'] as const
 const FILE_NAME_RE = /^[\p{L}\p{N}_-]{1,80}$/u
 const MAX_FILES = 200
 const MAX_PREVIEW = 2_000_000
@@ -54,7 +54,7 @@ const buildFields = (body: Record<string, any>, partial: boolean) => {
         if (!FILE_NAME_RE.test(out.fileName)) throw bad('Имя файла: буквы, цифры, «_» и «-», до 80 символов')
     }
     if (has('format')) {
-        if (!(MODULE_FORMATS as readonly string[]).includes(body.format)) throw bad('Формат: vue, js или ts')
+        if (!(MODULE_FORMATS as readonly string[]).includes(body.format)) throw bad('Формат: vue, py, js или ts')
         out.format = body.format
     }
     if (has('description')) out.description = str(body.description, 500)

@@ -1,7 +1,7 @@
 // server/api/execute/[name].post.ts
 import { defineEventHandler, getRouterParam, readBody, createError } from 'h3'
 import { getModuleSandbox } from '~~/app/utils/moduleSandbox'
-import { DynamicModule } from '~~/server/models/dynamicModules.model'
+import { enterpriseOfModule, loadModule } from '~~/server/utils/moduleLookup'
 
 export default defineEventHandler(async (event) => {
     const moduleId = getRouterParam(event, 'name')
@@ -12,7 +12,8 @@ export default defineEventHandler(async (event) => {
         throw createError({ statusCode: 400, message: 'moduleId is required' })
     }
 
-    const mod = await DynamicModule.findById(moduleId).lean()
+    const enterpriseId = await enterpriseOfModule(moduleId, data?.enterpriseId)
+    const mod: any = enterpriseId ? await loadModule(moduleId, enterpriseId, { lean: true }) : null
     if (!mod) {
         throw createError({ statusCode: 404, message: 'Module not found' })
     }
@@ -25,7 +26,7 @@ export default defineEventHandler(async (event) => {
                 body: {
                     action: 'restart',
                     moduleId: mod._id.toString(),
-                    enterpriseId: mod.enterpriseId
+                    enterpriseId
                 }
             })
 
@@ -51,7 +52,7 @@ export default defineEventHandler(async (event) => {
 
     // ── JS / TS через VM ──
     try {
-        const sandbox = await getModuleSandbox(moduleId, String(mod.enterpriseId))
+        const sandbox = await getModuleSandbox(moduleId, String(enterpriseId))
         const { result, logs, entries, actions } = await sandbox.executeFile(fileName, data || {})
         return { result, logs, entries, actions }
     } catch (error: any) {

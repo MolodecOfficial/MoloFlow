@@ -19,6 +19,7 @@ import json
 import os
 import urllib.error
 import urllib.request
+from urllib.parse import quote
 
 
 class MoloDBError(Exception):
@@ -155,7 +156,7 @@ class MoloDB:
         if not self.enterprise or not self.token:
             raise MoloDBError("MoloDB не настроена: нет MOLO_ENTERPRISE_ID / MOLO_DB_TOKEN (бот запущен не из MoloFlow?)")
         req = urllib.request.Request(
-            f"{self.url}/api/enterprises/{self.enterprise}/moloDb/{db}/{col}",
+            f"{self.url}/api/enterprises/{quote(str(self.enterprise), safe='')}/moloDb/{quote(str(db), safe='')}/{quote(str(col), safe='')}",
             data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
             headers={"Content-Type": "application/json", "x-molo-db-token": self.token},
             method="POST",
@@ -172,6 +173,8 @@ class MoloDB:
             raise MoloDBError(message, e.code) from None
         except urllib.error.URLError as e:
             raise MoloDBError(f"Нет связи с MoloFlow: {e.reason}") from None
+        except (OSError, ValueError) as e:
+            raise MoloDBError(f"Ошибка связи с MoloFlow: {e}") from None
 
 
 db = MoloDB()

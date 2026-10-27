@@ -1,4 +1,3 @@
-<!-- components/apps/molo/Creature.vue -->
 <script lang="ts" setup>
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
@@ -811,6 +810,7 @@ onUnmounted(() => {
                 :class="selectedModuleId ? 'default' : 'confirm'"
                 @click="selectModule(null)"
             >
+              <UIMoloSticker name="pen"/>
               Создать
             </UIMoloButton>
 
@@ -820,6 +820,7 @@ onUnmounted(() => {
                 title="Запустить просмотр компонента"
                 @click="openPreview"
             >
+              <UIMoloSticker name="play"/>
               Запуск
             </UIMoloButton>
 
@@ -829,6 +830,7 @@ onUnmounted(() => {
                 title="Запустить Python-код"
                 @click="runPython"
             >
+              <UIMoloSticker name="play"/>
               Запуск
             </UIMoloButton>
           </section>

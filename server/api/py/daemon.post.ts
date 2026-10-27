@@ -4,9 +4,10 @@ import { spawn, execSync, type ChildProcess } from 'node:child_process'
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
-import { DynamicModule } from '~~/server/models/dynamicModules.model'
+import { enterpriseOfModule, loadModule } from '~~/server/utils/moduleLookup'
 import { issueModuleToken } from '~~/server/utils/moloDb/access'
 import { PY_CLIENT_SOURCE } from '~~/server/utils/moloDb/pythonClient'
+import { ensurePythonEnv } from '~~/server/utils/pythonEnv'
 
 interface ManagedProcess {
     pid: number
@@ -94,7 +95,8 @@ export default defineEventHandler(async (event) => {
     }
 
     // Загружаем актуальную версию модуля прямо из БД
-    const moduleDoc = await DynamicModule.findById(moduleId)
+    const eid = await enterpriseOfModule(moduleId, enterpriseId)
+    const moduleDoc: any = eid ? await loadModule(moduleId, eid) : null
     if (!moduleDoc || moduleDoc.format !== 'py') {
         throw createError({ statusCode: 404, message: 'Python-модуль не найден или не является .py' })
     }
@@ -128,10 +130,18 @@ export default defineEventHandler(async (event) => {
     } catch {
         await fs.writeFile(helperPath, PY_CLIENT_SOURCE, 'utf-8')
     }
-    const apiPort = getRequestURL(event).port || process.env.NITRO_PORT || process.env.PORT || '3000'
+    // Адрес API берём из конфигурации сервера, а НЕ из порта входящего запроса:
+    // за прокси / на https порт запроса пустой или чужой, и бот не достучится до баз.
+    const apiBase = (process.env.MOLO_API_URL || `http://127.0.0.1:${process.env.NITRO_PORT || process.env.PORT || '3000'}`).replace(/\/$/, '')
     const dbToken = await issueModuleToken(String(moduleDoc.enterpriseId), String(moduleDoc._id))
 
-    const pythonCmd = process.env.PYTHON_BIN || (process.platform === 'win32' ? 'python' : 'python3')
+    // Ставим pip-зависимости модуля ДО запуска бота (раньше этого не делалось → "module Not Found")
+    const depsObj: Record<string, string> = moduleDoc.dependencies instanceof Map
+        ? Object.fromEntries(moduleDoc.dependencies)
+        : { ...((moduleDoc.dependencies as any) || {}) }
+    const pythonCmd = await ensurePythonEnv(String(moduleDoc._id), depsObj, {
+        log: (text) => console.log(`[pip ${moduleDoc.name}]`, text.trim())
+    })
     const logsBuffer: string[] = []
 
     // Запуск процесса в новой директории без кэширования .pyc
@@ -145,7 +155,7 @@ export default defineEventHandler(async (event) => {
             PYTHONDONTWRITEBYTECODE: '1',
             PYTHONIOENCODING: 'utf-8',
             PYTHONUTF8: '1',
-            MOLO_API_URL: `http://127.0.0.1:${apiPort}`,
+            MOLO_API_URL: apiBase,
             MOLO_ENTERPRISE_ID: String(moduleDoc.enterpriseId),
             MOLO_MODULE_ID: String(moduleDoc._id),
             MOLO_DB_TOKEN: dbToken

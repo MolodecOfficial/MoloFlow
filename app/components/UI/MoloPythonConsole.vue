@@ -161,7 +161,7 @@ defineExpose({ run, stop, clear })
             title="Запустить Python-код"
             @click="() => run()"
         >
-          Запуск
+          <UIMoloSticker name="play"/>
         </UIMoloButton>
 
         <!-- Селектор переключения движка прямо в консоли -->
@@ -173,9 +173,15 @@ defineExpose({ run, stop, clear })
             valueKey="value"
         />
 
-        <UIMoloButton v-if="ownsRun" class="small close" @click="stop">Стоп</UIMoloButton>
-        <UIMoloButton class="small" :disabled="!logs.length && !result" @click="clear">Очистить</UIMoloButton>
-        <UIMoloButton class="small" @click="showContext = !showContext">Контекст</UIMoloButton>
+        <UIMoloButton v-if="ownsRun" class="small close" @click="stop">
+          <UIMoloSticker name="stop"/>
+        </UIMoloButton>
+        <UIMoloButton class="small" :disabled="!logs.length && !result" @click="clear">
+          <UIMoloSticker name="trash"/>
+        </UIMoloButton>
+        <UIMoloButton class="small" @click="showContext = !showContext">
+        <UIMoloSticker name="context"/>
+        </UIMoloButton>
       </div>
 
       <div class="pc-status">

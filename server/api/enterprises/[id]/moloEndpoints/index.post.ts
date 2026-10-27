@@ -3,7 +3,7 @@
 import { randomBytes } from 'node:crypto'
 import { defineEventHandler, getRouterParam, readBody, createError } from 'h3'
 import mongoose from 'mongoose'
-import { DynamicModule } from '~~/server/models/dynamicModules.model'
+import { tenantModels } from '~~/server/utils/tenantDb'
 import { MoloEndpoint } from '~~/server/models/moloEndpoint.model'
 import { resolveActor, toHttpError } from '~~/server/utils/moloDb/access'
 
@@ -32,7 +32,7 @@ export default defineEventHandler(async (event) => {
 
         const moduleId = String(body.moduleId || '')
         if (!mongoose.Types.ObjectId.isValid(moduleId)) throw bad('Выберите модуль')
-        const mod: any = await DynamicModule.findOne({ _id: moduleId, enterpriseId }).lean()
+        const mod: any = await tenantModels(enterpriseId).DynamicModule.findOne({ _id: moduleId, enterpriseId }).lean()
         if (!mod) throw bad('Модуль не найден', 404)
         if (mod.format !== 'js' && mod.format !== 'ts') throw bad('Эндпоинт можно привязать только к js/ts-модулю')
 
