@@ -22,18 +22,18 @@ const selectedUser = ref<number | null>(null)
 const categories = ref([
   {
     id: 1,
-    category: '🍎 Фрукты',
+    category: 'Фрукты',
     items: [
-      { _id: 1, name: '🍏 Яблоко' },
-      { _id: 2, name: '🍌 Банан' }
+      { _id: 1, name: 'Яблоко' },
+      { _id: 2, name: 'Банан' }
     ]
   },
   {
     id: 2,
-    category: '🥬 Овощи',
+    category: 'Овощи',
     items: [
-      { _id: 3, name: '🍅 Помидор' },
-      { _id: 4, name: '🥒 Огурец' }
+      { _id: 3, name: 'Помидор' },
+      { _id: 4, name: 'Огурец' }
     ]
   }
 ])
@@ -106,15 +106,15 @@ const addCustomNotice = () => {
 // 3. Навигация по секциям
 // ============================================================
 const sections = [
-  { id: 'input', title: 'MoloInput', icon: '/UI/input.png' },
-  { id: 'select', title: 'MoloSelect', icon: '/UI/select.png' },
-  { id: 'button', title: 'MoloButton', icon: '/UI/button.png' },
-  { id: 'modal', title: 'MoloModal', icon: '/UI/modal.png' },
-  { id: 'section', title: 'MoloSection', icon: '/UI/section.png' },
-  { id: 'logger', title: 'MoloLogger', icon: '/UI/logger.png' },
-  { id: 'notice', title: 'MoloNotice', icon: '/UI/notice.png' },
-  { id: 'loaders', title: 'MoloLoaders', icon: '/UI/loaders.png' },
-  { id: 'hooks', title: 'Хуки', icon: '/UI/hooks.png' },
+  { id: 'input', title: 'MoloInput', icon: 'type' },
+  { id: 'select', title: 'MoloSelect', icon: 'down' },
+  { id: 'button', title: 'MoloButton', icon: 'cursor' },
+  { id: 'modal', title: 'MoloModal', icon: 'square' },
+  { id: 'section', title: 'MoloSection', icon: 'folder' },
+  { id: 'logger', title: 'MoloLogger', icon: 'terminal' },
+  { id: 'notice', title: 'MoloNotice', icon: 'bell' },
+  { id: 'loaders', title: 'MoloLoaders', icon: 'refresh' },
+  { id: 'hooks', title: 'Хуки', icon: 'code' },
 ]
 
 const activeSection = ref('input')
@@ -125,10 +125,6 @@ const scrollToSection = (id: string) => {
   if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
-// Функция для проверки, является ли иконка путём к картинке
-const isImageIcon = (icon: string) => {
-  return icon.startsWith('/') || icon.startsWith('http') || icon.includes('.png') || icon.includes('.svg')
-}
 </script>
 
 <template>
@@ -151,20 +147,13 @@ const isImageIcon = (icon: string) => {
             :class="{ active: activeSection === section.id }"
             @click="scrollToSection(section.id)"
         >
-          <span class="nav-icon">
-            <img
-                v-if="isImageIcon(section.icon)"
-                :src="section.icon"
-                style="width: 24px; height: 24px; object-fit: contain;"
-            />
-            <span v-else>{{ section.icon }}</span>
-          </span>
+          <span class="nav-icon"><UIMoloSticker :name="section.icon" :size="20" /></span>
           <span class="nav-title">{{ section.title }}</span>
         </div>
       </nav>
 
       <div class="sidebar-footer">
-        <span>💡 Полная документация</span>
+        <span><UIMoloSticker name="info" :size="14" /> Полная документация</span>
       </div>
     </aside>
 
@@ -188,7 +177,7 @@ const isImageIcon = (icon: string) => {
         <!-- Вступление -->
         <section class="intro-section">
           <div class="intro-card">
-            <div class="intro-icon">🚀</div>
+            <div class="intro-icon"><UIMoloSticker name="rocket" :size="40" /></div>
             <div>
               <h2>Добро пожаловать</h2>
               <p>
@@ -220,7 +209,7 @@ const isImageIcon = (icon: string) => {
 
             <div class="props-card">
               <div class="card-header">
-                <span class="card-icon">⚙️</span>
+                <UIMoloSticker name="settings" :size="18" class="card-icon" />
                 <h3>Параметры (Props)</h3>
               </div>
               <div class="table-wrapper">
@@ -275,16 +264,16 @@ const isImageIcon = (icon: string) => {
 
             <div class="demo-card">
               <div class="card-header">
-                <span class="card-icon">🎮</span>
+                <UIMoloSticker name="gamepad" :size="18" class="card-icon" />
                 <h3>Интерактивная демонстрация</h3>
               </div>
               <div class="demo-content">
                 <div class="mode-selector">
                   <button
                       v-for="mode in [
-                      { value: 'default', label: '✏️ Обычный' },
-                      { value: 'address', label: '📍 Адрес' },
-                      { value: 'phone', label: '📞 Телефон' }
+                      { value: 'default', label: 'Обычный' },
+                      { value: 'address', label: 'Адрес' },
+                      { value: 'phone', label: 'Телефон' }
                     ]"
                       :key="mode.value"
                       class="mode-btn"
@@ -344,7 +333,7 @@ const isImageIcon = (icon: string) => {
 
             <div class="props-card">
               <div class="card-header">
-                <span class="card-icon">⚙️</span>
+                <UIMoloSticker name="settings" :size="18" class="card-icon" />
                 <h3>Параметры (Props)</h3>
               </div>
               <div class="table-wrapper">
@@ -399,13 +388,13 @@ const isImageIcon = (icon: string) => {
 
             <div class="demo-card">
               <div class="card-header">
-                <span class="card-icon">🎮</span>
+                <UIMoloSticker name="gamepad" :size="18" class="card-icon" />
                 <h3>Интерактивная демонстрация</h3>
               </div>
               <div class="demo-content">
                 <div class="demo-grid">
                   <div>
-                    <h4>📋 Простой список</h4>
+                    <h4><UIMoloSticker name="clipboard" :size="16" /> Простой список</h4>
                     <UIMoloSelect
                         v-model="selectedUser"
                         :parent="selectOptions"
@@ -418,7 +407,7 @@ const isImageIcon = (icon: string) => {
                     </div>
                   </div>
                   <div>
-                    <h4>📂 Вложенные списки</h4>
+                    <h4><UIMoloSticker name="folder-open" :size="16" /> Вложенные списки</h4>
                     <UIMoloSelect
                         v-model="selectedCategory"
                         :parent="categories"
@@ -437,7 +426,7 @@ const isImageIcon = (icon: string) => {
                         placeholder="Выберите товар"
                     />
                     <div v-if="selectedItemName" class="selected-info">
-                      ✅ Вы выбрали: <strong>{{ selectedItemName }}</strong>
+                      <UIMoloSticker name="check-circle" :size="14" /> Вы выбрали: <strong>{{ selectedItemName }}</strong>
                     </div>
                   </div>
                 </div>
@@ -465,7 +454,7 @@ const isImageIcon = (icon: string) => {
 
             <div class="props-card">
               <div class="card-header">
-                <span class="card-icon">⚙️</span>
+                <UIMoloSticker name="settings" :size="18" class="card-icon" />
                 <h3>Параметры (Props)</h3>
               </div>
               <div class="table-wrapper">
@@ -495,7 +484,7 @@ const isImageIcon = (icon: string) => {
 
             <div class="demo-card">
               <div class="card-header">
-                <span class="card-icon">🎨</span>
+                <UIMoloSticker name="palette" :size="18" class="card-icon" />
                 <h3>Варианты кнопок</h3>
               </div>
               <div class="demo-content">
@@ -534,7 +523,7 @@ const isImageIcon = (icon: string) => {
 
             <div class="props-card">
               <div class="card-header">
-                <span class="card-icon">⚙️</span>
+                <UIMoloSticker name="settings" :size="18" class="card-icon" />
                 <h3>Параметры (Props)</h3>
               </div>
               <div class="table-wrapper">
@@ -589,7 +578,7 @@ const isImageIcon = (icon: string) => {
 
             <div class="demo-card">
               <div class="card-header">
-                <span class="card-icon">🎮</span>
+                <UIMoloSticker name="gamepad" :size="18" class="card-icon" />
                 <h3>Интерактивная демонстрация</h3>
               </div>
               <div class="demo-content">
@@ -634,7 +623,7 @@ const isImageIcon = (icon: string) => {
 
             <div class="demo-card">
               <div class="card-header">
-                <span class="card-icon">🧩</span>
+                <UIMoloSticker name="puzzle" :size="18" class="card-icon" />
                 <h3>Пример использования</h3>
               </div>
               <div class="demo-content">
@@ -673,7 +662,7 @@ const isImageIcon = (icon: string) => {
 
             <div class="demo-card">
               <div class="card-header">
-                <span class="card-icon">✏️</span>
+                <UIMoloSticker name="pen" :size="18" class="card-icon" />
                 <h3>Добавление лога</h3>
               </div>
               <div class="demo-content">
@@ -717,7 +706,7 @@ const isImageIcon = (icon: string) => {
 
             <div class="demo-card">
               <div class="card-header">
-                <span class="card-icon">✏️</span>
+                <UIMoloSticker name="pen" :size="18" class="card-icon" />
                 <h3>Создание уведомления</h3>
               </div>
               <div class="demo-content">
@@ -769,7 +758,7 @@ const isImageIcon = (icon: string) => {
 
             <div class="demo-card">
               <div class="card-header">
-                <span class="card-icon">🎮</span>
+                <UIMoloSticker name="gamepad" :size="18" class="card-icon" />
                 <h3>Демонстрация</h3>
               </div>
               <div class="demo-content">
@@ -811,7 +800,7 @@ const isImageIcon = (icon: string) => {
               </p>
               <div class="props-card">
                 <div class="card-header">
-                  <span class="card-icon">📋</span>
+                  <UIMoloSticker name="clipboard" :size="18" class="card-icon" />
                   <h4>Методы</h4>
                 </div>
                 <div class="table-wrapper">
@@ -856,7 +845,7 @@ const isImageIcon = (icon: string) => {
 
               <div class="example-card">
                 <div class="card-header">
-                  <span class="card-icon">💻</span>
+                  <UIMoloSticker name="monitor" :size="18" class="card-icon" />
                   <h4>Пример использования</h4>
                 </div>
                 <div class="code-example">
@@ -880,7 +869,7 @@ const isImageIcon = (icon: string) => {
               </p>
               <div class="props-card">
                 <div class="card-header">
-                  <span class="card-icon">🔔</span>
+                  <UIMoloSticker name="bell" :size="18" class="card-icon" />
                   <h4>Методы</h4>
                 </div>
                 <div class="table-wrapper">
@@ -915,7 +904,7 @@ const isImageIcon = (icon: string) => {
 
               <div class="example-card">
                 <div class="card-header">
-                  <span class="card-icon">💻</span>
+                  <UIMoloSticker name="monitor" :size="18" class="card-icon" />
                   <h4>Пример использования</h4>
                 </div>
                 <div class="code-example">

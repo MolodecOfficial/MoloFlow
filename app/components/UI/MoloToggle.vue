@@ -9,8 +9,6 @@ const props = withDefaults(
       label?: string
       tLabel?: string
       lRequired?: boolean
-      trueLabel?: string
-      falseLabel?: string
       disabled?: boolean
       compact?: boolean
     }>(),
@@ -19,8 +17,6 @@ const props = withDefaults(
       label: '',
       tLabel: '',
       lRequired: false,
-      trueLabel: 'Выполнено (Да)',
-      falseLabel: 'Не выполнено (Нет)',
       disabled: false,
       compact: false
     }
@@ -59,20 +55,12 @@ function toggle() {
         @keydown.enter.prevent="toggle"
     >
       <div class="switch-capsule">
-        <span class="switch-thumb">
-          <MoloSticker
-              :name="isChecked ? 'sigma' : 'x'"
-              :size="8"
-              :color="isChecked ? '#059669' : '#64748b'"
-          />
+        <span class="switch-thumb">y
         </span>
       </div>
 
       <div class="toggle-info">
         <span v-if="label" class="toggle-title">{{ label }}</span>
-        <span class="toggle-status-text" :class="{ 'is-true': isChecked }">
-          {{ isChecked ? trueLabel : falseLabel }}
-        </span>
       </div>
     </div>
   </div>
@@ -81,7 +69,7 @@ function toggle() {
 <style scoped>
 .molo-toggle-wrapper {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   gap: 0.4rem;
   width: 100%;
   user-select: none;
@@ -110,9 +98,6 @@ function toggle() {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 7px 10px;
-  background-color: var(--half_opacity_bg);
-  border: 1px solid var(--half_opacity_border);
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.2s ease;

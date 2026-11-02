@@ -136,7 +136,7 @@ const commonSettings = ref({
   showPagination: true,
   itemsPerPage: 20,
   emptyStateMessage: 'Нет данных для отображения',
-  emptyStateIcon: '📭'
+  emptyStateIcon: 'inbox'
 })
 
 const form = ref({
@@ -228,7 +228,7 @@ function create(type: 'table' | 'card' | 'list') {
     showPagination: true,
     itemsPerPage: 20,
     emptyStateMessage: 'Нет данных для отображения',
-    emptyStateIcon: '📭'
+    emptyStateIcon: 'inbox'
   }
 
   showEditor.value = true
@@ -261,7 +261,7 @@ function edit(standard: any) {
   }
   commonSettings.value = standard.commonSettings || {
     showSearch: true, showFilters: true, showPagination: true,
-    itemsPerPage: 20, emptyStateMessage: 'Нет данных для отображения', emptyStateIcon: '📭'
+    itemsPerPage: 20, emptyStateMessage: 'Нет данных для отображения', emptyStateIcon: 'inbox'
   }
   showEditor.value = true
 }
@@ -374,9 +374,9 @@ onMounted(() => {
         <div class="create-section">
           <h4>Создать стандарт</h4>
           <div class="create-buttons">
-            <UIMoloButton class="action small" @click="create('table')">📊 Таблица</UIMoloButton>
-            <UIMoloButton class="action small" @click="create('card')">🃏 Карточки</UIMoloButton>
-            <UIMoloButton class="action small" @click="create('list')">📋 Список</UIMoloButton>
+            <UIMoloButton class="action small" @click="create('table')"><UIMoloSticker name="chart-bar" :size="14" /> Таблица</UIMoloButton>
+            <UIMoloButton class="action small" @click="create('card')"><UIMoloSticker name="card" :size="14" /> Карточки</UIMoloButton>
+            <UIMoloButton class="action small" @click="create('list')"><UIMoloSticker name="clipboard" :size="14" /> Список</UIMoloButton>
           </div>
         </div>
         <div class="standards-list">
@@ -389,27 +389,27 @@ onMounted(() => {
             <small>Загрузка...</small>
           </div>
           <div v-else-if="standards.length === 0" class="empty-state">
-            <p>📭 Нет стандартов</p>
+            <p><UIMoloSticker name="inbox" :size="20" /> Нет стандартов</p>
             <small>Создайте первый стандарт</small>
           </div>
           <div v-for="std in standards" :key="std._id" class="standard-item"
                :class="{ active: editingId === std._id, 'is-default': std.isDefault }">
             <div class="std-main" @click="edit(std)">
-              <div class="std-type-icon">{{ std.type === 'table' ? '📊' : std.type === 'card' ? '🃏' : '📋' }}</div>
+              <div class="std-type-icon"><UIMoloSticker :name="std.type === 'table' ? 'chart-bar' : std.type === 'card' ? 'card' : 'clipboard'" :size="20" /></div>
               <div class="std-info">
                 <div class="std-name">{{ std.name }}</div>
                 <div class="std-meta">
                   <span class="std-type-badge">{{ std.type === 'table' ? 'Таблица' : std.type === 'card' ? 'Карточки' : 'Список' }}</span>
-                  <span v-if="std.isDefault" class="default-badge">⭐ По умолчанию</span>
-                  <span class="std-type-badge">👁️ Не редактируемый</span>
+                  <span v-if="std.isDefault" class="default-badge"><UIMoloSticker name="star" :size="12" /> По умолчанию</span>
+                  <span class="std-type-badge"><UIMoloSticker name="eye" :size="12" /> Не редактируемый</span>
                 </div>
               </div>
             </div>
             <div class="std-actions">
-              <UIMoloButton class="action small" title="Редактировать" @click.stop="edit(std)">✎</UIMoloButton>
+              <UIMoloButton class="action small" title="Редактировать" @click.stop="edit(std)"><UIMoloSticker name="pen" :size="14" /></UIMoloButton>
               <UIMoloButton v-if="!std.isDefault" class="action small" title="По умолчанию"
-                          :disabled="settingDefault" @click.stop="setAsDefault(std)">⭐</UIMoloButton>
-              <UIMoloButton class="close small" title="Удалить" @click.stop="openDeleteModal(std)">×</UIMoloButton>
+                          :disabled="settingDefault" @click.stop="setAsDefault(std)"><UIMoloSticker name="star" :size="14" /></UIMoloButton>
+              <UIMoloButton class="close small" title="Удалить" @click.stop="openDeleteModal(std)"><UIMoloSticker name="x" :size="14" /></UIMoloButton>
             </div>
           </div>
         </div>

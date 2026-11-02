@@ -120,7 +120,7 @@ input[type="checkbox"] {
 }
 
 .btn-group {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   position: relative;
 
@@ -130,30 +130,11 @@ input[type="checkbox"] {
     margin: 0;
   }
 
-  /* Схлопывание двойного бордера между соседними кнопками */
-  .molo-btn:not(:first-child) {
-    margin-left: -1px;
-  }
-
-  .molo-btn:not(:first-child):not(:last-child) {
-    border-radius: 0;
-  }
-
-
-  /* Левая кнопка: скругление только слева */
-  .molo-btn:first-child {
-    border-top-left-radius: 6px;
-    border-bottom-left-radius: 6px;
-    border-top-right-radius: 0;
-    border-bottom-right-radius: 0;
-  }
-
-  /* Правая кнопка: скругление только справа */
-  .molo-btn:last-child {
-    border-top-right-radius: 6px;
-    border-bottom-right-radius: 6px;
-    border-top-left-radius: 0;
-    border-bottom-left-radius: 0;
+  /* Подъём активной кнопки над соседями при наведении */
+  .molo-btn:hover,
+  .molo-btn:focus,
+  .molo-btn.active {
+    z-index: 2;
   }
 
   /* Единственная кнопка в группе (если осталась одна) */
@@ -161,11 +142,60 @@ input[type="checkbox"] {
     border-radius: 6px;
   }
 
-  /* Подъём активной кнопки над соседями при наведении */
-  .molo-btn:hover,
-  .molo-btn:focus,
-  .molo-btn.active {
-    z-index: 2;
+  /* ═════════ 1. ГОРИЗОНТАЛЬНЫЙ РЕЖИМ (по умолчанию) ═════════ */
+  &:not(.column) {
+    flex-direction: row;
+
+    /* Схлопывание двойного бордера слева */
+    .molo-btn:not(:first-child) {
+      margin-left: -1px;
+      border-radius: 0;
+    }
+
+    /* Левая кнопка: скругление только слева */
+    .molo-btn:first-child {
+      border-top-left-radius: 6px;
+      border-bottom-left-radius: 6px;
+      border-top-right-radius: 0;
+      border-bottom-right-radius: 0;
+    }
+
+    /* Правая кнопка: скругление только справа */
+    .molo-btn:last-child {
+      border-top-right-radius: 6px;
+      border-bottom-right-radius: 6px;
+      border-top-left-radius: 0;
+      border-bottom-left-radius: 0;
+    }
+  }
+
+  /* ═════════ 2. ВЕРТИКАЛЬНЫЙ РЕЖИМ (.btn-group.column) ═════════ */
+  &.column {
+    flex-direction: column;
+    align-items: stretch; /* Растягивает кнопки по ширине колонки */
+
+    /* Схлопывание двойного бордера сверху */
+    .molo-btn:not(:first-child) {
+      margin-top: -1px;
+      margin-left: 0;
+      border-radius: 0;
+    }
+
+    /* Верхняя кнопка: скругление только сверху */
+    .molo-btn:first-child {
+      border-top-left-radius: 6px;
+      border-top-right-radius: 6px;
+      border-bottom-left-radius: 0;
+      border-bottom-right-radius: 0;
+    }
+
+    /* Нижняя кнопка: скругление только снизу */
+    .molo-btn:last-child {
+      border-bottom-left-radius: 6px;
+      border-bottom-right-radius: 6px;
+      border-top-left-radius: 0;
+      border-top-right-radius: 0;
+    }
   }
 }
 

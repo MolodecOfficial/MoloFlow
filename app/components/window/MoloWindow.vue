@@ -401,8 +401,7 @@ watch(() => props.window?.zIndex, (newZIndex) => {
               title="Свернуть"
               v-if="!isModal"
           >
-            _
-          </button>
+_          </button>
           <button
               class="control-btn maximize"
               @click="toggleMaximize"

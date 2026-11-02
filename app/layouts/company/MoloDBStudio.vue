@@ -322,10 +322,6 @@ async function saveRecord() {
 }
 
 async function deleteRecord() {
-  if (!rec.confirmDelete) {
-    rec.confirmDelete = true
-    return
-  }
   await guard(async () => {
     await admin.data(sel.db, sel.col, { op: 'delete', id: rec.id })
     addLog('warning', `Запись [${rec.id}] удалена`)
@@ -748,7 +744,7 @@ function onKey(e) {
             <span class="brand-title">MoloDB</span>
           </div>
 
-          <div class="head-actions">
+          <div class="btn-group">
             <UIMoloButton
                 v-if="canManage"
                 class="small"
@@ -857,7 +853,7 @@ function onKey(e) {
               </div>
             </div>
 
-            <div class="header-tabs">
+            <div class="btn-group">
               <UIMoloButton
                   class="small"
                   :class="{ confirm: tab === 'data' }"
@@ -909,7 +905,7 @@ function onKey(e) {
 
               <div class="actions-right">
                 <UIMoloButton
-                    class="small"
+                    class="small transparent"
                     title="Обновить таблицу"
                     :disabled="rowsLoading"
                     @click="loadRows"
@@ -989,9 +985,9 @@ function onKey(e) {
             </div>
 
             <footer v-if="total > PAGE" class="pagination-footer">
-              <UIMoloButton class="small" :disabled="skip === 0" @click="go(-1)">← Назад</UIMoloButton>
+              <UIMoloButton class="small" :disabled="skip === 0" @click="go(-1)"><UIMoloSticker name="left" :size="14" /> Назад</UIMoloButton>
               <span class="pager-info">{{ pageFrom }}–{{ pageTo }} из {{ total }}</span>
-              <UIMoloButton class="small" :disabled="skip + PAGE >= total" @click="go(1)">Далее →</UIMoloButton>
+              <UIMoloButton class="small" :disabled="skip + PAGE >= total" @click="go(1)">Далее <UIMoloSticker name="right" :size="14" /></UIMoloButton>
             </footer>
           </section>
 
@@ -1043,8 +1039,10 @@ function onKey(e) {
                               compact
                               :disabled="f.saved"
                               t-label="Тип данных"
+                              :parent="TYPES"
+                              children="t"
+                              value-key="v"
                           >
-                            <option v-for="t in TYPES" :key="t.v" :value="t.v">{{ t.t }}</option>
                           </UIMoloSelect>
                         </div>
 
@@ -1059,12 +1057,14 @@ function onKey(e) {
                         </div>
 
                         <div class="actions-col">
-                          <UIMoloButton class="small" title="Переместить выше" @click="moveField(i, -1)">
-                            <UIMoloSticker name="up" :size="10" />
-                          </UIMoloButton>
-                          <UIMoloButton class="small" title="Переместить ниже" @click="moveField(i, 1)">
-                            <UIMoloSticker name="down" :size="10" />
-                          </UIMoloButton>
+                          <div class="btn-group">
+                            <UIMoloButton class="small transparent" title="Переместить выше" @click="moveField(i, -1)">
+                              <UIMoloSticker name="up" :size="10" />
+                            </UIMoloButton>
+                            <UIMoloButton class="small transparent" title="Переместить ниже" @click="moveField(i, 1)">
+                              <UIMoloSticker name="down" :size="10" />
+                            </UIMoloButton>
+                          </div>
                           <UIMoloButton class="small close" title="Удалить поле" @click="removeField(i)">
                             <UIMoloSticker name="trash" :size="10" />
                           </UIMoloButton>
@@ -1202,7 +1202,7 @@ function onKey(e) {
           <!-- 3. ПОДКЛЮЧЕНИЕ / СНИППЕТЫ -->
           <section v-else-if="tab === 'code'" class="tab-pane code-pane">
             <div class="code-env-bar">
-              <div class="seg-buttons">
+              <div class="btn-group">
                 <UIMoloButton class="small" :class="{ confirm: lang === 'js' }" @click="lang = 'js'">Vue / JS</UIMoloButton>
                 <UIMoloButton class="small" :class="{ confirm: lang === 'server' }" @click="lang = 'server'">Сервер</UIMoloButton>
                 <UIMoloButton class="small" :class="{ confirm: lang === 'py' }" @click="lang = 'py'">Python</UIMoloButton>
@@ -1362,6 +1362,12 @@ function onKey(e) {
           </div>
         </div>
       </template>
+      <template #footer>
+        <UIMoloButton @click="deleteRecord" class="close small">
+          <UIMoloSticker name="trash"/>
+          Удалить
+        </UIMoloButton>
+      </template>
     </UIMoloModal>
 
     <!-- МОДАЛКА: СОЗДАНИЕ БД -->
@@ -1519,7 +1525,7 @@ function onKey(e) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 12px;
+  padding: 9px 12px;
   border-bottom: 1px solid var(--line);
   flex-shrink: 0;
 }

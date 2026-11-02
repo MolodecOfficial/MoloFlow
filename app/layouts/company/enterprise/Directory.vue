@@ -1,20 +1,24 @@
 <!-- components/directory/Directory.vue -->
 <script lang="ts" setup>
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useAppStore } from '~~/stores/appStore'
 import { useDirectoryInterpolator } from '~/composables/useDirectoryInterpolator'
 import { useLogger } from '~/composables/useLogger'
 import { useNotifications } from '~/composables/useNotifications'
+
+import UIMoloButton from '~/components/ui/MoloButton.vue'
+import UIMoloInput from '~/components/ui/MoloInput.vue'
+import UIMoloSelect from '~/components/ui/MoloSelect.vue'
+import UIMoloToggle from '~/components/ui/MoloToggle.vue'
+import UIMoloModal from '~/components/ui/MoloModal.vue'
+import UIMoloLoaders from '~/components/ui/MoloLoaders.vue'
 import MoloSticker from '~/components/ui/MoloSticker.vue'
-import MoloToggle from '~/components/ui/MoloToggle.vue'
 
-export type FieldType = 'text' | 'number' | 'date' | 'boolean' | 'select'
+type FieldType = 'text' | 'number' | 'date' | 'boolean' | 'select'
 
-interface DepartmentItem {
-  _id?: string
-  key: string
-  name: string
-  description?: string
+interface FieldOption {
+  label: string
+  value: string | number
 }
 
 interface FieldSchema {
@@ -23,7 +27,7 @@ interface FieldSchema {
   placeholder?: string
   required?: boolean
   type?: FieldType
-  options?: Array<{ label: string; value: string | number }>
+  options?: FieldOption[]
   span?: 1 | 2
 }
 
@@ -37,6 +41,14 @@ interface DirectoryMeta {
   titlePlaceholder: string
   groupByKey?: string
   fields: FieldSchema[]
+  isCustom?: boolean
+}
+
+interface DepartmentItem {
+  _id?: string
+  key: string
+  name: string
+  description?: string
 }
 
 interface DirectoryItem {
@@ -44,9 +56,10 @@ interface DirectoryItem {
   code: string
   title: string
   description?: string
-  parentId: string | null
+  parentId?: string | null
   attributes: Record<string, any>
-  createdAt: string
+  createdAt?: string
+  updatedAt?: string
 }
 
 const props = defineProps<{
@@ -59,58 +72,29 @@ const interpolator = useDirectoryInterpolator()
 const { addNotification } = useNotifications('Справочники')
 const { addLog } = useLogger('Справочники')
 
-// ─────────────────────────────────────────────────────────────
-// РЕЕСТР ОТДЕЛОВ (ЧИСТЫЙ СПИСОК БЕЗ ХАРДКОДА)
-// ─────────────────────────────────────────────────────────────
-const departments = ref<DepartmentItem[]>([])
+/* -------------------------------------------------------------------------- */
+/* CONSTANTS                                                                  */
+/* -------------------------------------------------------------------------- */
 
-const isAddDeptModalOpen = ref(false)
-const newDeptForm = ref({
-  key: '',
-  name: '',
-  description: ''
-})
-
-// Модалка удаления отдела
-const deleteDeptModalOpen = ref(false)
-const deptToDelete = ref<DepartmentItem | null>(null)
-const deletingDeptLoading = ref(false)
-
-// Фильтруем элементы, чтобы не попадали пустые/битые объекты
-const validDepartments = computed(() => {
-  return departments.value.filter((d) => Boolean(d && (d.key || d.name)))
-})
-
-const departmentOptions = computed(() =>
-    validDepartments.value.map((d) => ({
-      label: `${d.name || 'Без названия'} [${d.key || 'no-key'}]`,
-      value: d.name || ''
-    }))
-)
-
-// Все сотрудники компании для подсчета людей в отделах
-const allEmployeesList = ref<DirectoryItem[]>([])
-
-const STATIC_CONFIG = computed<Record<string, DirectoryMeta>>(() => ({
+const BASE_CONFIG: Record<string, DirectoryMeta> = {
   departments: {
-    label: 'Сотрудники и отделы',
+    label: 'Сотрудники',
     value: 'departments',
     sticker: 'departments',
     codeLabel: 'Табельный номер / ID',
-    codePlaceholder: 'EMP-01',
-    titleLabel: 'ФИО Сотрудника',
+    codePlaceholder: 'EMP-001',
+    titleLabel: 'ФИО сотрудника',
     titlePlaceholder: 'Иванов Иван Иванович',
     groupByKey: 'department',
     fields: [
       {
         key: 'department',
-        label: 'Отдел компании',
+        label: 'Отдел',
         type: 'select',
-        required: true,
-        options: departmentOptions.value
+        options: []
       },
-      { key: 'role', label: 'Должность / Роль', placeholder: 'Ведущий инженер' },
-      { key: 'phone', label: 'Контактный телефон', placeholder: '+7 (999) 000-00-00' },
+      { key: 'role', label: 'Должность', placeholder: 'Ведущий инженер' },
+      { key: 'phone', label: 'Телефон', placeholder: '+7 (999) 000-00-00' },
       { key: 'birthDate', label: 'Дата рождения', type: 'date' },
       { key: 'isProbation', label: 'Испытательный срок', type: 'boolean' }
     ]
@@ -120,25 +104,25 @@ const STATIC_CONFIG = computed<Record<string, DirectoryMeta>>(() => ({
     value: 'counterparties',
     sticker: 'counterparties',
     codeLabel: 'ИНН',
-    codePlaceholder: '10 или 12 цифр',
+    codePlaceholder: '7701234567',
     titleLabel: 'Наименование / ФИО',
-    titlePlaceholder: 'ООО "Компания"',
+    titlePlaceholder: 'ООО «Компания»',
     fields: [
       { key: 'kpp', label: 'КПП', placeholder: '770101001' },
       { key: 'phone', label: 'Телефон', placeholder: '+7...' },
-      { key: 'isVerified', label: 'Проверен СБ', type: 'boolean' }
+      { key: 'isVerified', label: 'Проверен', type: 'boolean' }
     ]
   },
   bank_accounts: {
-    label: 'Банковские реквизиты',
+    label: 'Банковские счета',
     value: 'bank_accounts',
     sticker: 'bank',
-    codeLabel: 'БИК Банка',
+    codeLabel: 'БИК банка',
     codePlaceholder: '044525225',
     titleLabel: 'Наименование банка',
-    titlePlaceholder: 'ПАО СБЕРБАНК',
+    titlePlaceholder: 'Название банка',
     fields: [
-      { key: 'accountNumber', label: 'Расчётный счёт', placeholder: '40702810...', required: true },
+      { key: 'accountNumber', label: 'Расчётный счёт', required: true },
       { key: 'isMain', label: 'Основной счёт', type: 'boolean' }
     ]
   },
@@ -147,11 +131,11 @@ const STATIC_CONFIG = computed<Record<string, DirectoryMeta>>(() => ({
     value: 'nomenclature',
     sticker: 'nomenclature',
     codeLabel: 'Артикул / SKU',
-    codePlaceholder: 'ART-01',
+    codePlaceholder: 'ART-001',
     titleLabel: 'Наименование',
-    titlePlaceholder: 'Товар',
+    titlePlaceholder: 'Товар или услуга',
     fields: [
-      { key: 'unit', label: 'Ед. изм.', placeholder: 'шт', required: true },
+      { key: 'unit', label: 'Единица измерения', placeholder: 'шт.', required: true },
       { key: 'inStock', label: 'В наличии', type: 'boolean' }
     ]
   },
@@ -165,338 +149,48 @@ const STATIC_CONFIG = computed<Record<string, DirectoryMeta>>(() => ({
     titlePlaceholder: 'Service Level Agreement',
     fields: []
   }
-}))
+}
 
 const currentType = ref('departments')
 const customDirectories = ref<DirectoryMeta[]>([])
-
-const allConfigs = computed(() => {
-  const map: Record<string, DirectoryMeta> = { ...STATIC_CONFIG.value }
-  for (const c of customDirectories.value) {
-    map[c.value] = c
-  }
-  return map
-})
-
-const directoryTypes = computed(() =>
-    Object.values(allConfigs.value).map((cfg) => ({ label: cfg.label, value: cfg.value }))
-)
-
-const currentMeta = computed(() => allConfigs.value[currentType.value] || STATIC_CONFIG.value.departments)
-
+const departments = ref<DepartmentItem[]>([])
 const items = ref<DirectoryItem[]>([])
+const allEmployeesList = ref<DirectoryItem[]>([])
+
 const loading = ref(false)
-const syncing = ref(false)
+const saving = ref(false)
+const departmentsLoading = ref(false)
 const searchQuery = ref('')
 const selectedItem = ref<DirectoryItem | null>(null)
-const selectedSectionFilter = ref<string>('all')
+const selectedSectionFilter = ref('all')
+const sortMode = ref<'title' | 'newest' | 'oldest'>('title')
 
 const itemModalOpen = ref(false)
 const isEditing = ref(false)
 const editingId = ref<string | null>(null)
 
-const itemForm = ref({
-  code: '',
-  title: '',
-  description: '',
-  departmentKey: '',
-  attributes: {} as Record<string, any>
-})
-
 const deleteModalOpen = ref(false)
 const itemToDelete = ref<DirectoryItem | null>(null)
+const deleting = ref(false)
 
-// Модальное окно просмотра людей по отделу
+const createDirModalOpen = ref(false)
+const editingDefinitionSlug = ref<string | null>(null)
+const definitionSaving = ref(false)
+
+const isAddDeptModalOpen = ref(false)
+const deleteDeptModalOpen = ref(false)
 const deptPeopleModalOpen = ref(false)
+const deptToDelete = ref<DepartmentItem | null>(null)
 const viewingDept = ref<DepartmentItem | null>(null)
 const deptEmployees = ref<DirectoryItem[]>([])
+const deletingDeptLoading = ref(false)
 
-function getEntId(): string {
-  if (props.enterpriseId) return String(props.enterpriseId)
-  if (appStore.getEnterpriseId()) return String(appStore.getEnterpriseId())
-  const fromStorage = localStorage.getItem('currentEnterprise')
-  if (fromStorage) {
-    try {
-      const parsed = JSON.parse(fromStorage)
-      return String(parsed._id || parsed.id || parsed.inn || '')
-    } catch {}
-  }
-  return ''
-}
+const newDeptForm = ref({
+  key: '',
+  name: '',
+  description: ''
+})
 
-// ─────────────────────────────────────────────────────────────
-// УПРАВЛЕНИЕ И УДАЛЕНИЕ ОТДЕЛОВ
-// ─────────────────────────────────────────────────────────────
-function openAddDepartmentModal() {
-  newDeptForm.value = {
-    key: '',
-    name: '',
-    description: ''
-  }
-  isAddDeptModalOpen.value = true
-}
-
-async function saveNewDepartment() {
-  const name = String(newDeptForm.value.name || '').trim()
-  if (!name) {
-    addNotification('warning', 'Укажите название отдела')
-    addLog('warning', 'Попытка сохранения отдела без названия')
-    return
-  }
-
-  const generatedKey = (
-      String(newDeptForm.value.key || '').trim() ||
-      name
-          .toLowerCase()
-          .replace(/[^a-z0-9_]/g, '_')
-          .replace(/_+/g, '_')
-  ).toLowerCase()
-
-  const enterpriseId = getEntId()
-  addLog('info', `Сохранение отдела "${name}" [${generatedKey}]...`)
-
-  try {
-    const saved = await $fetch<DepartmentItem>('/api/directory/departments', {
-      method: 'POST',
-      body: {
-        enterpriseId,
-        key: generatedKey,
-        name,
-        description: newDeptForm.value.description
-      }
-    })
-
-    const idx = departments.value.findIndex((d) => String(d?.key || '').toLowerCase() === generatedKey)
-    if (idx !== -1) {
-      departments.value[idx] = saved
-    } else {
-      departments.value.push(saved)
-    }
-
-    addNotification('success', `Отдел «${name}» [${generatedKey}] сохранён!`)
-    addLog('success', `Отдел "${name}" [${generatedKey}] успешно записан в базу`)
-
-    if (itemModalOpen.value) {
-      itemForm.value.attributes.department = name
-      itemForm.value.departmentKey = generatedKey
-      itemForm.value.attributes.departmentKey = generatedKey
-    }
-
-    isAddDeptModalOpen.value = false
-  } catch (err: any) {
-    addLog('error', `Ошибка при создании отдела на сервере: ${err?.message || err}`)
-    addNotification('error', 'Не удалось сохранить отдел на сервере')
-  }
-}
-
-function requestDeleteDepartment(dept: DepartmentItem, e?: Event) {
-  if (e) e.stopPropagation()
-  deptToDelete.value = dept
-  deleteDeptModalOpen.value = true
-}
-
-async function confirmDeleteDepartment() {
-  if (!deptToDelete.value) return
-  const enterpriseId = getEntId()
-  const targetKey = String(deptToDelete.value.key || '').trim().toLowerCase()
-  const targetName = String(deptToDelete.value.name || '').trim()
-
-  deletingDeptLoading.value = true
-  addLog('info', `Инициализация удаления отдела "${targetName}" [${targetKey}]...`)
-
-  try {
-    await $fetch(`/api/directory/departments/${targetKey}`, {
-      method: 'DELETE',
-      query: { enterpriseId }
-    })
-
-    departments.value = departments.value.filter(
-        (d) => String(d?.key || '').toLowerCase() !== targetKey
-    )
-
-    if (itemForm.value.attributes?.department === targetName || itemForm.value.departmentKey === targetKey) {
-      itemForm.value.attributes.department = ''
-      itemForm.value.departmentKey = ''
-      delete itemForm.value.attributes.departmentKey
-    }
-
-    if (viewingDept.value?.key === targetKey) {
-      deptPeopleModalOpen.value = false
-      viewingDept.value = null
-    }
-
-    addNotification('success', `Отдел «${targetName}» успешно удалён`)
-    addLog('success', `Отдел "${targetName}" [${targetKey}] удален из системы`)
-    deleteDeptModalOpen.value = false
-    deptToDelete.value = null
-
-    interpolator.invalidateCache()
-    await loadItems()
-    await loadAllEmployees()
-  } catch (err: any) {
-    const status = err?.statusCode || err?.status || err?.response?.status
-    if (status === 404) {
-      addLog('warning', `Отдел [${targetKey}] не найден в БД, локальное состояние очищено`)
-      departments.value = departments.value.filter(
-          (d) => String(d?.key || '').toLowerCase() !== targetKey
-      )
-      deleteDeptModalOpen.value = false
-      deptToDelete.value = null
-      addNotification('info', `Отдел «${targetName}» удалён из отображения`)
-    } else {
-      addLog('error', `Сбой удаления отдела [${targetKey}]: ${err?.data?.message || err?.message}`)
-      addNotification('error', err?.data?.message || err?.message || 'Не удалось удалить отдел')
-    }
-  } finally {
-    deletingDeptLoading.value = false
-  }
-}
-
-async function loadDepartments() {
-  const enterpriseId = getEntId()
-  if (!enterpriseId) return
-
-  addLog('info', `Загрузка отделов предприятия ${enterpriseId}...`)
-  try {
-    const list = await $fetch<DepartmentItem[]>('/api/directory/departments', {
-      query: { enterpriseId }
-    })
-    if (Array.isArray(list)) {
-      departments.value = list.filter((item) => Boolean(item && (item.key || item.name)))
-      addLog('success', `Получено отделов с сервера: ${departments.value.length}`)
-    } else {
-      departments.value = []
-    }
-  } catch (err: any) {
-    addLog('error', `Не удалось загрузить отделы: ${err?.message || err}`)
-    departments.value = []
-  }
-}
-
-// ─────────────────────────────────────────────────────────────
-// ПОИСК ЛЮДЕЙ ПО ОТДЕЛУ И БЕЗОПАСНЫЙ ПОДСЧЕТ
-// ─────────────────────────────────────────────────────────────
-async function loadAllEmployees() {
-  const enterpriseId = getEntId()
-  if (!enterpriseId) return
-  try {
-    const res = await $fetch<DirectoryItem[]>('/api/directory/items', {
-      query: { enterpriseId, directorySlug: 'departments' }
-    })
-    allEmployeesList.value = Array.isArray(res) ? res : []
-    addLog('info', `Загружен список штата: ${allEmployeesList.value.length} чел.`)
-  } catch (err: any) {
-    addLog('warning', `Не удалось загрузить список сотрудников: ${err?.message || err}`)
-  }
-}
-
-function getDepartmentHeadcount(dept: DepartmentItem | undefined | null): number {
-  if (!dept) return 0
-  const targetKey = String(dept.key ?? '').trim().toLowerCase()
-  const targetName = String(dept.name ?? '').trim().toLowerCase()
-  if (!targetKey && !targetName) return 0
-
-  return (allEmployeesList.value || []).filter((emp) => {
-    if (!emp) return false
-    const attrs = emp.attributes || {}
-    const empDept = String(attrs.department ?? '').trim().toLowerCase()
-    const empDeptKey = String(attrs.departmentKey ?? '').trim().toLowerCase()
-
-    const matchByKey = Boolean(targetKey && empDeptKey === targetKey)
-    const matchByName = Boolean(targetName && empDept === targetName)
-
-    return matchByKey || matchByName
-  }).length
-}
-
-function inspectDepartmentPeople(dept: DepartmentItem | undefined | null) {
-  if (!dept) return
-  viewingDept.value = dept
-
-  const targetKey = String(dept.key ?? '').trim().toLowerCase()
-  const targetName = String(dept.name ?? '').trim().toLowerCase()
-
-  deptEmployees.value = (allEmployeesList.value || []).filter((emp) => {
-    if (!emp) return false
-    const attrs = emp.attributes || {}
-    const empDept = String(attrs.department ?? '').trim().toLowerCase()
-    const empDeptKey = String(attrs.departmentKey ?? '').trim().toLowerCase()
-
-    const matchByKey = Boolean(targetKey && empDeptKey === targetKey)
-    const matchByName = Boolean(targetName && empDept === targetName)
-
-    return matchByKey || matchByName
-  })
-
-  addLog('info', `Инспекция отдела "${dept.name}": привязано ${deptEmployees.value.length} чел.`)
-  deptPeopleModalOpen.value = true
-}
-
-// ─────────────────────────────────────────────────────────────
-// АВТОПОДСТАНОВКА ПО ID СОТРУДНИКА
-// ─────────────────────────────────────────────────────────────
-async function handleLookupEmployeeById(targetCode?: string) {
-  const codeToLookup = String(targetCode || itemForm.value.code || '').trim()
-  if (!codeToLookup) {
-    addNotification('warning', 'Сначала введите ID сотрудника')
-    return
-  }
-
-  addLog('info', `Поиск сотрудника по ID: ${codeToLookup}`)
-  const employee = await interpolator.findEmployeeById(codeToLookup)
-  if (!employee) {
-    addNotification('warning', `Сотрудник с ID «${codeToLookup}» не найден`)
-    addLog('warning', `Сотрудник с ID ${codeToLookup} не найден`)
-    return
-  }
-
-  itemForm.value.title = employee.title || ''
-
-  if (employee.phone) itemForm.value.attributes.phone = employee.phone
-  if (employee.role) {
-    itemForm.value.attributes.role = employee.role
-    itemForm.value.attributes.profession = employee.role
-  }
-  if (employee.department) {
-    itemForm.value.attributes.department = employee.department
-    const foundDept = departments.value.find(
-        (d) => String(d?.name || '').toLowerCase() === String(employee.department || '').toLowerCase()
-    )
-    if (foundDept && foundDept.key) {
-      itemForm.value.departmentKey = foundDept.key
-      itemForm.value.attributes.departmentKey = foundDept.key
-    }
-  }
-  if (employee.raw?.birthDate) {
-    itemForm.value.attributes.birthDate = employee.raw.birthDate
-  }
-
-  addNotification('info', `Данные «${employee.title}» успешно подставлены!`)
-  addLog('success', `Данные сотрудника ${employee.title} интерполированы в форму`)
-}
-
-async function onCodeFieldBlur() {
-  if (String(itemForm.value.code || '').trim() && !String(itemForm.value.title || '').trim()) {
-    await handleLookupEmployeeById()
-  }
-}
-
-watch(
-    () => itemForm.value.attributes.department,
-    (newDeptName) => {
-      if (newDeptName) {
-        const cleanTarget = String(newDeptName).toLowerCase()
-        const found = departments.value.find((d) => String(d?.name || '').toLowerCase() === cleanTarget)
-        if (found && found.key) {
-          itemForm.value.departmentKey = found.key
-          itemForm.value.attributes.departmentKey = found.key
-        }
-      }
-    }
-)
-
-/* Создание нового справочника */
-const createDirModalOpen = ref(false)
 const newDirForm = ref({
   title: '',
   slug: '',
@@ -506,100 +200,566 @@ const newDirForm = ref({
   fields: [] as FieldSchema[]
 })
 
-function addCustomField() {
-  newDirForm.value.fields.push({
-    key: `field_${Date.now()}`,
-    label: '',
-    type: 'text',
-    span: 1
-  })
+const itemForm = ref({
+  code: '',
+  title: '',
+  description: '',
+  departmentKey: '',
+  attributes: {} as Record<string, any>
+})
+
+let searchTimer: ReturnType<typeof setTimeout> | null = null
+
+/* -------------------------------------------------------------------------- */
+/* HELPERS                                                                    */
+/* -------------------------------------------------------------------------- */
+
+function getEntId(): string {
+  if (props.enterpriseId) return String(props.enterpriseId)
+  const storeId = appStore.getEnterpriseId?.()
+  if (storeId) return String(storeId)
+
+  if (typeof localStorage === 'undefined') return ''
+  const raw = localStorage.getItem('currentEnterprise')
+  if (!raw) return ''
+
+  try {
+    const parsed = JSON.parse(raw)
+    return String(parsed?._id || parsed?.id || parsed?.enterpriseId || '')
+  } catch {
+    return raw
+  }
 }
 
-function removeCustomField(idx: number) {
-  newDirForm.value.fields.splice(idx, 1)
+function transliterate(value: string): string {
+  const dictionary: Record<string, string> = {
+    а: 'a', б: 'b', в: 'v', г: 'g', д: 'd',
+    е: 'e', ё: 'yo', ж: 'zh', з: 'z', и: 'i',
+    й: 'y', к: 'k', л: 'l', м: 'm', н: 'n',
+    о: 'o', п: 'p', р: 'r', с: 's', т: 't',
+    у: 'u', ф: 'f', х: 'h', ц: 'ts', ч: 'ch',
+    ш: 'sh', щ: 'sch', ъ: '', ы: 'y', ь: '',
+    э: 'e', ю: 'yu', я: 'ya'
+  }
+
+  return value
+      .toLowerCase()
+      .split('')
+      .map(char => dictionary[char] ?? char)
+      .join('')
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '')
+      .replace(/_+/g, '_')
+}
+
+function normalizeSlug(value: string): string {
+  return transliterate(value.trim()).replace(/_+/g, '_')
+}
+
+function normalizeKey(value: string): string {
+  return transliterate(value.trim()).replace(/^_+|_+$/g, '')
+}
+
+function errorMessage(error: any, fallback: string): string {
+  return error?.data?.message ||
+      error?.response?._data?.message ||
+      error?.message ||
+      fallback
+}
+
+function notifyError(error: any, fallback: string) {
+  addNotification('error', errorMessage(error, fallback))
+}
+
+function invalidate(slug?: string) {
+  interpolator.invalidateCache(slug)
+}
+
+function getInitials(value: string): string {
+  const parts = String(value || '').trim().split(/\s+/).filter(Boolean)
+  if (!parts.length) return '?'
+  return parts.slice(0, 2).map(part => part[0].toUpperCase()).join('')
+}
+
+function formatDate(value: any): string {
+  if (!value) return '—'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return String(value)
+
+  return new Intl.DateTimeFormat('ru-RU', {
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric'
+  }).format(date)
+}
+
+function displayValue(value: any, field?: FieldSchema): string {
+  if (value === null || value === undefined || value === '') return '—'
+  if (field?.type === 'boolean') return value ? 'Да' : 'Нет'
+  if (field?.type === 'date') return formatDate(value)
+
+  if (field?.type === 'select') {
+    const option = field.options?.find(opt => String(opt.value) === String(value))
+    return option?.label || String(value)
+  }
+
+  if (typeof value === 'object') return JSON.stringify(value)
+  return String(value)
+}
+
+/* -------------------------------------------------------------------------- */
+/* COMPUTED & OPTIONS                                                         */
+/* -------------------------------------------------------------------------- */
+
+const departmentOptions = computed(() =>
+    departments.value.map(dept => ({
+      label: dept.name,
+      value: dept.name
+    }))
+)
+
+const staticConfigs = computed<Record<string, DirectoryMeta>>(() => ({
+  ...BASE_CONFIG,
+  departments: {
+    ...BASE_CONFIG.departments,
+    fields: BASE_CONFIG.departments.fields.map(field =>
+        field.key === 'department'
+            ? { ...field, options: departmentOptions.value }
+            : field
+    )
+  }
+}))
+
+const allConfigs = computed<Record<string, DirectoryMeta>>(() => {
+  const result = { ...staticConfigs.value }
+  for (const config of customDirectories.value) {
+    result[config.value] = config
+  }
+  return result
+})
+
+const currentMeta = computed(() =>
+    allConfigs.value[currentType.value] || staticConfigs.value.departments
+)
+
+const directoryTypes = computed(() => Object.values(allConfigs.value))
+const isEmployeeDirectory = computed(() => currentType.value === 'departments')
+
+const visibleFields = computed(() =>
+    currentMeta.value.fields.filter(field =>
+        !(isEmployeeDirectory.value && field.key === 'department')
+    )
+)
+
+const filteredItems = computed(() => {
+  let result = [...items.value]
+
+  if (selectedSectionFilter.value !== 'all' && currentMeta.value.groupByKey) {
+    result = result.filter(item =>
+        String(item.attributes?.[currentMeta.value.groupByKey!] || 'Общее') === selectedSectionFilter.value
+    )
+  }
+
+  const query = searchQuery.value.trim().toLocaleLowerCase('ru')
+  if (query) {
+    result = result.filter(item => {
+      const values = [
+        item.title,
+        item.code,
+        item.description,
+        ...Object.values(item.attributes || {})
+      ]
+      return values.some(val =>
+          String(val ?? '').toLocaleLowerCase('ru').includes(query)
+      )
+    })
+  }
+
+  if (sortMode.value === 'title') {
+    result.sort((a, b) => a.title.localeCompare(b.title, 'ru'))
+  } else if (sortMode.value === 'newest') {
+    result.sort((a, b) =>
+        new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
+    )
+  } else {
+    result.sort((a, b) =>
+        new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime()
+    )
+  }
+
+  return result
+})
+
+const availableSectionTabs = computed(() => {
+  const key = currentMeta.value.groupByKey
+  if (!key) return []
+
+  return [...new Set(items.value.map(item =>
+      String(item.attributes?.[key] || 'Общее')
+  ))].sort((a, b) => a.localeCompare(b, 'ru'))
+})
+
+const totalEmployees = computed(() => allEmployeesList.value.length)
+const selectedDepartmentCount = computed(() =>
+    viewingDept.value ? getDepartmentHeadcount(viewingDept.value) : 0
+)
+const customDirectoryCount = computed(() => customDirectories.value.length)
+const directoryCounts = computed(() => ({
+  total: items.value.length,
+  filtered: filteredItems.value.length
+}))
+
+/* -------------------------------------------------------------------------- */
+/* API CALLS & ACTIONS                                                        */
+/* -------------------------------------------------------------------------- */
+
+async function loadDepartments() {
+  const enterpriseId = getEntId()
+  if (!enterpriseId) return
+
+  departmentsLoading.value = true
+  try {
+    const result = await $fetch<DepartmentItem[]>('/api/directory/departments', {
+      query: { enterpriseId }
+    })
+    departments.value = Array.isArray(result)
+        ? result.filter(item => item && (item.key || item.name))
+        : []
+  } catch (error: any) {
+    departments.value = []
+    addLog('error', `Ошибка загрузки отделов: ${errorMessage(error, 'Неизвестная ошибка')}`)
+  } finally {
+    departmentsLoading.value = false
+  }
+}
+
+async function loadAllEmployees() {
+  const enterpriseId = getEntId()
+  if (!enterpriseId) return
+
+  try {
+    const result = await $fetch<DirectoryItem[]>('/api/directory/items', {
+      query: { enterpriseId, directorySlug: 'departments' }
+    })
+    allEmployeesList.value = Array.isArray(result) ? result : []
+  } catch (error: any) {
+    addLog('warning', `Не удалось загрузить сотрудников: ${errorMessage(error, 'Ошибка')}`)
+  }
+}
+
+function getDepartmentHeadcount(dept: DepartmentItem | null | undefined): number {
+  if (!dept) return 0
+  const key = String(dept.key || '').toLowerCase()
+  const name = String(dept.name || '').toLowerCase()
+
+  return allEmployeesList.value.filter(employee => {
+    const attrs = employee.attributes || {}
+    return (
+        String(attrs.departmentKey || '').toLowerCase() === key ||
+        String(attrs.department || '').toLowerCase() === name
+    )
+  }).length
+}
+
+function inspectDepartmentPeople(dept: DepartmentItem) {
+  viewingDept.value = dept
+  deptEmployees.value = allEmployeesList.value.filter(employee => {
+    const attrs = employee.attributes || {}
+    return (
+        String(attrs.departmentKey || '').toLowerCase() === String(dept.key || '').toLowerCase() ||
+        String(attrs.department || '').toLowerCase() === String(dept.name || '').toLowerCase()
+    )
+  })
+  deptPeopleModalOpen.value = true
+}
+
+function openAddDepartmentModal() {
+  newDeptForm.value = { key: '', name: '', description: '' }
+  isAddDeptModalOpen.value = true
+}
+
+async function saveNewDepartment() {
+  const name = newDeptForm.value.name.trim()
+  if (!name) {
+    addNotification('warning', 'Укажите название отдела')
+    return
+  }
+
+  const key = normalizeKey(newDeptForm.value.key || name)
+  if (!key) {
+    addNotification('warning', 'Не удалось сформировать ключ отдела')
+    return
+  }
+
+  const duplicate = departments.value.some(dept =>
+      dept.key.toLowerCase() === key ||
+      dept.name.toLowerCase() === name.toLowerCase()
+  )
+  if (duplicate) {
+    addNotification('warning', 'Отдел с таким названием или ключом уже существует')
+    return
+  }
+
+  const enterpriseId = getEntId()
+  if (!enterpriseId) {
+    addNotification('error', 'Не определено предприятие')
+    return
+  }
+
+  try {
+    const saved = await $fetch<DepartmentItem>('/api/directory/departments', {
+      method: 'POST',
+      body: {
+        enterpriseId,
+        key,
+        name,
+        description: newDeptForm.value.description.trim()
+      }
+    })
+
+    departments.value.push(saved || {
+      key,
+      name,
+      description: newDeptForm.value.description
+    })
+
+    isAddDeptModalOpen.value = false
+    addNotification('success', `Отдел «${name}» создан`)
+    await loadAllEmployees()
+  } catch (error: any) {
+    notifyError(error, 'Не удалось создать отдел')
+  }
+}
+
+function requestDeleteDepartment(dept: DepartmentItem) {
+  deptToDelete.value = dept
+  deleteDeptModalOpen.value = true
+}
+
+async function confirmDeleteDepartment() {
+  if (!deptToDelete.value) return
+  const dept = deptToDelete.value
+  const enterpriseId = getEntId()
+
+  deletingDeptLoading.value = true
+  try {
+    await $fetch(`/api/directory/departments/${encodeURIComponent(dept.key)}`, {
+      method: 'DELETE',
+      query: { enterpriseId }
+    })
+
+    departments.value = departments.value.filter(item => item.key !== dept.key)
+
+    if (itemForm.value.attributes.department === dept.name) {
+      itemForm.value.attributes.department = ''
+      itemForm.value.departmentKey = ''
+      itemForm.value.attributes.departmentKey = ''
+    }
+
+    deleteDeptModalOpen.value = false
+    deptPeopleModalOpen.value = false
+    deptToDelete.value = null
+
+    addNotification('success', `Отдел «${dept.name}» удалён`)
+    await Promise.all([
+      loadAllEmployees(),
+      currentType.value === 'departments' ? loadItems() : Promise.resolve()
+    ])
+  } catch (error: any) {
+    notifyError(error, 'Не удалось удалить отдел')
+  } finally {
+    deletingDeptLoading.value = false
+  }
+}
+
+async function loadDefinitions() {
+  try {
+    const result = await interpolator.fetchDefinitions()
+    customDirectories.value = (Array.isArray(result) ? result : [])
+        .filter(definition => definition?.slug)
+        .map(definition => ({
+          label: definition.title || definition.slug,
+          value: definition.slug,
+          sticker: 'folder',
+          codeLabel: definition.codeLabel || 'Код / ID',
+          codePlaceholder: definition.codePlaceholder || '001',
+          titleLabel: definition.titleLabel || 'Наименование',
+          titlePlaceholder: definition.titlePlaceholder || 'Введите значение',
+          groupByKey: definition.groupByKey,
+          fields: (definition.fields || []).map((field: FieldSchema) => ({
+            ...field,
+            type: field.type || 'text'
+          })),
+          isCustom: true
+        }))
+  } catch (error: any) {
+    addLog('error', `Ошибка загрузки определений: ${errorMessage(error, 'Ошибка')}`)
+    addNotification('error', 'Не удалось загрузить пользовательские справочники')
+  }
 }
 
 function openCreateDirectoryModal() {
+  editingDefinitionSlug.value = null
   newDirForm.value = {
     title: '',
     slug: '',
     aliases: '',
-    codeLabel: 'ID Сотрудника',
-    titleLabel: 'ФИО Сотрудника',
+    codeLabel: 'Код / ID',
+    titleLabel: 'Наименование',
     fields: [
-      { key: 'birthDate', label: 'Дата рождения', type: 'date', span: 1 },
       { key: 'phone', label: 'Телефон', type: 'text', span: 1 },
-      { key: 'role', label: 'Должность', type: 'text', span: 1 },
-      { key: 'status', label: 'Статус задачи/Флаг', type: 'boolean', span: 1 }
+      { key: 'status', label: 'Статус', type: 'boolean', span: 1 }
     ]
   }
   createDirModalOpen.value = true
 }
 
+function openEditDefinition() {
+  const config = currentMeta.value
+  if (!config.isCustom) return
+
+  editingDefinitionSlug.value = config.value
+  newDirForm.value = {
+    title: config.label,
+    slug: config.value,
+    aliases: '',
+    codeLabel: config.codeLabel,
+    titleLabel: config.titleLabel,
+    fields: config.fields.map(field => ({ ...field }))
+  }
+  createDirModalOpen.value = true
+}
+
+function addCustomField() {
+  newDirForm.value.fields.push({
+    key: '',
+    label: '',
+    type: 'text',
+    required: false,
+    span: 1
+  })
+}
+
+function removeCustomField(index: number) {
+  newDirForm.value.fields.splice(index, 1)
+}
+
+function normalizeFields(): FieldSchema[] | null {
+  const keys = new Set<string>()
+  const fields: FieldSchema[] = []
+
+  for (const field of newDirForm.value.fields) {
+    const label = String(field.label || '').trim()
+    const key = normalizeKey(field.key || label)
+
+    if (!label) {
+      addNotification('warning', 'У каждой колонки должно быть название')
+      return null
+    }
+    if (!key) {
+      addNotification('warning', `Не удалось сформировать ключ поля «${label}»`)
+      return null
+    }
+    if (['code', 'title', 'description', 'attributes', '_id'].includes(key)) {
+      addNotification('warning', `Ключ «${key}» зарезервирован системой`)
+      return null
+    }
+    if (keys.has(key)) {
+      addNotification('warning', `Поле «${key}» повторяется`)
+      return null
+    }
+
+    keys.add(key)
+    fields.push({
+      ...field,
+      key,
+      label,
+      type: field.type || 'text',
+      span: field.span === 2 ? 2 : 1,
+      required: Boolean(field.required)
+    })
+  }
+
+  return fields
+}
+
 async function saveNewDirectory() {
-  if (!String(newDirForm.value.title || '').trim()) {
+  const title = newDirForm.value.title.trim()
+  const slug = normalizeSlug(newDirForm.value.slug || title)
+
+  if (!title) {
     addNotification('warning', 'Укажите название справочника')
     return
   }
+  if (!slug) {
+    addNotification('warning', 'Не удалось сформировать системный ключ')
+    return
+  }
 
-  const generatedSlug =
-      String(newDirForm.value.slug || '').trim() ||
-      String(newDirForm.value.title || '')
-          .trim()
-          .toLowerCase()
-          .replace(/[^a-z0-9_]/g, '_')
-          .replace(/_+/g, '_') ||
-      `dir_${Date.now()}`
+  const existing = allConfigs.value[slug]
+  if (existing && slug !== editingDefinitionSlug.value) {
+    addNotification('warning', 'Справочник с таким ключом уже существует')
+    return
+  }
 
-  const parsedAliases = String(newDirForm.value.aliases || '')
-      .split(',')
-      .map((s) => s.trim().toLowerCase())
-      .filter(Boolean)
-
-  parsedAliases.push(String(newDirForm.value.title || '').trim().toLowerCase())
-  parsedAliases.push(generatedSlug.toLowerCase())
+  const fields = normalizeFields()
+  if (!fields) return
 
   const enterpriseId = getEntId()
-  addLog('info', `Создание справочника "${newDirForm.value.title}" [${generatedSlug}]...`)
+  if (!enterpriseId) {
+    addNotification('error', 'Не определено предприятие')
+    return
+  }
 
+  const aliases = new Set(
+      newDirForm.value.aliases
+          .split(',')
+          .map(val => val.trim().toLowerCase())
+          .filter(Boolean)
+  )
+  aliases.add(title.toLowerCase())
+  aliases.add(slug.toLowerCase())
+
+  definitionSaving.value = true
   try {
     await $fetch('/api/directory/definitions', {
       method: 'POST',
       body: {
         enterpriseId,
-        slug: generatedSlug,
-        title: newDirForm.value.title,
-        aliases: Array.from(new Set(parsedAliases)),
-        codeLabel: newDirForm.value.codeLabel,
-        titleLabel: newDirForm.value.titleLabel,
-        fields: newDirForm.value.fields
+        slug,
+        title,
+        aliases: Array.from(aliases),
+        codeLabel: newDirForm.value.codeLabel.trim() || 'Код / ID',
+        titleLabel: newDirForm.value.titleLabel.trim() || 'Наименование',
+        fields
       }
     })
 
-    addNotification('success', `Справочник «${newDirForm.value.title}» создан!`)
-    addLog('success', `Справочник ${generatedSlug} успешно сохранён`)
-    createDirModalOpen.value = false
     await loadDefinitions()
-    currentType.value = generatedSlug
-  } catch (err: any) {
-    addLog('error', `Ошибка при сохранении справочника: ${err?.message || err}`)
-    addNotification('error', 'Не удалось сохранить справочник')
+    invalidate(slug)
+
+    currentType.value = slug
+    createDirModalOpen.value = false
+    addNotification('success', `Справочник «${title}» сохранён`)
+  } catch (error: any) {
+    notifyError(error, 'Не удалось сохранить справочник')
+  } finally {
+    definitionSaving.value = false
   }
 }
 
-async function loadDefinitions() {
-  const list = await interpolator.fetchDefinitions()
-  customDirectories.value = (list || []).map((d) => ({
-    label: d.title,
-    value: d.slug,
-    sticker: 'folder',
-    codeLabel: d.codeLabel || 'Код / ID',
-    codePlaceholder: '001',
-    titleLabel: d.titleLabel || 'Наименование',
-    titlePlaceholder: 'Введите значение...',
-    groupByKey: d.groupByKey,
-    fields: (d.fields || []) as FieldSchema[]
-  }))
+function initAttributesDefaults(): Record<string, any> {
+  const attributes: Record<string, any> = {}
+  for (const field of currentMeta.value.fields) {
+    if (field.type === 'boolean') {
+      attributes[field.key] = false
+    } else if (field.type === 'select') {
+      attributes[field.key] = field.options?.[0]?.value ?? ''
+    } else {
+      attributes[field.key] = ''
+    }
+  }
+  return attributes
 }
 
 async function loadItems() {
@@ -607,107 +767,44 @@ async function loadItems() {
   if (!enterpriseId) return
 
   loading.value = true
-  addLog('info', `Запрос записей раздела [${currentType.value}]...`)
-
   try {
-    const data = await $fetch<DirectoryItem[]>('/api/directory/items', {
+    const result = await $fetch<DirectoryItem[]>('/api/directory/items', {
       query: {
         enterpriseId,
         directorySlug: currentType.value,
-        search: String(searchQuery.value || '').trim() || undefined
+        search: searchQuery.value.trim() || undefined
       }
     })
-    items.value = Array.isArray(data) ? data : []
-    addLog('success', `Загружено записей: ${items.value.length} шт.`)
-
-    if (currentType.value === 'departments') {
-      allEmployeesList.value = items.value
-    }
+    items.value = Array.isArray(result) ? result : []
 
     if (selectedItem.value) {
-      selectedItem.value = items.value.find((i) => i._id === selectedItem.value?._id) || items.value[0] || null
-    } else if (items.value.length > 0) {
-      selectedItem.value = items.value[0]
+      selectedItem.value =
+          items.value.find(item => item._id === selectedItem.value?._id) || null
     }
-  } catch (err: any) {
-    addLog('error', `Не удалось загрузить записи [${currentType.value}]: ${err?.message || err}`)
-    addNotification('error', 'Не удалось загрузить записи')
+  } catch (error: any) {
+    items.value = []
+    notifyError(error, 'Не удалось загрузить записи')
+    addLog('error', `Ошибка загрузки ${currentType.value}: ${errorMessage(error, 'Ошибка')}`)
   } finally {
     loading.value = false
   }
 }
 
-const groupedSections = computed(() => {
-  const groupKey = currentMeta.value.groupByKey
-  if (!groupKey) {
-    return [{ title: 'Все записи', items: items.value }]
-  }
-
-  const map = new Map<string, DirectoryItem[]>()
-  for (const item of items.value) {
-    const rawVal = item.attributes?.[groupKey]
-    const sectionName = rawVal ? String(rawVal) : 'Общее'
-    const list = map.get(sectionName) || []
-    list.push(item)
-    map.set(sectionName, list)
-  }
-
-  const result: Array<{ title: string; items: DirectoryItem[] }> = []
-  for (const [title, list] of map.entries()) {
-    if (selectedSectionFilter.value === 'all' || selectedSectionFilter.value === title) {
-      result.push({ title, items: list })
-    }
-  }
-  return result
-})
-
-const availableSectionTabs = computed(() => {
-  const groupKey = currentMeta.value.groupByKey
-  if (!groupKey) return []
-  const set = new Set<string>()
-  for (const item of items.value) {
-    const rawVal = item.attributes?.[groupKey]
-    if (rawVal) set.add(String(rawVal))
-  }
-  return Array.from(set)
-})
-
-function initAttributesDefaults(): Record<string, any> {
-  const attrs: Record<string, any> = {}
-  for (const field of currentMeta.value.fields) {
-    if (field.type === 'select' && field.options?.length) {
-      attrs[field.key] = field.options[0].value
-    } else if (field.type === 'boolean') {
-      attrs[field.key] = false
-    } else {
-      attrs[field.key] = ''
-    }
-  }
-  return attrs
-}
-
-function openCreateModal(prefillSection?: string) {
+function openCreateModal(section?: string) {
   isEditing.value = false
   editingId.value = null
-  const defaults = initAttributesDefaults()
 
-  if (prefillSection && currentMeta.value.groupByKey && prefillSection !== 'all') {
-    defaults[currentMeta.value.groupByKey] = prefillSection
+  const attributes = initAttributesDefaults()
+  if (section && section !== 'all' && currentMeta.value.groupByKey) {
+    attributes[currentMeta.value.groupByKey] = section
   }
-
-  const defaultDept = departments.value[0]?.name || ''
-  const defaultKey = departments.value[0]?.key || ''
 
   itemForm.value = {
     code: '',
     title: '',
     description: '',
-    departmentKey: defaultKey,
-    attributes: {
-      ...defaults,
-      department: defaults.department || defaultDept,
-      departmentKey: defaultKey
-    }
+    departmentKey: '',
+    attributes
   }
   itemModalOpen.value = true
 }
@@ -716,86 +813,93 @@ function openEditModal(item: DirectoryItem) {
   isEditing.value = true
   editingId.value = item._id
 
-  const mergedAttrs = { ...initAttributesDefaults(), ...(item.attributes || {}) }
-  const deptKey = item.attributes?.departmentKey || ''
-
   itemForm.value = {
     code: item.code || '',
-    title: item.title,
+    title: item.title || '',
     description: item.description || '',
-    departmentKey: deptKey,
-    attributes: mergedAttrs
+    departmentKey: item.attributes?.departmentKey || '',
+    attributes: {
+      ...initAttributesDefaults(),
+      ...(item.attributes || {})
+    }
   }
   itemModalOpen.value = true
 }
 
-async function saveItem() {
-  if (!String(itemForm.value.title || '').trim()) {
+function validateItem(): boolean {
+  if (!itemForm.value.title.trim()) {
     addNotification('warning', `Укажите «${currentMeta.value.titleLabel}»`)
+    return false
+  }
+
+  for (const field of currentMeta.value.fields) {
+    if (!field.required) continue
+    const value = itemForm.value.attributes[field.key]
+    if (value === null || value === undefined || String(value).trim() === '') {
+      addNotification('warning', `Заполните обязательное поле «${field.label}»`)
+      return false
+    }
+  }
+
+  return true
+}
+
+async function saveItem() {
+  if (saving.value || !validateItem()) return
+
+  const enterpriseId = getEntId()
+  if (!enterpriseId) {
+    addNotification('error', 'Не определено предприятие')
     return
   }
 
-  if (itemForm.value.attributes?.department) {
-    const targetDeptName = String(itemForm.value.attributes.department).toLowerCase()
-    const d = departments.value.find((x) => String(x?.name || '').toLowerCase() === targetDeptName)
-    if (d && d.key) {
-      itemForm.value.attributes.departmentKey = d.key
-    }
+  const attributes = { ...itemForm.value.attributes }
+  if (isEmployeeDirectory.value && attributes.department) {
+    const department = departments.value.find(item =>
+        item.name.toLowerCase() === String(attributes.department).toLowerCase()
+    )
+    attributes.departmentKey = department?.key || itemForm.value.departmentKey || ''
   }
 
-  const enterpriseId = getEntId()
-  addLog('info', `Сохранение карточки "${itemForm.value.title}"...`)
+  const payload = {
+    enterpriseId,
+    directorySlug: currentType.value,
+    code: itemForm.value.code.trim(),
+    title: itemForm.value.title.trim(),
+    description: itemForm.value.description.trim(),
+    attributes,
+    departmentKey: itemForm.value.departmentKey
+  }
 
+  saving.value = true
   try {
     if (isEditing.value && editingId.value) {
-      await $fetch(`/api/directory/items/${editingId.value}`, {
+      await $fetch(`/api/directory/items/${encodeURIComponent(editingId.value)}`, {
         method: 'PATCH',
-        body: itemForm.value
+        body: payload
       })
-      addNotification('success', 'Запись обновлена')
-      addLog('success', `Запись ${editingId.value} обновлена`)
     } else {
       await $fetch('/api/directory/items', {
         method: 'POST',
-        body: {
-          enterpriseId,
-          directorySlug: currentType.value,
-          ...itemForm.value
-        }
+        body: payload
       })
-      addNotification('success', 'Запись сохранена')
-      addLog('success', `Создана новая запись в [${currentType.value}]`)
     }
+
     itemModalOpen.value = false
-    interpolator.invalidateCache(currentType.value)
-    await loadItems()
-    await loadAllEmployees()
-  } catch (err: any) {
-    addLog('error', `Ошибка сохранения записи: ${err?.message || err}`)
-    addNotification('error', 'Ошибка сохранения записи')
-  }
-}
+    selectedItem.value = null
+    invalidate(currentType.value)
 
-async function syncEnterpriseData() {
-  const enterpriseId = getEntId()
-  if (!enterpriseId) return
-
-  syncing.value = true
-  addLog('info', `Синхронизация данных предприятия ${enterpriseId}...`)
-  try {
-    const res = await $fetch<{ success: boolean; importedCount: number }>('/api/directory/enterprise-sync', {
-      method: 'POST',
-      body: { enterpriseId }
-    })
-    addNotification('success', `Синхронизировано: ${res.importedCount}`)
-    addLog('success', `Синхронизация завершена, импортировано: ${res.importedCount}`)
+    addNotification('success', isEditing.value ? 'Запись обновлена' : 'Запись создана')
     await loadItems()
-    await loadAllEmployees()
-  } catch (err: any) {
-    addLog('error', `Ошибка синхронизации: ${err?.message || err}`)
-    addNotification('error', 'Ошибка синхронизации')
+
+    if (isEmployeeDirectory.value) {
+      await loadAllEmployees()
+    }
+  } catch (error: any) {
+    notifyError(error, 'Не удалось сохранить запись')
+    addLog('error', `Ошибка сохранения: ${errorMessage(error, 'Ошибка')}`)
   } finally {
-    syncing.value = false
+    saving.value = false
   }
 }
 
@@ -805,352 +909,626 @@ function requestDelete(item: DirectoryItem) {
 }
 
 async function confirmDelete() {
-  if (!itemToDelete.value) return
-  addLog('info', `Удаление записи "${itemToDelete.value.title}" [${itemToDelete.value._id}]...`)
+  if (!itemToDelete.value || deleting.value) return
+  const item = itemToDelete.value
+  const enterpriseId = getEntId()
+
+  deleting.value = true
   try {
-    await $fetch(`/api/directory/items/${itemToDelete.value._id}`, { method: 'DELETE' })
-    addNotification('success', 'Запись удалена')
-    addLog('success', `Запись [${itemToDelete.value._id}] удалена`)
-    deleteModalOpen.value = false
-    if (selectedItem.value?._id === itemToDelete.value._id) {
+    await $fetch(`/api/directory/items/${encodeURIComponent(item._id)}`, {
+      method: 'DELETE',
+      query: { enterpriseId, directorySlug: currentType.value }
+    })
+
+    if (selectedItem.value?._id === item._id) {
       selectedItem.value = null
     }
-    interpolator.invalidateCache(currentType.value)
+
+    deleteModalOpen.value = false
     itemToDelete.value = null
+    invalidate(currentType.value)
+
+    addNotification('success', 'Запись удалена')
     await loadItems()
-    await loadAllEmployees()
-  } catch (err: any) {
-    addLog('error', `Не удалось удалить запись: ${err?.message || err}`)
-    addNotification('error', 'Не удалось удалить запись')
+
+    if (isEmployeeDirectory.value) {
+      await loadAllEmployees()
+    }
+  } catch (error: any) {
+    notifyError(error, 'Не удалось удалить запись')
+  } finally {
+    deleting.value = false
   }
 }
 
-let searchTimer: ReturnType<typeof setTimeout> | null = null
+async function handleLookupEmployeeById() {
+  if (!isEmployeeDirectory.value) return
+  const code = itemForm.value.code.trim()
+
+  if (!code) {
+    addNotification('warning', 'Введите ID сотрудника')
+    return
+  }
+
+  try {
+    const employee = await interpolator.findEmployeeById(code)
+    if (!employee) {
+      addNotification('warning', `Сотрудник с ID «${code}» не найден`)
+      return
+    }
+
+    itemForm.value.title = employee.title || ''
+    if (employee.phone) itemForm.value.attributes.phone = employee.phone
+    if (employee.role) itemForm.value.attributes.role = employee.role
+    if (employee.department) {
+      itemForm.value.attributes.department = employee.department
+      const department = departments.value.find(item =>
+          item.name.toLowerCase() === employee.department.toLowerCase()
+      )
+      if (department) {
+        itemForm.value.departmentKey = department.key
+        itemForm.value.attributes.departmentKey = department.key
+      }
+    }
+    if (employee.raw?.birthDate) {
+      itemForm.value.attributes.birthDate = employee.raw.birthDate
+    }
+
+    addNotification('success', `Данные «${employee.title}» подставлены`)
+  } catch (error: any) {
+    notifyError(error, 'Не удалось найти сотрудника')
+  }
+}
+
+function onCodeFieldBlur() {
+  if (
+      isEmployeeDirectory.value &&
+      itemForm.value.code.trim() &&
+      !itemForm.value.title.trim()
+  ) {
+    handleLookupEmployeeById()
+  }
+}
+
+function getFieldOptions(field: FieldSchema): FieldOption[] {
+  if (field.key === 'department') return departmentOptions.value
+  return field.options || []
+}
+
+function addSelectOption(field: FieldSchema) {
+  if (!field.options) field.options = []
+  const index = field.options.length + 1
+  field.options.push({
+    label: `Вариант ${index}`,
+    value: `option_${index}`
+  })
+}
+
+function removeSelectOption(field: FieldSchema, index: number) {
+  field.options?.splice(index, 1)
+}
+
+/* -------------------------------------------------------------------------- */
+/* WATCHERS & LIFECYCLE                                                       */
+/* -------------------------------------------------------------------------- */
+
+watch(
+    () => itemForm.value.attributes.department,
+    value => {
+      const department = departments.value.find(item =>
+          item.name.toLowerCase() === String(value || '').toLowerCase()
+      )
+      itemForm.value.departmentKey = department?.key || ''
+      itemForm.value.attributes.departmentKey = department?.key || ''
+    }
+)
+
 watch(searchQuery, () => {
   if (searchTimer) clearTimeout(searchTimer)
   searchTimer = setTimeout(() => {
-    const q = String(searchQuery.value || '').trim().toLowerCase()
-    if (q) {
-      const matchingDept = departments.value.find(
-          (d) => String(d?.key || '').toLowerCase() === q || `dept:${String(d?.key || '').toLowerCase()}` === q
-      )
-      if (matchingDept?.name) {
-        searchQuery.value = matchingDept.name
-      }
-    }
     loadItems()
   }, 250)
 })
 
-watch(currentType, () => {
+watch(currentType, async () => {
   selectedItem.value = null
   selectedSectionFilter.value = 'all'
   searchQuery.value = ''
-  loadItems()
+  await loadItems()
 })
 
 onMounted(async () => {
-  addLog('info', 'Инициализация панели справочников...')
-  await loadDepartments()
-  await loadDefinitions()
+  addLog('info', 'Инициализация справочников MoloFlow')
+  await Promise.all([
+    loadDepartments(),
+    loadDefinitions(),
+    loadAllEmployees()
+  ])
   await loadItems()
-  await loadAllEmployees()
+})
+
+onBeforeUnmount(() => {
+  if (searchTimer) clearTimeout(searchTimer)
 })
 </script>
 
 <template>
   <div class="directory-app">
+
+    <!-- HEADER -->
     <header class="directory-header">
-      <div class="header-left">
-        <MoloSticker :name="currentMeta.sticker" :size="16" glow />
-        <span class="header-title">Справочник:</span>
-        <div class="type-select-wrap">
-          <UIMoloSelect
-              v-model="currentType"
-              compact
-              :parent="directoryTypes"
-              children="label"
-              valueKey="value"
-          />
+      <div class="header-main">
+        <div class="header-icon">
+          <MoloSticker name="folder" :size="19" glow />
         </div>
-        <section class="btn-group">
-          <UIMoloButton
-              class="small"
-              title="Добавить новый отдел с ключом"
-              @click="openAddDepartmentModal"
-          >
-            + Отдел
-          </UIMoloButton>
-          <UIMoloButton class="small confirm" title="Создать новый справочник" @click="openCreateDirectoryModal">
-            + Справочник
-          </UIMoloButton>
-        </section>
+
+        <div class="header-heading">
+          <div class="header-title">Справочники</div>
+          <div class="header-subtitle">Единое пространство данных предприятия</div>
+        </div>
       </div>
 
-      <div class="header-right">
-        <div class="search-box">
-          <UIMoloInput
-              v-model="searchQuery"
-              compact
-              placeholder="Поиск по ФИО, ID, ключу отдела..."
-          />
-        </div>
-        <section class="btn-group">
-          <UIMoloButton
-              v-if="currentType === 'departments' || currentType === 'bank_accounts'"
-              class="small"
-              :disabled="syncing"
-              :loading="syncing"
-              @click="syncEnterpriseData"
-          >
-            {{ syncing ? 'Синхронизация...' : 'Синхронизировать' }}
-          </UIMoloButton>
-          <UIMoloButton class="small confirm" @click="openCreateModal()">
-            Добавить
-          </UIMoloButton>
-        </section>
+      <div class="btn-group">
+        <UIMoloButton
+            v-if="currentMeta.isCustom"
+            class="action small"
+            @click="openEditDefinition"
+        >
+          <MoloSticker name="settings" :size="14" />
+          Настроить
+        </UIMoloButton>
+
+        <UIMoloButton class="action small" @click="openCreateDirectoryModal">
+          <MoloSticker name="file-plus" :size="15" />
+          Новый справочник
+        </UIMoloButton>
+
+        <UIMoloButton
+            v-if="isEmployeeDirectory"
+            class="action small"
+            @click="openAddDepartmentModal"
+        >
+          <MoloSticker name="plus" :size="15" />
+          Отдел
+        </UIMoloButton>
+
+        <UIMoloButton class="confirm small" @click="openCreateModal()">
+          <MoloSticker name="plus" :size="15" />
+          Добавить запись
+        </UIMoloButton>
       </div>
     </header>
 
-    <!-- Полоса реестра отделов -->
-    <div v-if="validDepartments.length > 0" class="departments-quick-strip">
-      <span class="strip-label">Отделы:</span>
-      <div class="dept-chips-list">
-        <div
-            v-for="dept in validDepartments"
-            :key="dept.key || dept.name"
-            class="dept-chip"
-            :title="`Ключ: [${dept.key}]. Кликните для инспекции.`"
-            @click="inspectDepartmentPeople(dept)"
-        >
-          <span class="dept-name">{{ dept.name }}</span>
-          <span class="dept-key-badge">{{ dept.key }}</span>
-          <span class="dept-count-badge">{{ getDepartmentHeadcount(dept) }} чел.</span>
+    <!-- MAIN LAYOUT -->
+    <div class="directory-layout">
+
+      <!-- SIDEBAR -->
+      <aside class="directory-sidebar">
+        <div class="sidebar-section">
+          <div class="btn-group column">
+            <UIMoloButton
+                v-for="config in directoryTypes"
+                :key="config.value"
+                class="full"
+                :class="{ confirm: currentType === config.value, action: currentType !== config.value }"
+                @click="currentType = config.value"
+            >
+              <span class="nav-icon">
+                <MoloSticker :name="config.sticker" :size="15" />
+              </span>
+
+              <span class="nav-label">{{ config.label }}</span>
+
+              <span
+                  v-if="currentType === config.value"
+                  class="nav-active-indicator"
+              />
+            </UIMoloButton>
+          </div>
         </div>
-      </div>
-    </div>
 
-    <!-- Полоса фильтрации по секциям справочника -->
-    <div v-if="availableSectionTabs.length > 1" class="sections-filter-bar">
-      <button
-          class="section-tab-btn"
-          :class="{ active: selectedSectionFilter === 'all' }"
-          @click="selectedSectionFilter = 'all'"
-      >
-        Все категории ({{ items.length }})
-      </button>
-      <button
-          v-for="tab in availableSectionTabs"
-          :key="tab"
-          class="section-tab-btn"
-          :class="{ active: selectedSectionFilter === tab }"
-          @click="selectedSectionFilter = tab"
-      >
-        {{ tab }}
-      </button>
-    </div>
+        <div class="sidebar-bottom">
+          <div class="sidebar-stat">
+            <span>Пользовательских справочников</span>
+            <b>{{ customDirectoryCount }}</b>
+          </div>
+        </div>
+      </aside>
 
-    <main class="directory-body">
-      <section class="items-list-pane">
-        <UIMoloLoaders v-if="loading" wndLoader />
+      <!-- CONTENT -->
+      <main class="directory-content">
 
-        <div v-else-if="items.length === 0" class="empty-placeholder">
-          <MoloSticker :name="currentMeta.sticker || 'folder'" :size="36" glow />
-          <span>В справочнике «{{ currentMeta.label }}» еще нет записей</span>
-          <UIMoloButton class="small confirm" @click="openCreateModal()">
-            Добавить первую запись
+        <!-- STATISTICS -->
+        <section class="stats-row">
+          <div class="stat-card">
+            <div class="stat-icon">
+              <MoloSticker name="database" :size="17" />
+            </div>
+            <div class="stat-content">
+              <span>Всего записей</span>
+              <strong>{{ directoryCounts.total }}</strong>
+            </div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-icon">
+              <MoloSticker name="filter" :size="17" />
+            </div>
+            <div class="stat-content">
+              <span>Отображается</span>
+              <strong>{{ directoryCounts.filtered }}</strong>
+            </div>
+          </div>
+
+          <div v-if="isEmployeeDirectory" class="stat-card">
+            <div class="stat-icon">
+              <MoloSticker name="users" :size="17" />
+            </div>
+            <div class="stat-content">
+              <span>Сотрудников</span>
+              <strong>{{ totalEmployees }}</strong>
+            </div>
+          </div>
+
+          <div v-if="isEmployeeDirectory" class="stat-card">
+            <div class="stat-icon">
+              <MoloSticker name="layers" :size="17" />
+            </div>
+            <div class="stat-content">
+              <span>Отделов</span>
+              <strong>{{ departments.length }}</strong>
+            </div>
+          </div>
+        </section>
+
+        <!-- DEPARTMENTS -->
+        <section v-if="isEmployeeDirectory" class="departments-panel">
+          <div class="panel-heading">
+            <div>
+              <strong>Структура предприятия</strong>
+              <span>Отделы и распределение сотрудников</span>
+            </div>
+
+            <UIMoloButton class="transparent small" @click="openAddDepartmentModal">
+              <MoloSticker name="plus" :size="13" />
+              Создать отдел
+            </UIMoloButton>
+          </div>
+
+          <div v-if="departmentsLoading" class="department-loading">
+            <UIMoloLoaders btnLoader />
+            <span>Загрузка отделов...</span>
+          </div>
+
+          <div v-else-if="departments.length" class="department-chips">
+            <UIMoloButton
+                v-for="dept in departments"
+                :key="dept.key"
+                class="action small"
+                @click="inspectDepartmentPeople(dept)"
+            >
+              <MoloSticker name="users" :size="13" />
+              <span class="department-chip-name">{{ dept.name }}</span>
+              <span class="department-chip-count">
+                {{ getDepartmentHeadcount(dept) }}
+              </span>
+            </UIMoloButton>
+          </div>
+
+          <div v-else class="departments-empty">
+            <span>Отделы пока не созданы.</span>
+            <UIMoloButton class="transparent small" @click="openAddDepartmentModal">
+              Создать первый отдел
+            </UIMoloButton>
+          </div>
+        </section>
+
+        <!-- TOOLBAR -->
+        <section class="table-toolbar">
+          <div class="toolbar-left">
+            <div class="search-input-wrapper">
+              <UIMoloInput
+                  v-model="searchQuery"
+                  compact
+                  placeholder="Поиск по названию, коду и атрибутам..."
+              />
+              <UIMoloButton
+                  v-if="searchQuery"
+                  class="transparent small search-clear-btn"
+                  title="Очистить поиск"
+                  @click="searchQuery = ''"
+              >
+                <MoloSticker name="x" :size="13" />
+              </UIMoloButton>
+            </div>
+          </div>
+
+          <div class="toolbar-right">
+            <span class="results-count">
+              {{ filteredItems.length }} из {{ items.length }}
+            </span>
+
+            <div class="sort-select-wrapper">
+              <UIMoloSelect v-model="sortMode" compact>
+                <option value="title">По названию</option>
+                <option value="newest">Сначала новые</option>
+                <option value="oldest">Сначала старые</option>
+              </UIMoloSelect>
+            </div>
+
+            <UIMoloButton
+                class="action small transparent"
+                title="Обновить данные"
+                :disabled="loading"
+                @click="loadItems"
+            >
+              <MoloSticker name="refresh" :size="14" />
+            </UIMoloButton>
+          </div>
+        </section>
+
+        <!-- GROUP FILTERS -->
+        <div v-if="availableSectionTabs.length" class="btn-group group-filters">
+          <UIMoloButton
+              class="small"
+              :class="{ confirm: selectedSectionFilter === 'all', action: selectedSectionFilter !== 'all' }"
+              @click="selectedSectionFilter = 'all'"
+          >
+            Все отделы ({{ items.length }})
+          </UIMoloButton>
+
+          <UIMoloButton
+              v-for="tab in availableSectionTabs"
+              :key="tab"
+              class="small"
+              :class="{ confirm: selectedSectionFilter === tab, action: selectedSectionFilter !== tab }"
+              @click="selectedSectionFilter = tab"
+          >
+            {{ tab }}
           </UIMoloButton>
         </div>
 
-        <div v-else class="sections-container">
+        <!-- TABLE -->
+        <section class="table-container">
+          <div v-if="loading" class="table-state">
+            <UIMoloLoaders wndLoader />
+            <span>Загружаем записи...</span>
+          </div>
+
           <div
-              v-for="section in groupedSections"
-              :key="section.title"
-              class="directory-section-block"
+              v-else-if="!filteredItems.length"
+              class="table-state empty-state"
           >
-            <div class="section-header-row">
-              <div class="section-title-wrap">
-                <span class="section-title">{{ section.title }}</span>
-                <span class="section-badge">{{ section.items.length }}</span>
-              </div>
-              <button
-                  class="section-quick-add"
-                  title="Добавить в эту группу"
-                  @click="openCreateModal(section.title)"
-              >
-                + добавить запись
-              </button>
+            <div class="empty-icon">
+              <MoloSticker :name="currentMeta.sticker" :size="30" glow />
             </div>
 
-            <div class="items-grid">
-              <div
-                  v-for="item in section.items"
+            <strong>
+              {{ searchQuery ? 'Ничего не найдено' : 'Справочник пока пуст' }}
+            </strong>
+
+            <span>
+              {{ searchQuery
+                ? 'Попробуйте изменить поисковый запрос'
+                : 'Добавьте первую запись, чтобы начать работу'
+              }}
+            </span>
+
+            <UIMoloButton
+                v-if="!searchQuery"
+                class="confirm small"
+                @click="openCreateModal()"
+            >
+              <MoloSticker name="plus" :size="14" />
+              Создать запись
+            </UIMoloButton>
+          </div>
+
+          <div v-else class="directory-table-wrap">
+            <table class="directory-table">
+              <thead>
+              <tr>
+                <th class="main-column">{{ currentMeta.titleLabel }}</th>
+                <th class="code-column">{{ currentMeta.codeLabel }}</th>
+
+                <th
+                    v-for="field in visibleFields.slice(0, 3)"
+                    :key="field.key"
+                >
+                  {{ field.label }}
+                </th>
+
+                <th class="actions-column">Действия</th>
+              </tr>
+              </thead>
+
+              <tbody>
+              <tr
+                  v-for="item in filteredItems"
                   :key="item._id"
-                  class="directory-item-card"
-                  :class="{ active: selectedItem?._id === item._id }"
+                  :class="{ selected: selectedItem?._id === item._id }"
                   @click="selectedItem = item"
                   @dblclick="openEditModal(item)"
               >
-                <div class="card-head">
-                  <div class="user-inline-wrap">
-                    <div class="user-dot">{{ (item.title || 'С')[0].toUpperCase() }}</div>
-                    <span class="item-title" :title="item.title">{{ item.title }}</span>
-                  </div>
-                  <span v-if="item.code" class="badge-pill">ID: {{ item.code }}</span>
-                </div>
+                <td class="main-column">
+                  <div class="table-title-cell">
+                    <div class="table-avatar">
+                      {{ getInitials(item.title) }}
+                    </div>
 
-                <div class="card-badges">
-                  <span v-if="item.attributes?.department" class="badge-pill dept-pill">
-                    {{ item.attributes.department }}
-                    <small v-if="item.attributes?.departmentKey">[{{ item.attributes.departmentKey }}]</small>
+                    <div class="table-title-info">
+                      <strong :title="item.title">{{ item.title }}</strong>
+                      <small v-if="item.description">
+                        {{ item.description }}
+                      </small>
+                    </div>
+                  </div>
+                </td>
+
+                <td class="code-column">
+                  <code>{{ item.code || '—' }}</code>
+                </td>
+
+                <td
+                    v-for="field in visibleFields.slice(0, 3)"
+                    :key="field.key"
+                >
+                  <span
+                      v-if="field.type === 'boolean'"
+                      class="boolean-tag"
+                      :class="{ positive: item.attributes?.[field.key] }"
+                  >
+                    {{ item.attributes?.[field.key] ? 'Да' : 'Нет' }}
                   </span>
 
-                  <!-- Индикаторы колонок в карточке -->
-                  <template v-for="field in currentMeta.fields.filter((f) => f.key !== 'department').slice(0, 3)" :key="field.key">
-                    <span
-                        v-if="field.type === 'boolean'"
-                        class="badge-pill boolean-pill"
-                        :class="{ 'is-true': Boolean(item.attributes?.[field.key]), 'is-false': !item.attributes?.[field.key] }"
+                  <span v-else class="table-value">
+                    {{ displayValue(item.attributes?.[field.key], field) }}
+                  </span>
+                </td>
+
+                <td class="actions-column">
+                  <div class="btn-group row-actions" @click.stop>
+                    <UIMoloButton
+                        class="action small"
+                        title="Редактировать"
+                        @click="openEditModal(item)"
                     >
-                      <MoloSticker :name="item.attributes?.[field.key] ? 'sigma' : 'x'" :size="10" />
-                      <span>{{ field.label }}: {{ item.attributes?.[field.key] ? 'Да' : 'Нет' }}</span>
-                    </span>
+                      <MoloSticker name="pen" :size="13" />
+                    </UIMoloButton>
 
-                    <span v-else class="badge-pill">
-                      <small>{{ field.label }}:</small>
-                      {{ item.attributes?.[field.key] || '—' }}
-                    </span>
-                  </template>
-                </div>
+                    <UIMoloButton
+                        class="close small"
+                        title="Удалить"
+                        @click="requestDelete(item)"
+                    >
+                      <MoloSticker name="trash" :size="13" />
+                    </UIMoloButton>
+                  </div>
+                </td>
+              </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </main>
 
-                <p v-if="item.description" class="item-desc">{{ item.description }}</p>
+      <!-- DETAIL PANEL -->
+      <aside class="detail-panel">
+        <template v-if="selectedItem">
+          <div class="detail-header">
+            <div>
+              <span class="detail-eyebrow">КАРТОЧКА ЗАПИСИ</span>
+              <strong>Информация</strong>
+            </div>
 
-                <div class="card-actions btn-group">
-                  <UIMoloButton class="small icon-action-btn" title="Редактировать" @click.stop="openEditModal(item)">
-                    <MoloSticker name="edit" :size="12" />
-                  </UIMoloButton>
-                  <UIMoloButton class="small close icon-action-btn" title="Удалить" @click.stop="requestDelete(item)">
-                    <MoloSticker name="trash" :size="12" />
-                  </UIMoloButton>
-                </div>
-              </div>
+            <UIMoloButton
+                class="transparent small"
+                title="Закрыть карточку"
+                @click="selectedItem = null"
+            >
+              <MoloSticker name="x" :size="15" />
+            </UIMoloButton>
+          </div>
+
+          <div class="detail-identity">
+            <div class="detail-avatar">
+              {{ getInitials(selectedItem.title) }}
+            </div>
+
+            <strong>{{ selectedItem.title }}</strong>
+            <span>{{ selectedItem.code || 'Без кода' }}</span>
+          </div>
+          <hr>
+
+          <div class="detail-fields">
+            <div class="detail-field">
+              <span>Наименование</span>
+              <strong>{{ selectedItem.title }}</strong>
+            </div>
+
+            <div class="detail-field">
+              <span>{{ currentMeta.codeLabel }}</span>
+              <strong class="mono-value">{{ selectedItem.code || '—' }}</strong>
+            </div>
+
+            <div
+                v-for="field in currentMeta.fields"
+                :key="field.key"
+                class="detail-field"
+            >
+              <span>{{ field.label }}</span>
+
+              <strong
+                  v-if="field.type === 'boolean'"
+                  class="detail-boolean"
+                  :class="{ positive: selectedItem.attributes?.[field.key] }"
+              >
+                {{ displayValue(selectedItem.attributes?.[field.key], field) }}
+              </strong>
+
+              <strong v-else>
+                {{ displayValue(selectedItem.attributes?.[field.key], field) }}
+              </strong>
+            </div>
+
+            <div class="detail-field">
+              <span>Примечание</span>
+              <p>{{ selectedItem.description || 'Нет примечаний' }}</p>
+            </div>
+
+            <div class="detail-field">
+              <span>Создано</span>
+              <strong>{{ formatDate(selectedItem.createdAt) }}</strong>
             </div>
           </div>
+          <hr>
+          <div class="btn-group column">
+            <UIMoloButton
+                class="confirm full"
+                @click="openEditModal(selectedItem)"
+            >
+              <MoloSticker name="pen" :size="14" />
+              Редактировать
+            </UIMoloButton>
+
+            <UIMoloButton
+                class="close full"
+                @click="requestDelete(selectedItem)"
+            >
+              <MoloSticker name="trash" :size="14" />
+              Удалить запись
+            </UIMoloButton>
+          </div>
+        </template>
+
+        <div v-else class="detail-empty">
+          <div class="detail-empty-icon">
+            <MoloSticker name="sidebar" :size="25" />
+          </div>
+          <strong>Карточка записи</strong>
+          <span>Выберите строку в таблице, чтобы посмотреть подробную информацию</span>
         </div>
-      </section>
-
-      <!-- Детализация справа -->
-      <aside class="item-detail-pane">
-        <UIMoloSection>
-          <template #header>
-            <strong>Карточка: {{ currentMeta.label }}</strong>
-          </template>
-          <template #main>
-            <div v-if="selectedItem" class="detail-content">
-              <div class="field-preview">
-                <span class="field-label">{{ currentMeta.titleLabel }}</span>
-                <span class="field-value highlight">{{ selectedItem.title }}</span>
-              </div>
-
-              <div class="field-preview">
-                <span class="field-label">{{ currentMeta.codeLabel }}</span>
-                <span class="field-value code-mono">{{ selectedItem.code || '—' }}</span>
-              </div>
-
-              <div v-if="selectedItem.attributes?.department" class="field-preview">
-                <span class="field-label">Привязанный отдел</span>
-                <span class="field-value highlight-dept">
-                  {{ selectedItem.attributes.department }}
-                  <span v-if="selectedItem.attributes?.departmentKey" class="dept-key-tag">
-                    ключ: {{ selectedItem.attributes.departmentKey }}
-                  </span>
-                </span>
-              </div>
-
-              <!-- Динамические поля в панели справа -->
-              <div class="attributes-stack">
-                <div
-                    v-for="field in currentMeta.fields.filter((f) => f.key !== 'department')"
-                    :key="field.key"
-                    class="field-preview"
-                >
-                  <span class="field-label">{{ field.label }}</span>
-                  <div class="field-value">
-                    <template v-if="field.type === 'boolean'">
-                      <div
-                          class="boolean-status-card"
-                          :class="selectedItem.attributes?.[field.key] ? 'status-done' : 'status-pending'"
-                      >
-                        <MoloSticker
-                            :name="selectedItem.attributes?.[field.key] ? 'sigma' : 'x'"
-                            :size="13"
-                            :color="selectedItem.attributes?.[field.key] ? '#34d399' : '#f87171'"
-                        />
-                        <span class="status-title">
-                          {{ selectedItem.attributes?.[field.key] ? 'Выполнено / Да' : 'Не выполнено / Нет' }}
-                        </span>
-                      </div>
-                    </template>
-                    <template v-else>
-                      {{ selectedItem.attributes?.[field.key] ?? '—' }}
-                    </template>
-                  </div>
-                </div>
-              </div>
-
-              <div class="field-preview">
-                <span class="field-label">Примечание</span>
-                <p class="field-text">{{ selectedItem.description || 'Нет примечаний' }}</p>
-              </div>
-
-              <div class="action-row">
-                <UIMoloButton class="small confirm full" @click="openEditModal(selectedItem)">
-                  Редактировать запись
-                </UIMoloButton>
-              </div>
-            </div>
-
-            <div v-else class="no-selection">
-              <span>Выберите запись слева для просмотра</span>
-            </div>
-          </template>
-        </UIMoloSection>
       </aside>
-    </main>
+    </div>
 
-    <!-- Модалка создания/редактирования записи -->
+    <!-- ITEM MODAL -->
     <UIMoloModal
         v-model="itemModalOpen"
-        :title="isEditing ? `Редактирование: ${currentMeta.label}` : `Добавление: ${currentMeta.label}`"
+        :title="isEditing ? 'Редактирование записи' : 'Новая запись'"
         confirm-text="Сохранить"
         cancel-text="Отмена"
-        width="660px"
+        width="700px"
+        :loading="saving"
         @confirm="saveItem"
     >
       <template #body>
-        <div class="modal-dynamic-form">
-          <div class="form-grid">
-            <div class="grid-col col-2 code-lookup-box">
-              <div class="input-with-lookup">
-                <UIMoloInput
-                    v-model="itemForm.code"
-                    compact
-                    :tLabel="currentMeta.codeLabel"
-                    :placeholder="currentMeta.codePlaceholder"
-                    @blur="onCodeFieldBlur"
-                    @keyup.enter="handleLookupEmployeeById()"
-                />
-                <UIMoloButton
-                    class="small confirm"
-                    title="Найти данные сотрудника по ID и подставить"
-                    @click="handleLookupEmployeeById()"
-                >
-                  Подтянуть данные
-                </UIMoloButton>
-              </div>
-            </div>
+        <div class="editor-form">
+          <div class="editor-section-title">
+            <span>Основная информация</span>
+          </div>
 
-            <div class="grid-col col-2">
+          <div class="editor-grid">
+            <div class="editor-field full">
               <UIMoloInput
                   v-model="itemForm.title"
                   compact
@@ -1160,973 +1538,1389 @@ onMounted(async () => {
               />
             </div>
 
-            <div class="grid-col col-2 custom-field-group">
-              <div class="field-sublabel-row">
-                <label class="field-sublabel">Отдел компании / подразделение</label>
-                <button type="button" class="btn-text-link" @click="openAddDepartmentModal">
-                  + Создать отдел с ключом
-                </button>
-              </div>
-              <div class="dept-select-dual">
-                <UIMoloSelect
-                  compact
-                  v-model="itemForm.attributes.department"
-                  all="Без отдела"
-                  :parent="validDepartments"
-                  children="name"
-                  value-key="name"
-                  />
+            <div class="editor-field full">
+              <div class="code-lookup-row">
+                <UIMoloInput
+                    v-model="itemForm.code"
+                    compact
+                    :tLabel="currentMeta.codeLabel"
+                    :placeholder="currentMeta.codePlaceholder"
+                    @blur="onCodeFieldBlur"
+                />
 
-                <span v-if="itemForm.departmentKey" class="selected-key-pill">
-                  Ключ: <b>{{ itemForm.departmentKey }}</b>
-                </span>
+                <UIMoloButton
+                    v-if="isEmployeeDirectory"
+                    class="action small lookup-btn"
+                    @click="handleLookupEmployeeById"
+                >
+                  <MoloSticker name="search" :size="13" />
+                  Найти
+                </UIMoloButton>
               </div>
             </div>
 
-            <div
-                v-for="field in currentMeta.fields.filter((f) => f.key !== 'department')"
-                :key="field.key"
-                class="grid-col"
-                :class="`col-${field.span || 1}`"
-            >
-              <!-- 1. Селектор -->
-              <UIMoloSelect
-                  v-if="field.type === 'select'"
-                  v-model="itemForm.attributes[field.key]"
-                  compact
-                  :tLabel="field.label"
-                  :parent="field.options || []"
-                  children="label"
-                  valueKey="value"
-              />
+            <div v-if="isEmployeeDirectory" class="editor-field full">
+              <div class="dept-select-row">
+                <UIMoloSelect
+                    v-model="itemForm.attributes.department"
+                    compact
+                    tLabel="Отдел"
+                    all="Без отдела"
+                    :parent="departments"
+                    children="name"
+                    value-key="name"
+                >
 
-              <!-- 2. Дата: ИСПОЛЬЗУЕМ ОБНОВЛЕННЫЙ UIMoloInput ВМЕСТО САМОДЕЛКИ -->
-              <UIMoloInput
-                  v-else-if="field.type === 'date'"
-                  v-model="itemForm.attributes[field.key]"
-                  date
-                  compact
-                  :lRequired="field.required"
-                  :tLabel="field.label"
-              />
+                </UIMoloSelect>
 
-              <!-- 3. Булев флаг: стилизованный MoloToggle -->
-              <div v-else-if="field.type === 'boolean'" class="custom-field-group-check">
-                <UIMoloToggle
+                <UIMoloButton
+                    class="action small dept-add-btn"
+                    @click="openAddDepartmentModal"
+                >
+                  <MoloSticker name="plus" :size="13" />
+                  Отдел
+                </UIMoloButton>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="currentMeta.fields.length" class="editor-section">
+            <div class="editor-section-title">
+              <span>Дополнительные атрибуты</span>
+              <small>{{ currentMeta.fields.length }} полей</small>
+            </div>
+
+            <div class="editor-grid">
+              <div
+                  v-for="field in currentMeta.fields.filter(f => !(isEmployeeDirectory && f.key === 'department'))"
+                  :key="field.key"
+                  class="editor-field"
+                  :class="{ full: field.span === 2 }"
+              >
+                <!-- Select -->
+                <UIMoloSelect
+                    v-if="field.type === 'select'"
                     v-model="itemForm.attributes[field.key]"
                     compact
-                    :label="field.label"
                     :tLabel="field.label"
-                    trueLabel="Выполнено (Да)"
-                    falseLabel="Не выполнено (Нет)"
+                    :lRequired="field.required"
+                >
+                  <option value="">Выберите значение</option>
+                  <option
+                      v-for="option in getFieldOptions(field)"
+                      :key="String(option.value)"
+                      :value="option.value"
+                  >
+                    {{ option.label }}
+                  </option>
+                </UIMoloSelect>
+
+                <!-- Date -->
+                <UIMoloInput
+                    v-else-if="field.type === 'date'"
+                    v-model="itemForm.attributes[field.key]"
+                    date
+                    compact
+                    :tLabel="field.label"
+                    :lRequired="field.required"
+                />
+
+                <!-- Number -->
+                <UIMoloInput
+                    v-else-if="field.type === 'number'"
+                    v-model="itemForm.attributes[field.key]"
+                    type="number"
+                    compact
+                    :tLabel="field.label"
+                    :lRequired="field.required"
+                    :placeholder="field.placeholder"
+                />
+
+                <!-- Boolean / Toggle -->
+                <UIMoloToggle
+                    v-else-if="field.type === 'boolean'"
+                    v-model="itemForm.attributes[field.key]"
+                    compact
+                    :tLabel="field.label"
+                    :lRequired="field.required"
+                    :label="itemForm.attributes[field.key] ? 'Да' : 'Нет'"
+                />
+
+                <!-- Text -->
+                <UIMoloInput
+                    v-else
+                    v-model="itemForm.attributes[field.key]"
+                    compact
+                    :tLabel="field.label"
+                    :lRequired="field.required"
+                    :placeholder="field.placeholder || `Введите ${field.label.toLowerCase()}`"
                 />
               </div>
+            </div>
+          </div>
 
-              <!-- 4. Текст / Число -->
-              <UIMoloInput
-                  v-else
-                  v-model="itemForm.attributes[field.key]"
-                  compact
-                  :type="field.type === 'number' ? 'number' : 'text'"
-                  :lRequired="field.required"
-                  :tLabel="field.label"
-                  :placeholder="field.placeholder || ''"
-              />
+          <div class="editor-section">
+            <div class="editor-section-title">
+              <span>Дополнительно</span>
             </div>
 
-            <div class="grid-col col-2">
-              <UIMoloInput
-                  v-model="itemForm.description"
-                  compact
-                  tLabel="Примечание / Дополнительно"
-                  placeholder="Заметки по записи..."
-              />
-            </div>
+            <UIMoloInput
+                v-model="itemForm.description"
+                compact
+                tLabel="Примечание"
+                placeholder="Дополнительная информация..."
+            />
           </div>
         </div>
       </template>
     </UIMoloModal>
 
-    <!-- Модалка создания нового отдела с КЛЮЧОМ -->
+    <!-- CREATE DEPARTMENT -->
     <UIMoloModal
         v-model="isAddDeptModalOpen"
-        title="Создать отдел"
-        confirm-text="Сохранить отдел"
+        title="Создание отдела"
+        confirm-text="Создать отдел"
         cancel-text="Отмена"
         width="480px"
         @confirm="saveNewDepartment"
     >
       <template #body>
-        <div class="dept-create-body">
+        <div class="editor-form">
           <UIMoloInput
               v-model="newDeptForm.name"
               compact
               lRequired
               tLabel="Название отдела"
-              placeholder="Например: IT и разработка"
+              placeholder="IT и разработка"
           />
+
           <UIMoloInput
               v-model="newDeptForm.key"
               compact
-              lRequired
-              tLabel="Ключ поиска отдела (латиница/код)"
-              placeholder="it, dev, sales, acc"
+              tLabel="Системный ключ"
+              placeholder="it_development"
           />
+
           <UIMoloInput
               v-model="newDeptForm.description"
               compact
               tLabel="Описание"
-              placeholder="Задачи и регламент отдела..."
+              placeholder="Описание подразделения..."
           />
         </div>
       </template>
     </UIMoloModal>
 
-    <!-- Модалка: Кто в отделе и сколько их (с кнопкой удаления) -->
+    <!-- DEPARTMENT PEOPLE -->
     <UIMoloModal
         v-model="deptPeopleModalOpen"
-        :title="`Отдел: ${viewingDept?.name || '—'}`"
+        :title="`Отдел: ${viewingDept?.name || ''}`"
         cancel-text="Закрыть"
-        width="620px"
+        width="600px"
     >
       <template #body>
-        <div class="dept-inspect-container">
-          <div class="dept-summary-card">
+        <div class="department-detail">
+          <div class="department-detail-summary">
             <div>
-              <strong style="color: white">Ключ для поиска:</strong> <code>{{ viewingDept?.key || '—' }}</code>
+              <span>Системный ключ</span>
+              <code>{{ viewingDept?.key }}</code>
             </div>
-            <div class="total-headcount">
-              Всего сотрудников: <b>{{ deptEmployees.length }} чел.</b>
+            <div>
+              <span>Сотрудников</span>
+              <strong>{{ selectedDepartmentCount }}</strong>
             </div>
           </div>
 
-          <div v-if="deptEmployees.length === 0" class="empty-dept-msg">
-            В этом отделе пока нет привязанных сотрудников
+          <div v-if="!deptEmployees.length" class="department-no-people">
+            В этом отделе пока нет сотрудников
           </div>
 
-          <div v-else class="dept-employees-list">
+          <div v-else class="department-people-list">
             <div
-                v-for="emp in deptEmployees"
-                :key="emp._id"
-                class="emp-mini-card"
+                v-for="employee in deptEmployees"
+                :key="employee._id"
+                class="department-person"
             >
-              <div class="emp-mini-left">
-                <div class="emp-mini-avatar">{{ (emp.title || 'С')[0].toUpperCase() }}</div>
-                <div class="emp-mini-info">
-                  <span class="emp-name">{{ emp.title }}</span>
-                  <span class="emp-meta">
-                    <span v-if="emp.code" class="emp-tag">ID: {{ emp.code }}</span>
-                    <span v-if="emp.attributes?.role" class="emp-tag role">{{ emp.attributes.role }}</span>
-                    <span v-if="emp.attributes?.phone">📞 {{ emp.attributes.phone }}</span>
-                  </span>
-                </div>
+              <div class="table-avatar">
+                {{ getInitials(employee.title) }}
+              </div>
+              <div class="person-info">
+                <strong>{{ employee.title }}</strong>
+                <span>
+                  {{ employee.attributes?.role || 'Должность не указана' }}
+                  <template v-if="employee.code"> · {{ employee.code }}</template>
+                </span>
               </div>
             </div>
           </div>
+        </div>
+      </template>
+      <template #footer>
+        <UIMoloButton
+            class="close small"
+            @click="requestDeleteDepartment(viewingDept!)"
+        >
+          <MoloSticker name="trash" :size="14" />
+          Удалить отдел
+        </UIMoloButton>
+      </template>
+    </UIMoloModal>
 
-          <div class="dept-inspect-footer">
-            <UIMoloButton
-                class="small close"
-                title="Удалить этот отдел из реестра"
-                @click="requestDeleteDepartment(viewingDept!)"
+    <!-- CREATE / EDIT DIRECTORY -->
+    <UIMoloModal
+        v-model="createDirModalOpen"
+        :title="editingDefinitionSlug ? 'Настройка справочника' : 'Новый справочник'"
+        confirm-text="Сохранить"
+        cancel-text="Отмена"
+        width="760px"
+        :loading="definitionSaving"
+        @confirm="saveNewDirectory"
+    >
+      <template #body>
+        <div class="editor-form">
+          <div class="editor-section-title">
+            <span>Основные настройки</span>
+          </div>
+
+          <div class="editor-grid">
+            <div class="editor-field full">
+              <UIMoloInput
+                  v-model="newDirForm.title"
+                  compact
+                  lRequired
+                  tLabel="Название"
+                  placeholder="Например, Проекты"
+              />
+            </div>
+
+            <div class="editor-field">
+              <UIMoloInput
+                  v-model="newDirForm.slug"
+                  compact
+                  tLabel="Системный ключ"
+                  placeholder="projects"
+              />
+            </div>
+
+            <div class="editor-field">
+              <UIMoloInput
+                  v-model="newDirForm.aliases"
+                  compact
+                  tLabel="Синонимы через запятую"
+                  placeholder="Проекты, Projects"
+              />
+            </div>
+
+            <div class="editor-field">
+              <UIMoloInput
+                  v-model="newDirForm.codeLabel"
+                  compact
+                  tLabel="Название поля кода"
+                  placeholder="Код / ID"
+              />
+            </div>
+
+            <div class="editor-field">
+              <UIMoloInput
+                  v-model="newDirForm.titleLabel"
+                  compact
+                  tLabel="Название основного поля"
+                  placeholder="Наименование"
+              />
+            </div>
+          </div>
+
+          <div class="editor-section">
+            <div class="builder-heading">
+              <div>
+                <strong>Структура справочника</strong>
+                <span>Настройте дополнительные поля записей</span>
+              </div>
+
+              <UIMoloButton class="action small" @click="addCustomField">
+                <MoloSticker name="plus" :size="13" />
+                Добавить поле
+              </UIMoloButton>
+            </div>
+
+            <div v-if="!newDirForm.fields.length" class="no-fields">
+              Дополнительных полей пока нет
+            </div>
+
+            <div
+                v-for="(field, index) in newDirForm.fields"
+                :key="index"
+                class="field-builder-card"
             >
-              Удалить этот отдел
-            </UIMoloButton>
+              <div class="builder-index">{{ String(index + 1).padStart(2, '0') }}</div>
+
+              <div class="builder-inputs">
+                <UIMoloInput
+                    v-model="field.label"
+                    compact
+                    placeholder="Название поля"
+                />
+
+                <UIMoloInput
+                    v-model="field.key"
+                    compact
+                    placeholder="field_key"
+                />
+
+                <UIMoloSelect v-model="field.type" compact>
+                  <option value="text">Текст</option>
+                  <option value="number">Число</option>
+                  <option value="date">Дата</option>
+                  <option value="boolean">Да / Нет</option>
+                  <option value="select">Список</option>
+                </UIMoloSelect>
+
+                <UIMoloSelect v-model.number="field.span" compact>
+                  <option :value="1">1 колонка</option>
+                  <option :value="2">2 колонки</option>
+                </UIMoloSelect>
+              </div>
+
+              <UIMoloButton
+                  class="close small"
+                  title="Удалить поле"
+                  @click="removeCustomField(index)"
+              >
+                <MoloSticker name="trash" :size="14" />
+              </UIMoloButton>
+
+              <div class="builder-required">
+                <UIMoloToggle
+                    v-model="field.required"
+                    compact
+                    label="Обязательное поле"
+                />
+              </div>
+
+              <div v-if="field.type === 'select'" class="builder-options">
+                <div class="options-heading">
+                  <span>Варианты списка</span>
+                  <UIMoloButton class="transparent small" @click="addSelectOption(field)">
+                    <MoloSticker name="plus" :size="12" />
+                    Вариант
+                  </UIMoloButton>
+                </div>
+
+                <div
+                    v-for="(option, optionIndex) in field.options || []"
+                    :key="optionIndex"
+                    class="option-row"
+                >
+                  <UIMoloInput
+                      v-model="option.label"
+                      compact
+                      placeholder="Название"
+                  />
+                  <UIMoloInput
+                      v-model="option.value"
+                      compact
+                      placeholder="value"
+                  />
+                  <UIMoloButton
+                      class="close small"
+                      @click="removeSelectOption(field, optionIndex)"
+                  >
+                    <MoloSticker name="x" :size="13" />
+                  </UIMoloButton>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </template>
     </UIMoloModal>
 
-    <!-- Модалка удаления ЗАПИСИ СПРАВОЧНИКА -->
+    <!-- DELETE ITEM -->
     <UIMoloModal
         v-model="deleteModalOpen"
         title="Удаление записи"
-        :modal-text="`Удалить «${itemToDelete?.title}» из справочника?`"
+        :modal-text="`Удалить «${itemToDelete?.title || ''}»? Это действие нельзя отменить.`"
         confirm-text="Удалить"
         cancel-text="Отмена"
+        :loading="deleting"
         @confirm="confirmDelete"
         @cancel="itemToDelete = null"
     />
 
-    <!-- Модалка удаления ОТДЕЛА -->
+    <!-- DELETE DEPARTMENT -->
     <UIMoloModal
         v-model="deleteDeptModalOpen"
         title="Удаление отдела"
-        :modal-text="`Вы уверены, что хотите удалить отдел «${deptToDelete?.name}» [${deptToDelete?.key}]? У привязанных сотрудников отдел будет сброшен.`"
-        confirm-text="Удалить отдел"
+        :modal-text="`Удалить отдел «${deptToDelete?.name || ''}»? Проверьте привязанные записи сотрудников перед удалением.`"
+        confirm-text="Удалить"
         cancel-text="Отмена"
         :loading="deletingDeptLoading"
         @confirm="confirmDeleteDepartment"
         @cancel="deleteDeptModalOpen = false; deptToDelete = null"
     />
 
-    <!-- Конструктор нового справочника -->
-    <UIMoloModal
-        v-model="createDirModalOpen"
-        title="Создать свой справочник"
-        confirm-text="Создать"
-        cancel-text="Отмена"
-        width="720px"
-        @confirm="saveNewDirectory"
-    >
-      <template #body>
-        <div class="custom-dir-form">
-          <div class="form-grid">
-            <div class="grid-col col-2">
-              <UIMoloInput
-                  v-model="newDirForm.title"
-                  compact
-                  lRequired
-                  tLabel="Название справочника"
-                  placeholder="Например: Дни рождения"
-              />
-            </div>
-            <div class="grid-col col-1">
-              <UIMoloInput
-                  v-model="newDirForm.slug"
-                  compact
-                  tLabel="Код/Slug латиницей"
-                  placeholder="birthdays"
-              />
-            </div>
-            <div class="grid-col col-1">
-              <UIMoloInput
-                  v-model="newDirForm.aliases"
-                  compact
-                  tLabel="Синонимы для {@} через запятую"
-                  placeholder="ДР, ДниРождения, Birthday"
-              />
-            </div>
-          </div>
-
-          <div class="fields-builder-section">
-            <div class="builder-head">
-              <strong>Атрибуты (колонки) справочника</strong>
-              <button class="add-field-link" @click="addCustomField">+ Добавить колонку</button>
-            </div>
-
-            <div v-for="(field, idx) in newDirForm.fields" :key="field.key" class="builder-row">
-              <UIMoloInput compact v-model="field.label" placeholder="Название (Дата рождения)" />
-              <UIMoloInput compact v-model="field.key" placeholder="birthDate" />
-              <select v-model="field.type" class="inline-select">
-                <option value="text">Текст</option>
-                <option value="number">Число</option>
-                <option value="date">Дата</option>
-                <option value="boolean">Флаг (Да/Нет)</option>
-              </select>
-              <UIMoloButton class="close small" @click="removeCustomField(idx)">✕</UIMoloButton>
-            </div>
-          </div>
-        </div>
-      </template>
-    </UIMoloModal>
   </div>
 </template>
 
 <style scoped>
 .directory-app {
-  display: flex;
-  flex-direction: column;
+  --dir-panel: rgba(255, 255, 255, 0.025);
+  --dir-border: var(--half_opacity_border, rgba(255, 255, 255, 0.12));
+  --dir-text: #e6edf7;
+  --dir-muted: #8491a5;
+  --dir-blue: #60a5fa;
+
   width: 100%;
   height: 100%;
   min-height: 0;
-  background: var(--half_opacity_bg);
-  color: #e0e0e0;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
-}
-
-.directory-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 10px 16px;
-  background: rgba(0, 0, 0, 0.25);
-  border-bottom: 1px solid var(--half_opacity_border);
-  flex-shrink: 0;
-}
-
-.header-left,
-.header-right {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.header-title {
+  color: var(--dir-text);
+  background: var(--half_opacity_bg, #07101e);
   font-size: 13px;
-  font-weight: 700;
-  color: #8c8c9e;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
 }
 
-.type-select-wrap {
-  width: 250px;
+.directory-app,
+.directory-app * {
+  box-sizing: border-box;
 }
 
-.search-box {
-  width: 280px;
-}
-
-.departments-quick-strip {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 16px;
-  background: rgba(255, 255, 255, 0.02);
-  border-bottom: 1px solid var(--half_opacity_border);
-  overflow-x: auto;
+/* HEADER */
+.directory-header {
   flex-shrink: 0;
-}
-
-.strip-label {
-  font-size: 11px;
-  text-transform: uppercase;
-  color: #8c8c9e;
-  font-weight: 600;
-}
-
-.dept-chips-list {
   display: flex;
   align-items: center;
-  gap: 6px;
-}
-
-.dept-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid var(--half_opacity_border);
-  border-radius: 6px;
-  padding: 3px 8px;
-  cursor: pointer;
-  font-size: 12px;
-  transition: all 0.15s ease;
-}
-
-.dept-chip:hover {
-  background: rgba(100, 150, 255, 0.15);
-  border-color: #6496ff;
-}
-
-.dept-key-badge {
-  font-family: monospace;
-  font-size: 10px;
-  background: rgba(100, 150, 255, 0.2);
-  color: #8fb1ff;
-  padding: 1px 4px;
-  border-radius: 3px;
-}
-
-.dept-count-badge {
-  font-size: 10.5px;
-  color: #34d399;
-  font-weight: 600;
-}
-
-.sections-filter-bar {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 16px;
-  background: rgba(0, 0, 0, 0.15);
-  border-bottom: 1px solid var(--half_opacity_border);
-  overflow-x: auto;
-  flex-shrink: 0;
-}
-
-.section-tab-btn {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid var(--half_opacity_border);
-  border-radius: 6px;
-  color: #aaa;
-  font-size: 12px;
-  padding: 4px 10px;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: all 0.15s ease;
-}
-
-.section-tab-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: #fff;
-}
-
-.section-tab-btn.active {
-  background: rgba(100, 150, 255, 0.18);
-  border-color: #6496ff;
-  color: #fff;
-  font-weight: 600;
-}
-
-.directory-body {
-  flex: 1 1 0%;
-  display: flex;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.items-list-pane {
-  flex: 1 1 0%;
-  min-height: 0;
-  padding: 14px 16px;
-  overflow-y: auto;
-  border-right: 1px solid var(--half_opacity_border);
-}
-
-.sections-container {
-  display: flex;
-  flex-direction: column;
-  gap: 22px;
-}
-
-.directory-section-block {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.section-header-row {
-  display: flex;
   justify-content: space-between;
-  align-items: center;
-  padding-bottom: 6px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  gap: 16px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--dir-border);
+  background: rgba(0, 0, 0, 0.13);
 }
 
-.section-title-wrap {
+.header-main {
   display: flex;
   align-items: center;
-  gap: 8px;
-}
-
-.section-title {
-  font-size: 13.5px;
-  font-weight: 700;
-  color: #fff;
-  letter-spacing: 0.3px;
-}
-
-.section-badge {
-  font-size: 11px;
-  background: rgba(100, 150, 255, 0.15);
-  color: #8fb1ff;
-  padding: 1px 7px;
-  border-radius: 10px;
-  font-family: monospace;
-}
-
-.section-quick-add {
-  background: none;
-  border: none;
-  color: #6496ff;
-  font-size: 11.5px;
-  cursor: pointer;
-  padding: 2px 6px;
-  border-radius: 4px;
-}
-
-.section-quick-add:hover {
-  background: rgba(100, 150, 255, 0.1);
-  text-decoration: underline;
-}
-
-.items-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 10px;
-}
-
-.directory-item-card {
-  padding: 12px;
-  background: rgba(255, 255, 255, 0.025);
-  border: 1px solid var(--half_opacity_border);
-  border-radius: 8px;
-  cursor: pointer;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  transition: all 0.15s ease;
-}
-
-.directory-item-card:hover {
-  background: rgba(255, 255, 255, 0.05);
-  border-color: rgba(100, 150, 255, 0.4);
-}
-
-.directory-item-card.active {
-  background: rgba(100, 150, 255, 0.12);
-  border-color: #6496ff;
-}
-
-.card-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-}
-
-.user-inline-wrap {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  gap: 12px;
   min-width: 0;
 }
 
-.user-dot {
-  width: 24px;
-  height: 24px;
-  border-radius: 6px;
-  background: #3872ef;
-  color: #fff;
-  font-size: 11px;
+.header-icon {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  border-radius: 11px;
+  background: rgba(56, 189, 248, 0.08);
+  color: #38bdf8;
+}
+
+.header-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.header-title {
+  font-size: 16px;
   font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
+  letter-spacing: -0.3px;
 }
 
-.item-title {
-  font-weight: 600;
-  font-size: 13.5px;
-  color: #fff;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.header-subtitle {
+  font-size: 11px;
+  color: var(--dir-muted);
 }
 
-.card-badges {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-
-.badge-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 10.5px;
-  background: rgba(0, 0, 0, 0.3);
-  padding: 2px 6px;
-  border-radius: 4px;
-  color: #9cb3d9;
-}
-
-.badge-pill.dept-pill {
-  background: rgba(100, 150, 255, 0.12);
-  color: #bfdbfe;
-}
-
-.badge-pill.dept-pill small {
-  color: #60a5fa;
-  font-family: monospace;
-}
-
-.badge-pill.boolean-pill {
-  font-weight: 600;
-  border: 1px solid transparent;
-}
-
-.badge-pill.boolean-pill.is-true {
-  background: rgba(52, 211, 153, 0.12);
-  border-color: rgba(52, 211, 153, 0.3);
-  color: #6ee7b7;
-}
-
-.badge-pill.boolean-pill.is-false {
-  background: rgba(248, 113, 113, 0.1);
-  border-color: rgba(248, 113, 113, 0.25);
-  color: #fca5a5;
-}
-
-.item-desc {
-  margin: 0;
-  font-size: 11.5px;
-  color: #7b7b8f;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+/* LAYOUT */
+.directory-layout {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 215px minmax(0, 1fr) 290px;
   overflow: hidden;
 }
 
-.card-actions {
+.directory-sidebar {
+  min-width: 0;
   display: flex;
-  justify-content: flex-end;
-  margin-top: auto;
-}
-
-.item-detail-pane {
-  width: 340px;
-  flex-shrink: 0;
-  padding: 14px;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 14px 10px 12px;
+  border-right: 1px solid var(--dir-border);
+  background: rgba(0, 0, 0, 0.11);
   overflow-y: auto;
 }
 
-.detail-content {
+.sidebar-section {
   display: flex;
   flex-direction: column;
-  gap: 12px;
 }
 
-.attributes-stack {
+.nav-icon {
+  display: flex;
+  flex-shrink: 0;
+}
+
+.nav-label {
+  flex: 1;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nav-active-indicator {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #38bdf8;
+  box-shadow: 0 0 8px rgba(56, 189, 248, 0.8);
+}
+
+.sidebar-bottom {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 10px 0;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  padding-top: 10px;
 }
 
-.field-preview {
+.sidebar-stat {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 0 5px;
+  color: var(--dir-muted);
+  font-size: 10px;
+}
+
+.sidebar-stat b {
+  color: var(--dir-text);
+}
+
+/* CONTENT */
+.directory-content {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 14px;
+  gap: 12px;
+  overflow: auto;
+}
+
+.stats-row {
+  display: flex;
+  gap: 9px;
+  flex-shrink: 0;
+}
+
+.stat-card {
+  flex: 1;
+  min-width: 0;
+  min-height: 60px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--dir-border);
+  border-radius: 9px;
+  background: var(--dir-panel);
+}
+
+.stat-icon {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  border-radius: 7px;
+  color: #8ba9ca;
+  background: rgba(96, 165, 250, 0.08);
+}
+
+.stat-content {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.stat-content span {
+  color: var(--dir-muted);
+  font-size: 10px;
+}
+
+.stat-content strong {
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+/* DEPARTMENTS */
+.departments-panel {
+  flex-shrink: 0;
+  padding: 12px;
+  border: 1px solid var(--dir-border);
+  border-radius: 9px;
+  background: var(--dir-panel);
+}
+
+.panel-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.panel-heading > div {
   display: flex;
   flex-direction: column;
   gap: 3px;
 }
 
-.field-label {
-  font-size: 10.5px;
-  color: #7b7b8f;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+.panel-heading strong {
+  font-size: 12px;
 }
 
-.field-value {
-  font-size: 13px;
-  color: #d1d5db;
-  word-break: break-word;
+.panel-heading span {
+  color: var(--dir-muted);
+  font-size: 10px;
 }
 
-.field-value.highlight {
-  font-weight: 700;
-  font-size: 15px;
-  color: #fff;
+.department-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
 }
 
-.highlight-dept {
-  color: #93c5fd;
-  font-weight: 600;
-}
-
-.dept-key-tag {
-  display: inline-block;
-  margin-left: 6px;
+.department-chip-name {
   font-size: 11px;
-  background: rgba(255, 255, 255, 0.08);
-  padding: 1px 6px;
-  border-radius: 4px;
-  color: #aaa;
-  font-family: monospace;
 }
 
-.field-value.code-mono {
-  font-family: monospace;
-  color: #8fb1ff;
+.department-chip-count {
+  min-width: 18px;
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: rgba(96, 165, 250, 0.16);
+  color: #93c5fd;
+  font-size: 10px;
+  text-align: center;
 }
 
-.boolean-status-card {
-  display: inline-flex;
+.departments-empty,
+.department-loading {
+  display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 10px;
-  border-radius: 6px;
-  font-size: 12px;
+  color: var(--dir-muted);
+  font-size: 11px;
+}
+
+/* TOOLBAR */
+.table-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.toolbar-left,
+.toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.search-input-wrapper {
+  position: relative;
+  width: min(400px, 100%);
+  min-width: 240px;
+  display: flex;
+  align-items: center;
+}
+
+.search-clear-btn {
+  position: absolute;
+  right: 6px;
+  z-index: 2;
+}
+
+.sort-select-wrapper {
+  min-width: 140px;
+}
+
+.results-count {
+  color: var(--dir-muted);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.icon-only {
+  padding: 6px !important;
+}
+
+/* GROUP FILTERS */
+.group-filters {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* TABLE */
+.table-container {
+  flex: 1;
+  min-height: 170px;
+  border: 1px solid var(--dir-border);
+  border-radius: 9px;
+  background: rgba(0, 0, 0, 0.09);
+  overflow: auto;
+}
+
+.directory-table-wrap {
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.directory-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.directory-table th {
+  height: 38px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--dir-border);
+  color: #75839a;
+  background: rgba(255, 255, 255, 0.02);
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+.directory-table td {
+  height: 50px;
+  padding: 6px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.045);
+  color: #bac5d5;
+  font-size: 11px;
+}
+
+.directory-table tbody tr {
+  cursor: pointer;
+  transition: background 0.13s ease;
+}
+
+.directory-table tbody tr:hover {
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.directory-table tbody tr.selected {
+  background: rgba(56, 189, 248, 0.07);
+}
+
+.directory-table tbody tr.selected td:first-child {
+  box-shadow: inset 3px 0 0 #38bdf8;
+}
+
+.directory-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.main-column { min-width: 185px; }
+.code-column { min-width: 100px; }
+.actions-column { width: 115px; text-align: right !important; }
+
+.table-title-cell {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+
+.table-avatar {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  border-radius: 7px;
+  border: 1px solid rgba(96, 165, 250, 0.25);
+  background: rgba(96, 165, 250, 0.09);
+  color: #9dc5ff;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.table-title-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.table-title-info strong {
+  max-width: 230px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #e2eaf5;
+  font-size: 11px;
   font-weight: 600;
-  width: fit-content;
 }
 
-.boolean-status-card.status-done {
-  background: rgba(52, 211, 153, 0.12);
-  border: 1px solid rgba(52, 211, 153, 0.3);
-  color: #34d399;
+.table-title-info small {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #728097;
+  font-size: 9px;
 }
 
-.boolean-status-card.status-pending {
-  background: rgba(239, 68, 68, 0.1);
-  border: 1px solid rgba(239, 68, 68, 0.25);
-  color: #f87171;
+.directory-table code,
+.mono-value {
+  color: #91baff;
+  font-family: monospace;
+  font-size: 10px;
 }
 
-.field-text {
-  margin: 0;
-  font-size: 12px;
-  color: #a0a0b0;
-  line-height: 1.4;
-  white-space: pre-wrap;
+.table-value {
+  display: block;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.empty-placeholder,
-.no-selection {
+.boolean-tag {
+  display: inline-flex;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: rgba(244, 63, 94, 0.12);
+  color: #fca5a5;
+  font-size: 9px;
+  border: 1px solid rgba(244, 63, 94, 0.2);
+}
+
+.boolean-tag.positive {
+  background: rgba(16, 185, 129, 0.12);
+  color: #6ee7b7;
+  border-color: rgba(16, 185, 129, 0.25);
+}
+
+.row-actions {
+  display: inline-flex;
+  justify-content: flex-end;
+}
+
+/* EMPTY AND LOADING */
+.table-state {
+  min-height: 220px;
+  height: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  color: #7b7b8f;
+  gap: 10px;
+  color: var(--dir-muted);
+  font-size: 11px;
+}
+
+.empty-state strong {
+  color: #d5deeb;
+  font-size: 14px;
+}
+
+.empty-state > span {
+  max-width: 300px;
   text-align: center;
-  font-size: 13px;
-  height: 100%;
+  line-height: 1.5;
 }
 
-.modal-dynamic-form {
-  padding: 4px 0;
-}
-
-.form-grid {
+.empty-icon {
+  width: 54px;
+  height: 54px;
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 12px;
+  place-items: center;
+  border: 1px solid var(--dir-border);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.025);
+  margin-bottom: 3px;
 }
 
-.grid-col.col-1 {
-  grid-column: span 1;
-}
-
-.grid-col.col-2 {
-  grid-column: span 2;
-}
-
-.input-with-lookup {
+.directory-footer {
   display: flex;
-  align-items: flex-end;
-  gap: 8px;
+  justify-content: space-between;
+  flex-shrink: 0;
+  color: #65738a;
+  font-size: 9px;
 }
 
-.input-with-lookup :deep(.form-group) {
-  flex: 1;
-}
-
-.dept-select-dual {
+.directory-footer > span:first-child {
   display: flex;
   align-items: center;
+  gap: 7px;
+}
+
+.footer-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #38bdf8;
+  box-shadow: 0 0 6px rgba(56, 189, 248, 0.5);
+}
+
+/* DETAIL PANEL */
+.detail-panel {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 14px 12px;
+  border-left: 1px solid var(--dir-border);
+  background: rgba(0, 0, 0, 0.09);
+  overflow-y: auto;
+  gap: 15px;
+}
+
+.detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.detail-header > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.detail-eyebrow {
+  color: #728198;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+.detail-header strong {
+  font-size: 13.5px;
+}
+
+.detail-identity {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   gap: 8px;
+  text-align: center;
 }
 
-.selected-key-pill {
-  font-size: 11.5px;
-  color: #93c5fd;
-  white-space: nowrap;
+.detail-avatar {
+  width: 54px;
+  height: 54px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  border-radius: 14px;
+  background: rgba(56, 189, 248, 0.09);
+  color: #38bdf8;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.detail-identity strong {
+  max-width: 100%;
+  font-size: 13.5px;
+  overflow-wrap: anywhere;
+}
+
+.detail-identity > span {
+  color: var(--dir-muted);
   font-family: monospace;
+  font-size: 10px;
 }
 
-.custom-field-group {
+.detail-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+  padding: 14px 2px;
+}
+
+.detail-field {
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
 
-.field-sublabel-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+.detail-field > span {
+  color: #75839a;
+  font-size: 9px;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
 }
 
-.field-sublabel {
-  font-size: 12px;
-  color: #8c8c9e;
-}
-
-.btn-text-link {
-  background: none;
-  border: none;
-  color: #6496ff;
+.detail-field > strong,
+.detail-field > p {
+  margin: 0;
+  color: #d0d9e6;
   font-size: 11px;
-  cursor: pointer;
-  padding: 0;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
-.btn-text-link:hover {
-  text-decoration: underline;
+.detail-field > p {
+  color: #9ba8ba;
+  white-space: pre-wrap;
 }
 
-.native-dept-select {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid var(--half_opacity_border);
-  color: #fff;
-  padding: 7px 10px;
-  border-radius: 6px;
-  font-size: 13px;
-  outline: none;
-  width: 100%;
-}
+.detail-boolean.positive { color: #6ee7b7; }
+.detail-boolean:not(.positive) { color: #fca5a5; }
 
-.native-dept-select option {
-  background: #1e1e24;
-  color: #fff;
-}
-
-.native-dept-select:focus {
-  border-color: #6496ff;
-}
-
-.custom-field-group-check {
+.detail-empty {
+  flex: 1;
   display: flex;
-  align-items: flex-end;
-  width: 100%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 20px;
+  text-align: center;
 }
 
-.custom-dir-form,
-.dept-create-body {
+.detail-empty-icon {
+  width: 50px;
+  height: 50px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--dir-border);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.025);
+  color: #8291a8;
+}
+
+.detail-empty strong {
+  color: #d1dbe8;
+  font-size: 12px;
+}
+
+.detail-empty span {
+  color: var(--dir-muted);
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+/* EDITOR FORMS */
+.editor-form {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  padding: 2px 1px;
 }
 
-.dept-inspect-container {
+.editor-section {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 11px;
 }
 
-.dept-summary-card {
+.editor-section-title {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding: 10px 14px;
-  background: rgba(255, 255, 255, 0.04);
-  border-radius: 8px;
-  border: 1px solid var(--half_opacity_border);
-  font-size: 13px;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--dir-border);
+  color: #cbd5e1;
+  font-size: 12px;
+  font-weight: 650;
 }
 
-.dept-summary-card code {
-  color: #8fb1ff;
-  background: rgba(100, 150, 255, 0.15);
-  padding: 2px 6px;
-  border-radius: 4px;
+.editor-section-title small {
+  color: var(--dir-muted);
+  font-size: 10px;
+  font-weight: 400;
 }
 
-.total-headcount {
-  color: white;
+.editor-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
 }
 
-.total-headcount b {
-  color: #34d399;
-  font-size: 14px;
-}
-
-.empty-dept-msg {
-  padding: 20px;
-  text-align: center;
-  color: #8c8c9e;
-  font-size: 13px;
-}
-
-.dept-employees-list {
+.editor-field {
   display: flex;
   flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+}
+
+.editor-field.full {
+  grid-column: span 2;
+}
+
+.code-lookup-row {
+  display: flex;
+  align-items: flex-end;
   gap: 8px;
-  max-height: 350px;
-  overflow-y: auto;
 }
 
-.emp-mini-card {
+.code-lookup-row > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.dept-select-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.dept-select-row > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.dept-add-btn,
+.lookup-btn {
+  margin-bottom: 1px;
+}
+
+.builder-heading {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 12px;
-  background: rgba(255, 255, 255, 0.025);
-  border: 1px solid var(--half_opacity_border);
-  border-radius: 6px;
-}
-
-.emp-mini-left {
-  display: flex;
-  align-items: center;
   gap: 10px;
 }
 
-.emp-mini-avatar {
-  width: 28px;
-  height: 28px;
-  background: #3872ef;
-  color: #fff;
-  border-radius: 6px;
+.builder-heading > div {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.builder-heading strong {
   font-size: 12px;
 }
 
-.emp-mini-info {
+.builder-heading span {
+  color: var(--dir-muted);
+  font-size: 10px;
+}
+
+.no-fields {
+  padding: 16px;
+  border: 1px dashed var(--dir-border);
+  border-radius: 7px;
+  color: var(--dir-muted);
+  text-align: center;
+  font-size: 11px;
+}
+
+.field-builder-card {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) 30px;
+  align-items: start;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--dir-border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.018);
+}
+
+.builder-index {
+  padding-top: 8px;
+  color: #6c7c92;
+  font-family: monospace;
+  font-size: 10px;
+}
+
+.builder-inputs {
+  display: grid;
+  grid-template-columns: 1fr 1fr 110px 95px;
+  gap: 6px;
+  min-width: 0;
+}
+
+.builder-required {
+  grid-column: 2 / 3;
+  padding-top: 4px;
+}
+
+.builder-options {
+  grid-column: 2 / 4;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 7px;
+  padding-top: 8px;
+  border-top: 1px solid var(--dir-border);
 }
 
-.emp-name {
-  font-size: 13px;
-  font-weight: 600;
-  color: #fff;
-}
-
-.emp-meta {
+.options-heading {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  color: #9aa8bb;
+  font-size: 10px;
+}
+
+.option-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 28px;
   gap: 6px;
+  align-items: center;
+}
+
+/* DEPARTMENT DETAIL */
+.department-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+}
+
+.department-detail-summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--dir-border);
+  border-radius: 8px;
+  background: var(--half_opacity_bg);
+}
+
+.department-detail-summary > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.department-detail-summary span {
+  color: var(--dir-muted);
+  font-size: 10px;
+}
+
+.department-detail-summary code {
+  color: #93baff;
   font-size: 11px;
-  color: #8c8c9e;
 }
 
-.emp-tag {
-  background: rgba(255, 255, 255, 0.06);
-  padding: 1px 5px;
-  border-radius: 3px;
+.department-detail-summary strong {
+  color: #38bdf8;
+  font-size: 15px;
 }
 
-.emp-tag.role {
-  color: #93c5fd;
+.department-people-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 320px;
+  overflow-y: auto;
 }
 
-.dept-inspect-footer {
+.department-person {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border: 1px solid var(--dir-border);
+  border-radius: 7px;
+}
+
+.person-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.person-info strong {
+  font-size: 11px;
+}
+
+.person-info span {
+  color: var(--dir-muted);
+  font-size: 10px;
+}
+
+.department-no-people {
+  padding: 24px 10px;
+  color: var(--dir-muted);
+  text-align: center;
+  font-size: 11px;
+}
+
+.department-delete-row {
   display: flex;
   justify-content: flex-end;
   padding-top: 10px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1px solid var(--dir-border);
 }
 
-.fields-builder-section {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-  padding-top: 12px;
+/* RESPONSIVE */
+@media (max-width: 1150px) {
+  .directory-layout {
+    grid-template-columns: 180px minmax(0, 1fr) 250px;
+  }
+  .builder-inputs {
+    grid-template-columns: 1fr 1fr;
+  }
 }
 
-.builder-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 13px;
-  color: #a0a0b0;
+@media (max-width: 850px) {
+  .directory-layout {
+    grid-template-columns: 160px minmax(0, 1fr);
+  }
+  .detail-panel {
+    display: none;
+  }
+  .directory-header {
+    flex-wrap: wrap;
+  }
 }
 
-.add-field-link {
-  background: none;
-  border: none;
-  color: #6496ff;
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.builder-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.inline-select {
-  background: #222;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  padding: 6px 10px;
-  border-radius: 4px;
-  color: #fff;
-  font-size: 13px;
-}
-
-.full {
-  width: 100%;
+@media (max-width: 600px) {
+  .directory-layout {
+    grid-template-columns: 1fr;
+  }
+  .directory-sidebar {
+    max-height: 110px;
+    border-right: 0;
+    border-bottom: 1px solid var(--dir-border);
+  }
+  .sidebar-bottom {
+    display: none;
+  }
+  .directory-content {
+    padding: 10px;
+  }
+  .stats-row {
+    flex-wrap: wrap;
+  }
+  .stat-card {
+    flex-basis: calc(50% - 5px);
+  }
+  .table-toolbar {
+    flex-wrap: wrap;
+  }
+  .toolbar-left,
+  .search-input-wrapper {
+    width: 100%;
+  }
+  .editor-grid {
+    grid-template-columns: 1fr;
+  }
+  .editor-field.full {
+    grid-column: span 1;
+  }
+  .builder-inputs {
+    grid-template-columns: 1fr;
+  }
+  .builder-options {
+    grid-column: 1 / -1;
+  }
 }
 </style>

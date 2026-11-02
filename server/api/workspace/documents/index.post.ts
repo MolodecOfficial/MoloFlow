@@ -1,5 +1,4 @@
-import { versionModel, ensureDocumentCollection, dropDocumentCollection } from '~~/server/utils/workspaceCollections'
-import { createError, defineEventHandler, setResponseStatus } from 'h3'
+import { setResponseStatus } from 'h3'
 import { tenantModels } from '~~/server/utils/tenantDb'
 import { resolveActor } from '~~/server/utils/moloDb/access'
 import {
@@ -7,7 +6,6 @@ import {
     parseName, parseType, resolveFolderId, serializeDocument, readJsonBody
 } from '~~/server/utils/workspace'
 
-// POST /api/workspace/documents?enterpriseId=   body: { type, name?, folderId?, data? }
 export default defineEventHandler(async (event) => {
     const enterpriseId = getEnterpriseId(event)
     await resolveActor(event, enterpriseId, 'data')
@@ -34,13 +32,6 @@ export default defineEventHandler(async (event) => {
         updatedAt: now
     })
 
-    try {
-        await ensureDocumentCollection(enterpriseId, String(doc._id))
-    } catch (e: any) {
-        // Документ без своей коллекции не сохраняем: откатываем запись
-        await WorkspaceDocument.deleteOne({ _id: doc._id })
-        throw createError({ statusCode: 500, message: `Документ не сохранён: ${e?.message || 'ошибка базы'}` })
-    }
     setResponseStatus(event, 201)
     return serializeDocument(doc)
 })

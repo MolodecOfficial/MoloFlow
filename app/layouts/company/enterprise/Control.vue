@@ -41,7 +41,7 @@ const folderTemplates: FolderTemplate[] = [
     id: 'construction',
     title: 'Строительство',
     description: 'Клиенты, проекты, сметы, материалы, договоры и акты.',
-    icon: '🏗️',
+    icon: 'construction',
     folders: [
       { name: 'Клиенты' },
       {
@@ -74,7 +74,7 @@ const folderTemplates: FolderTemplate[] = [
     id: 'store',
     title: 'Магазин',
     description: 'Товары, склад, поставщики, клиенты, заказы и продажи.',
-    icon: '🛒',
+    icon: 'store',
     folders: [
       { name: 'Товары' },
       { name: 'Категории' },
@@ -93,7 +93,7 @@ const folderTemplates: FolderTemplate[] = [
     id: 'it',
     title: 'IT / Разработка',
     description: 'Клиенты, проекты, задачи, команда, документация и договоры.',
-    icon: '💻',
+    icon: 'it',
     folders: [
       { name: 'Клиенты' },
       {
@@ -117,7 +117,7 @@ const folderTemplates: FolderTemplate[] = [
     id: 'production',
     title: 'Производство',
     description: 'Заказы, производство, материалы, склад, сотрудники и документы.',
-    icon: '🏭',
+    icon: 'production',
     folders: [
       { name: 'Клиенты' },
       { name: 'Заказы' },
@@ -143,7 +143,7 @@ const folderTemplates: FolderTemplate[] = [
     id: 'services',
     title: 'Услуги',
     description: 'Клиенты, заказы, услуги, расписание, сотрудники и документы.',
-    icon: '🛠️',
+    icon: 'services',
     folders: [
       { name: 'Клиенты' },
       { name: 'Заказы' },
@@ -161,7 +161,7 @@ const folderTemplates: FolderTemplate[] = [
     id: 'other',
     title: 'Другое',
     description: 'Универсальная базовая структура без отраслевой специфики.',
-    icon: '📁',
+    icon: 'folder',
     folders: [
       { name: 'Клиенты' },
       { name: 'Проекты' },
@@ -453,7 +453,7 @@ onMounted(async () => {
 <template>
   <div class="control-page">
     <div v-if="!isAuthenticated" class="auth-placeholder">
-      <div class="auth-icon">🔒</div>
+      <div class="auth-icon"><UIMoloSticker name="lock" :size="42" /></div>
       <h3>Вы не авторизованы</h3>
       <p>Для работы необходимо войти в предприятие</p>
       <UIMoloButton class="confirm" @click="notAuth">Войти</UIMoloButton>
@@ -519,7 +519,7 @@ onMounted(async () => {
           </div>
 
           <div v-else-if="folderCount === 0" class="workspace-empty">
-            <div class="workspace-empty-icon">🗂️</div>
+            <div class="workspace-empty-icon"><UIMoloSticker name="folder" :size="40" /></div>
             <h3>Рабочее пространство ещё не настроено</h3>
             <p>Создайте структуру предприятия — папки будут синхронизированы с рабочим пространством.</p>
             <UIMoloButton class="confirm" @click="openFolderSetup">
@@ -528,7 +528,7 @@ onMounted(async () => {
           </div>
 
           <div v-else class="folder-summary">
-            <div class="folder-summary-icon">📁</div>
+            <div class="folder-summary-icon"><UIMoloSticker name="folder" :size="32" /></div>
             <div class="folder-summary-content">
               <strong>Структура предприятия готова</strong>
               <span>{{ folderCount }} папок настроены и готовы к работе в Пространстве.</span>
@@ -616,7 +616,7 @@ onMounted(async () => {
                       <strong>{{ m.name }}</strong>
                       <span class="role-badge" :class="m.role.toLowerCase()">{{ m.role }}</span>
                     </div>
-                    <small>📞 {{ m.phone }} • {{ formatDate(m.joinedAt) }}</small>
+                    <small><UIMoloSticker name="phone" :size="11" /> {{ m.phone }} • {{ formatDate(m.joinedAt) }}</small>
                   </div>
                 </div>
               </div>
@@ -654,13 +654,13 @@ onMounted(async () => {
                   :disabled="creatingFolders"
                   @click="selectTemplate(template.id)"
               >
-                <span class="template-icon">{{ template.icon }}</span>
+                <UIMoloSticker :name="template.icon" :size="24" class="template-icon" />
                 <span class="template-content">
                   <strong>{{ template.title }}</strong>
                   <small>{{ template.description }}</small>
                 </span>
                 <span class="template-check">
-                  {{ selectedTemplateId === template.id ? '✓' : '' }}
+                  <UIMoloSticker v-if="selectedTemplateId === template.id" name="check" :size="14" />
                 </span>
               </button>
             </div>

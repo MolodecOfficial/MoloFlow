@@ -1,27 +1,23 @@
-import { defineEventHandler, getRouterParam, getQuery, createError } from 'h3'
+import { defineEventHandler, getRouterParam, createError } from 'h3'
 import { resolveActor, toHttpError } from '~~/server/utils/moloDb/access'
 import { tenantModels } from '~~/server/utils/tenantDb'
-import { allDirectoryModels } from '~~/server/utils/directoryCollections'
+import { requireTenantId } from '~~/server/utils/tenantContext'
 
-// DELETE /api/directory/departments/:key?enterpriseId=
-// Снимает привязку к отделу у записей всех справочников и удаляет сам отдел.
 export default defineEventHandler(async (event) => {
     try {
         const key = String(getRouterParam(event, 'key') || '').trim().toLowerCase()
-        const enterpriseId = String(getQuery(event).enterpriseId || '')
-        if (!key || !enterpriseId) throw createError({ statusCode: 400, message: 'key и enterpriseId обязательны' })
+        const enterpriseId = requireTenantId(event)
+        if (!key) throw createError({ statusCode: 400, message: 'key обязателен' })
         await resolveActor(event, enterpriseId, 'data')
 
-        const { Department } = tenantModels(enterpriseId)
+        const { Department, DirectoryItem } = tenantModels(enterpriseId)
         const dept: any = await Department.findOne({ key }).lean()
         if (!dept) throw createError({ statusCode: 404, message: 'Отдел не найден' })
 
-        for (const model of await allDirectoryModels(enterpriseId)) {
-            await model.updateMany(
-                { $or: [{ 'attributes.departmentKey': key }, { 'attributes.department': dept.name }] },
-                { $unset: { 'attributes.departmentKey': '', 'attributes.department': '' } }
-            )
-        }
+        await DirectoryItem.updateMany(
+            { enterpriseId, $or: [{ 'attributes.departmentKey': key }, { 'attributes.department': dept.name }] },
+            { $unset: { 'attributes.departmentKey': '', 'attributes.department': '' } }
+        )
         await Department.deleteOne({ _id: dept._id })
         return { success: true, deletedKey: key, deletedName: dept.name }
     } catch (e) {

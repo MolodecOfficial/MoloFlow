@@ -1,57 +1,58 @@
-import { defineEventHandler, readBody, createError } from 'h3'
-import { resolveActor, toHttpError } from '~~/server/utils/moloDb/access'
-import { tenantModels } from '~~/server/utils/tenantDb'
-import { ensureDirectoryCollection } from '~~/server/utils/directoryCollections'
-import { ensureDirectoryStudioCollection } from '~~/server/utils/enterpriseDb'
-import { slugToCollection } from '~~/server/utils/directoryCollections'
+import {createError, defineEventHandler, readBody} from 'h3'
+import {resolveActor, toHttpError} from '~~/server/utils/moloDb/access'
+import {tenantModels} from '~~/server/utils/tenantDb'
+import {ensureDirectoryStudioCollection} from '~~/server/utils/enterpriseDb'
+import {requireTenantId} from '~~/server/utils/tenantContext'
 
-// POST /api/directory/definitions   body: { enterpriseId, slug, title, aliases?, fields?, codeLabel?, titleLabel?, groupByKey? }
-// Создаёт описание справочника и сразу его коллекцию dir_<slug>.
+const SLUG_RE = /^[a-z][a-z0-9_]{0,48}$/
+const FIELD_RE = /^[A-Za-z][A-Za-z0-9_]{0,48}$/
+
 export default defineEventHandler(async (event) => {
     try {
-        const b = (await readBody(event)) || {}
-        const enterpriseId = String(b.enterpriseId || '')
-        if (!enterpriseId || !b.slug || !b.title) {
-            throw createError({ statusCode: 400, message: 'enterpriseId, slug и title обязательны' })
-        }
+        const body = (await readBody(event)) || {}
+        const enterpriseId = requireTenantId(event)
         await resolveActor(event, enterpriseId, 'schema')
-        const { DirectoryDefinition } = tenantModels(enterpriseId)
+        const slug = String(body.slug || '').trim().toLowerCase()
+        const title = String(body.title || '').trim()
+        if (!SLUG_RE.test(slug)) throw createError({statusCode: 400, message: 'Некорректный идентификатор справочника'})
+        if (!title) throw createError({statusCode: 400, message: 'Укажите название справочника'})
 
-        // Use the same normalization for the definition, physical MongoDB collection,
-        // and MoloDB Studio registry. Numeric names such as "1" are valid.
-        const slug = String(b.slug).toLowerCase().trim().replace(/\s+/g, '_')
-        const collectionName = slugToCollection(slug)
-        const aliases = Array.isArray(b.aliases) ? b.aliases.map((a: string) => String(a).trim().toLowerCase()).filter(Boolean) : []
-
-        const def = await DirectoryDefinition.findOneAndUpdate(
-            { slug },
-            {
-                $set: {
-                    enterpriseId,
-                    slug,
-                    title: String(b.title),
-                    aliases,
-                    fields: Array.isArray(b.fields) ? b.fields : [],
-                    codeLabel: b.codeLabel || 'Код / Идентификатор',
-                    titleLabel: b.titleLabel || 'Наименование',
-                    groupByKey: b.groupByKey || ''
-                }
-            },
-            { upsert: true, new: true }
-        ).lean()
-
-        // Create the physical tenant collection first, then register that exact name
-        // in the MoloDB Studio metadata. This avoids UI-only custom directories.
-        const physicalCollection = await ensureDirectoryCollection(enterpriseId, slug)
-        await ensureDirectoryStudioCollection(enterpriseId, slug, String(b.title), Array.isArray(b.fields) ? b.fields.map((f: any) => ({
-            name: String(f.key || f.name || ''), label: String(f.label || f.key || f.name || ''), type: String(f.type || 'string')
-        })) : [])
-        if (physicalCollection !== collectionName) {
-            throw createError({ statusCode: 500, message: 'Имя коллекции справочника не совпало с реестром MoloDB' })
-        }
-        // Return the persisted definition including its tenant identifier.
-        return await DirectoryDefinition.findById((def as any)._id).lean()
-    } catch (e) {
-        throw toHttpError(e)
+        const fields = Array.isArray(body.fields) ? body.fields.slice(0, 100).map((field: any) => {
+            const key = String(field?.key || field?.name || '').trim()
+            if (!FIELD_RE.test(key) || ['_id', 'id', 'enterpriseId', 'createdAt', 'updatedAt'].includes(key)) throw createError({
+                statusCode: 400,
+                message: `Некорректный ключ поля «${key}»`
+            })
+            const type = ['text', 'number', 'date', 'boolean', 'select'].includes(String(field.type)) ? String(field.type) : 'text'
+            return {
+                key,
+                label: String(field.label || key).trim().slice(0, 100),
+                type,
+                required: field.required === true,
+                placeholder: String(field.placeholder || '').slice(0, 200),
+                span: Number(field.span) === 2 ? 2 : 1,
+                options: Array.isArray(field.options) ? field.options.slice(0, 100) : []
+            }
+        }) : []
+        const aliases = Array.isArray(body.aliases) ? [...new Set(body.aliases.map((a: any) => String(a).trim().toLowerCase()).filter(Boolean))] : []
+        const {DirectoryDefinition} = tenantModels(enterpriseId)
+        const def = await DirectoryDefinition.findOneAndUpdate({slug}, {
+            $set: {
+                enterpriseId,
+                slug,
+                title,
+                description: String(body.description || ''),
+                aliases,
+                fields,
+                icon: String(body.icon || 'folder'),
+                codeLabel: String(body.codeLabel || 'Код / Идентификатор'),
+                titleLabel: String(body.titleLabel || 'Наименование'),
+                groupByKey: String(body.groupByKey || '')
+            }
+        }, {upsert: true, new: true, runValidators: true}).lean()
+        await ensureDirectoryStudioCollection(enterpriseId, slug, title, fields)
+        return def
+    } catch (error) {
+        throw toHttpError(error)
     }
 })

@@ -329,7 +329,7 @@ watch(() => props.modelValue, (open) => {
             <div v-for="(h, i) in form.headers" :key="i" class="row">
               <input v-model="h.key" class="field half" placeholder="Authorization / X-Api-Key" />
               <input v-model="h.value" class="field grow mono" type="text" placeholder="Значение" />
-              <button type="button" class="icon-btn" @click="removeHeader(i)">×</button>
+              <button type="button" class="icon-btn" @click="removeHeader(i)"><UIMoloSticker name="x" :size="14" /></button>
             </div>
           </template>
 

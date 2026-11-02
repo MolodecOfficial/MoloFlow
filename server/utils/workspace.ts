@@ -1,7 +1,8 @@
 import { versionModel } from './workspaceCollections'
-import { createError, getQuery, getRouterParam, readBody, type H3Event } from 'h3'
+import { createError, getRouterParam, readBody, type H3Event } from 'h3'
 import type { Types } from 'mongoose'
 import { tenantModels } from './tenantDb'
+import { requireTenantId } from './tenantContext'
 
 export const DOC_TYPES = ['excel', 'word', 'pdf', 'primary', 'image'] as const
 export type DocType = typeof DOC_TYPES[number]
@@ -15,16 +16,8 @@ const OID_RE = /^[a-f\d]{24}$/i
 
 export const httpError = (statusCode: number, message: string) => createError({ statusCode, message })
 
-/**
- * Возвращает id предприятия из ?enterpriseId=. Без 'default': невалидный id → 400.
- * ВАЖНО: это только валидация формата. Права проверяет resolveActor() в каждом эндпоинте.
- */
 export function getEnterpriseId(event: H3Event): string {
-    const raw = getQuery(event).enterpriseId
-    const value = Array.isArray(raw) ? raw[0] : raw
-    const id = typeof value === 'string' ? value.trim().toLowerCase() : ''
-    if (!OID_RE.test(id)) throw httpError(400, 'Некорректный enterpriseId')
-    return id
+    return requireTenantId(event)
 }
 
 export function parseObjectId(value: unknown, label = 'id'): string {
@@ -57,7 +50,6 @@ export function parseDate(value: unknown): Date {
     return Number.isFinite(n) && n > 0 ? new Date(n) : new Date()
 }
 
-/** null / '' → корень; иначе папка должна существовать в БД этого предприятия */
 export async function resolveFolderId(enterpriseId: string, value: unknown): Promise<string | null> {
     if (value === null || value === undefined || value === '') return null
     const id = parseObjectId(value, 'folderId')
@@ -68,7 +60,6 @@ export async function resolveFolderId(enterpriseId: string, value: unknown): Pro
 
 export const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
-/* ───────── Содержимое ───────── */
 export function encodeData(type: DocType, data: unknown): string {
     if (type === 'word' || type === 'pdf' || type === 'image') {
         if (data !== undefined && data !== null && typeof data !== 'string') {
@@ -93,7 +84,7 @@ export function decodeData(type: DocType, content: string): DocData {
 
 export function assertContentSize(content: string) {
     if (Buffer.byteLength(content) > MAX_CONTENT_BYTES) {
-        throw httpError(413, 'Документ слишком большой (максимум 15 МБ). Уменьшите размер вставленных изображений')
+        throw httpError(413, 'Документ слишком большой (максимум 15 МБ).')
     }
 }
 
@@ -132,7 +123,6 @@ export function extractSearchText(type: DocType, content: string): string {
     return text.replace(/\s+/g, ' ').trim().toLowerCase().slice(0, MAX_SEARCH_CHARS)
 }
 
-/* ───────── Сериализация ───────── */
 const ms = (d: Date | string | number) => new Date(d).getTime()
 
 export function serializeFolder(f: any) {
@@ -166,7 +156,6 @@ export function serializeVersion(v: any) {
     }
 }
 
-/* ───────── Версии ───────── */
 type SnapshotSource = { _id: Types.ObjectId | string; enterpriseId: string; content: string }
 
 export async function createSnapshot(doc: SnapshotSource, comment: string) {
@@ -189,7 +178,6 @@ export async function createSnapshot(doc: SnapshotSource, comment: string) {
     return version
 }
 
-/** Вызывается ПЕРЕД перезаписью content: сохраняет старое состояние, если давно не сохраняли */
 export async function maybeAutoSnapshot(doc: SnapshotSource) {
     if (!doc.content || doc.content === '{}') return
     const WorkspaceDocumentVersion = versionModel(doc.enterpriseId, doc._id)

@@ -1,6 +1,6 @@
 <!-- components/MoloModal.vue -->
 <script setup lang="ts">
-import { nextTick, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 
 const props = defineProps<{
   modelValue: boolean         // v-model: видимость модалки
@@ -11,7 +11,7 @@ const props = defineProps<{
   cancelText?: string         // текст на кнопке отмены
   closeOnOverlay?: boolean    // закрытие по клику на фон
   modalText?: string          // текст для модалки
-  helpText?: boolean | string           // текст для подсказок и помощи
+  helpText?: boolean | string // текст для подсказок и помощи
   loading?: boolean           // состояние загрузки
 }>()
 
@@ -58,9 +58,7 @@ const confirm = async () => {
   addLog('info', `Выполняю действие...`)
 
   try {
-    // Эмитим confirm, ждём если это промис
     const result = emit('confirm')
-    // Если результат — промис, ждём его
     if (result && typeof result === 'object' && 'then' in result) {
       await result
     }
@@ -68,11 +66,9 @@ const confirm = async () => {
   } catch (error: any) {
     addLog('error', `Ошибка: ${error.message || 'Неизвестная ошибка'}`)
     addNotification('error', error.message || 'Ошибка при выполнении действия')
-    // Если произошла ошибка, не закрываем модалку
     internalLoading.value = false
     return
   } finally {
-    // Сбрасываем внутреннюю загрузку
     if (!props.loading) {
       internalLoading.value = false
     }
@@ -93,12 +89,15 @@ const handleOverlayClick = () => {
   <Teleport to="body">
     <Transition name="modal-fade">
       <div v-if="isOpen" class="modal-overlay" @click.self="handleOverlayClick">
-        <div class="modal-container" :style="{ width: typeof width === 'number' ? width + 'px' : width || '480px' }">
+        <div
+            class="modal-container"
+            :style="{ width: typeof width === 'number' ? width + 'px' : width || '480px' }"
+        >
           <!-- Шапка -->
-          <div class="modal-header ">
+          <div class="modal-header">
             <h3>{{ title || 'Подтверждение' }}</h3>
             <div class="btn-group">
-              <slot name="footer">
+              <slot name="header">
                 <UIMoloButton
                     v-if="!hideCancel"
                     class="close small"
@@ -119,20 +118,32 @@ const handleOverlayClick = () => {
             </div>
           </div>
 
-          <!-- Контент – слот -->
+          <!-- Контент -->
           <div class="modal-body">
             <slot name="body">
               <p class="modal-text">{{ modalText }}</p>
             </slot>
           </div>
+
+          <!-- Подвал (футер внутри контейнера окна) -->
+          <div v-if="$slots.footer" class="modal-footer">
+            <slot
+                name="footer"
+                :close="close"
+                :confirm="confirm"
+                :is-loading="isLoading"
+            />
+          </div>
         </div>
+
+        <!-- Подсказка под модальным окном -->
         <div
             v-if="helpText"
             class="help-overlay"
             :style="{ width: typeof width === 'number' ? width + 'px' : width || '480px' }"
         >
           <slot name="help">
-            <p class="help-text"> {{ helpText }} </p>
+            <p class="help-text">{{ helpText }}</p>
           </slot>
         </div>
       </div>
@@ -151,7 +162,7 @@ const handleOverlayClick = () => {
   flex-direction: column;
   gap: 10px;
   z-index: 2000;
-  background: rgba(0, 0, 0, 0.08);
+  background: rgba(0, 0, 0, 0.45);
 }
 
 .modal-container {
@@ -163,6 +174,8 @@ const handleOverlayClick = () => {
   flex-direction: column;
   max-width: 90vw;
   max-height: 85vh;
+  overflow: hidden;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.45);
 }
 
 .modal-header {
@@ -175,16 +188,10 @@ const handleOverlayClick = () => {
 }
 
 .modal-header h3 {
-  color: white;
+  color: #ffffff;
   margin: 0;
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 600;
-}
-
-.modal-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
 }
 
 .modal-body {
@@ -194,17 +201,29 @@ const handleOverlayClick = () => {
 }
 
 .modal-text {
-  color: white;
+  color: #e2e8f0;
   margin: 0;
+  line-height: 1.5;
+}
+
+/* Футер окна */
+.modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--half_opacity_border, #2a2a3a);
+  background: rgba(0, 0, 0, 0.15);
+  flex-shrink: 0;
 }
 
 .help-overlay {
-  border: 1px solid var(--half_opacity_border);
-  padding: 20px;
+  border: 1px solid var(--half_opacity_border, #2a2a3a);
+  padding: 14px 18px;
   border-radius: 10px;
-  background: var(--half_opacity_bg);
+  background: var(--half_opacity_bg, rgba(20, 20, 28, 0.7));
   box-sizing: border-box;
-
 }
 
 .help-text {
@@ -212,6 +231,8 @@ const handleOverlayClick = () => {
   text-decoration: underline 1px dotted;
   text-underline-offset: 4px;
   white-space: pre-line;
+  margin: 0;
+  font-size: 13px;
 }
 
 /* Анимации */
@@ -231,11 +252,11 @@ const handleOverlayClick = () => {
 }
 
 .modal-fade-enter-from .modal-container {
-  transform: scale(0.95) translateY(-10px);
+  transform: scale(0.96) translateY(-10px);
 }
 
 .modal-fade-leave-to .modal-container {
-  transform: scale(0.95) translateY(10px);
+  transform: scale(0.96) translateY(10px);
 }
 
 /* ========================================
@@ -265,23 +286,25 @@ const handleOverlayClick = () => {
     font-size: 16px;
   }
 
-  .modal-actions {
-    width: 100%;
+  .modal-body {
+    padding: 16px;
+  }
+
+  .modal-footer {
+    padding: 12px 16px;
+    flex-wrap: wrap;
     justify-content: stretch;
   }
 
-  .modal-actions :deep(.molo-btn) {
+  .modal-footer :deep(.molo-btn) {
     flex: 1;
-  }
-
-  .modal-body {
-    padding: 16px;
   }
 
   .help-overlay {
     width: 100% !important;
     max-width: 100vw;
     padding: 14px;
+    border-radius: 0;
   }
 
   .modal-fade-enter-from .modal-container,

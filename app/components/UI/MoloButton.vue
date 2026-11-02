@@ -1,5 +1,9 @@
 <script setup lang="ts">
+import { computed } from 'vue'
+
 interface Props {
+  type?: 'button' | 'submit' | 'reset'
+  variant?: 'default' | 'confirm' | 'close' | 'small' | 'action' | 'pinned' | 'full' | 'fit' | 'transparent'
   disabled?: boolean
   loading?: boolean
 }
@@ -21,347 +25,282 @@ const handleClick = (event: MouseEvent) => {
   emit('click', event)
 }
 
-// Предотвращаем запуск драга родителя (v-pinnable) при клике на кнопку
 const handleMouseDown = (event: MouseEvent) => {
   event.stopPropagation()
 }
+
+// Поддерживаем как проп variant, так и классы из $attrs
+const variantClass = computed(() => {
+  return props.variant !== 'default' ? props.variant : ''
+})
 </script>
 
 <template>
   <button
+      :type="type"
       class="molo-btn"
-      :class="{
-        'confirm': $attrs.variant === 'confirm',
-        'close': $attrs.variant === 'close',
-        'small': $attrs.variant === 'small',
-        'action': $attrs.variant === 'action',
-        'pinned': $attrs.variant === 'pinned',
-        'full': $attrs.variant === 'full',
-        'fit': $attrs.variant === 'fit',
-        'transparent': $attrs.variant === 'transparent'
-      }"
+      :class="[
+      variantClass,
+      {
+        'is-loading': loading,
+        'is-disabled': disabled
+      }
+    ]"
       :disabled="disabled || loading"
       draggable="false"
       @mousedown="handleMouseDown"
       @click="handleClick"
   >
-    <!-- Спиннер при загрузке -->
+    <!-- Световой блик стекла -->
+    <span class="molo-btn__sheen" aria-hidden="true" />
+
+    <!-- Спиннер загрузки -->
     <span v-if="loading" class="molo-btn__spinner">
-      <UIMoloLoaders btn-loader/>
+      <slot name="loader">
+       <UIMoloLoaders btn-loader/>
+      </slot>
     </span>
 
-    <!-- Слот для содержимого -->
-    <slot>{{ loading ? 'Загрузка...' : 'Кнопка' }}</slot>
+    <!-- Контент -->
+    <span class="molo-btn__content">
+      <slot>{{ loading ? 'Загрузка...' : 'Кнопка' }}</slot>
+    </span>
   </button>
 </template>
+
 <style scoped>
+/* ==========================================================================
+   БАЗОВАЯ СТРУКТУРА КНОПКИ (LIQUID GLASS CORE)
+   ========================================================================== */
 .molo-btn {
+  --btn-glass-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.09) 0%, rgba(255, 255, 255, 0.03) 100%);
+  --btn-glass-border: rgba(255, 255, 255, 0.16);
+  --btn-specular: rgba(255, 255, 255, 0.35);
+  --btn-text-color: #f1f5f9;
+  --btn-glow: rgba(255, 255, 255, 0.05);
+
   position: relative;
-  overflow: hidden;
-  isolation: isolate;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
   padding: 8px 18px;
-  color: white;
-  font-weight: 600;
+  min-height: 36px;
+  box-sizing: border-box;
+
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 550;
+  letter-spacing: 0.01em;
+  color: var(--btn-text-color);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+
+  background: var(--btn-glass-bg);
+  border: 1px solid var(--btn-glass-border);
+  border-radius: 7px;
+  outline: none;
   cursor: pointer;
-  border-radius: 5px;
-  border: 1px solid rgba(255, 255, 255, .18);
-  background: linear-gradient(
-      180deg,
-      rgba(255, 255, 255, .12) 0%,
-      rgba(255, 255, 255, .04) 100%
-  );
-  backdrop-filter: blur(24px) saturate(180%);
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35),
-  inset 0 -1px 0 rgba(255, 255, 255, .05),
-  0 10px 30px rgba(0, 0, 0, .15);
-  transition: transform .25s ease,
-  box-shadow .25s ease,
-  border-color .25s ease,
-  background .25s ease;
+  user-select: none;
+  overflow: hidden;
+
+  /* Оптическое преломление стекла */
+  backdrop-filter: blur(18px) saturate(170%);
+  -webkit-backdrop-filter: blur(18px) saturate(170%);
+
+  /* Призматический свет: верхняя фаска + мягкая подложка */
+  box-shadow:
+      inset 0 1px 0 0 var(--btn-specular),
+      inset 0 -1px 0 0 rgba(0, 0, 0, 0.25),
+      0 4px 14px -2px rgba(0, 0, 0, 0.3);
+
+  transition:
+      transform 0.18s cubic-bezier(0.16, 1, 0.3, 1),
+      background 0.25s ease,
+      border-color 0.25s ease,
+      box-shadow 0.25s ease,
+      opacity 0.2s ease;
 }
 
-
-.molo-btn::before {
-  backdrop-filter:
-      blur(24px)
-      saturate(200%)
-      contrast(110%);
-  content: '';
+/* Бегущий блик (каустическое скольжение света) */
+.molo-btn__sheen {
   position: absolute;
   inset: 0;
   border-radius: inherit;
+  pointer-events: none;
   background: linear-gradient(
-      180deg,
-      rgba(255, 255, 255, .35) 0%,
-      rgba(255, 255, 255, .12) 20%,
-      transparent 55%
+      105deg,
+      transparent 20%,
+      rgba(255, 255, 255, 0.14) 45%,
+      rgba(255, 255, 255, 0.28) 50%,
+      rgba(255, 255, 255, 0.14) 55%,
+      transparent 80%
   );
-  pointer-events: none;
+  transform: translateX(-130%);
+  transition: transform 0.65s cubic-bezier(0.19, 1, 0.22, 1);
+  opacity: 0.7;
 }
 
-.molo-btn::after {
-  content: '';
-  position: absolute;
-  width: 180%;
-  height: 180%;
-  left: -140%;
-  top: -40%;
-  background: radial-gradient(
-      circle,
-      rgba(255, 255, 255, .25) 0%,
-      rgba(255, 255, 255, .08) 25%,
-      transparent 65%
-  );
-  transition: left .7s cubic-bezier(.2, .8, .2, 1);
-  pointer-events: none;
+.molo-btn__content {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  z-index: 1;
 }
 
-.molo-btn:hover {
-  transform: translateY(-2px);
-  border-color: rgba(255, 255, 255, .3);
-  background: linear-gradient(
-      180deg,
-      rgba(255, 255, 255, .16),
-      rgba(255, 255, 255, .06)
-  );
-  box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, .45),
-      inset 0 -1px 0 rgba(255, 255, 255, .08),
-      0 16px 40px rgba(0, 0, 0, .22);
-  animation: liquidBorder 2s infinite;
-
-}
-
-
-@keyframes liquidBorder {
-  0% {
-    border-color: rgba(255,255,255,.15);
-  }
-  50% {
-    border-color: rgba(255,255,255,.35);
-  }
-  100% {
-    border-color: rgba(255,255,255,.15);
-  }
-}
-
-.molo-btn:hover::after {
-  left: 100%;
-}
-
-.molo-btn:active {
-  transform: scale(.97);
-}
-
-/* Эффект нажатия - масштабирование */
-.molo-btn:active {
-  transform: scale(0.96);
-}
-
-/* Убираем масштабирование при disabled или loading */
-.molo-btn.loading:active {
-  transform: scale(1);
-  cursor: not-allowed;
-}
-
-
-.molo-btn:disabled:active {
-  border: none;
-}
-
-.molo-btn:disabled:hover {
-  border: 1px solid black;
-  background: #1e1e1e;
-}
-
-.molo-btn:disabled {
-  cursor: not-allowed;
-}
-
-/* Ripple эффект при клике - улучшенный */
-.molo-btn::before {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 0;
-  height: 0;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(255, 255, 255, 0.3) 0%, rgba(255, 255, 255, 0) 100%);
-  transform: translate(-50%, -50%);
-  transition: width 0.4s ease-out, height 0.4s ease-out;
-  pointer-events: none;
-}
-
-.molo-btn:active::before {
-  width: 200%;
-  height: 200%;
-}
-
-/* Альтернативный эффект нажатия с тенью */
-.molo-btn:hover {
-  background: var(--half_opacity_border_hover);
+/* ==========================================================================
+   СОСТОЯНИЯ: HOVER & ACTIVE
+   ========================================================================== */
+.molo-btn:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  --btn-glass-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.15) 0%, rgba(255, 255, 255, 0.05) 100%);
+  --btn-glass-border: rgba(255, 255, 255, 0.28);
+  --btn-specular: rgba(255, 255, 255, 0.55);
+
+  box-shadow:
+      inset 0 1px 0 0 var(--btn-specular),
+      inset 0 0 16px 0 var(--btn-glow),
+      0 6px 20px -2px rgba(0, 0, 0, 0.45);
 }
 
-.molo-btn:active {
-  transform: translateY(1px);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+.molo-btn:hover:not(:disabled) .molo-btn__sheen {
+  transform: translateX(130%);
 }
 
+.molo-btn:active:not(:disabled) {
+  transform: scale(0.975) translateY(1px);
+  --btn-glass-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%);
+  --btn-glass-border: rgba(255, 255, 255, 0.18);
+  --btn-specular: rgba(255, 255, 255, 0.2);
+
+  box-shadow:
+      inset 0 1px 2px rgba(0, 0, 0, 0.35),
+      0 2px 6px rgba(0, 0, 0, 0.25);
+  transition-duration: 0.06s;
+}
+
+/* ==========================================================================
+   ВАРИАНТЫ КНОПОК
+   ========================================================================== */
+
+/* 1. Confirm / Primary (Лазурное неоновое стекло) */
+.molo-btn.confirm {
+  --btn-glass-bg: linear-gradient(180deg, rgba(56, 189, 248, 0.28) 0%, rgba(14, 116, 144, 0.2) 100%);
+  --btn-glass-border: rgba(56, 189, 248, 0.45);
+  --btn-specular: rgba(186, 230, 253, 0.65);
+  --btn-glow: rgba(56, 189, 248, 0.25);
+  --btn-text-color: #f0f9ff;
+}
+
+.molo-btn.confirm:hover:not(:disabled) {
+  --btn-glass-bg: linear-gradient(180deg, rgba(56, 189, 248, 0.4) 0%, rgba(14, 116, 144, 0.3) 100%);
+  --btn-glass-border: rgba(56, 189, 248, 0.7);
+
+}
+
+/* 2. Close / Danger (Рубиновое стекло) */
+.molo-btn.close {
+  --btn-glass-bg: linear-gradient(180deg, rgba(244, 63, 94, 0.28) 0%, rgba(159, 18, 57, 0.2) 100%);
+  --btn-glass-border: rgba(251, 113, 133, 0.45);
+  --btn-specular: rgba(254, 205, 211, 0.65);
+  --btn-glow: rgba(244, 63, 94, 0.25);
+  --btn-text-color: #fff1f2;
+}
+
+.molo-btn.close:hover:not(:disabled) {
+  --btn-glass-bg: linear-gradient(180deg, rgba(244, 63, 94, 0.42) 0%, rgba(159, 18, 57, 0.32) 100%);
+  --btn-glass-border: rgba(251, 113, 133, 0.7);
+}
+
+/* 3. Action / Toolbar (Минималистичное стекло для тулбаров) */
+.molo-btn.action {
+  --btn-glass-bg: rgba(255, 255, 255, 0.04);
+  --btn-glass-border: rgba(255, 255, 255, 0.1);
+  --btn-specular: rgba(255, 255, 255, 0.2);
+  padding: 6px 12px;
+}
+
+.molo-btn.action:hover:not(:disabled) {
+  --btn-glass-bg: rgba(255, 255, 255, 0.09);
+  --btn-glass-border: rgba(255, 255, 255, 0.22);
+}
+
+/* 4. Small (Компактный режим) */
 .molo-btn.small {
-  padding: 4px 8px;
+  padding: 4px 10px;
+  min-height: 28px;
   font-size: 12px;
+  border-radius: 5px;
 }
 
-.molo-btn.full {
-  width: 100%;
-}
-
-.molo-btn.fit {
-  width: fit-content;
-}
-
+/* 5. Утилитарные модификаторы */
+.molo-btn.full { width: 100%; }
+.molo-btn.fit { width: fit-content; }
 .molo-btn.pinned {
   position: absolute;
   top: -8px;
   right: -8px;
-  z-index: 22;
+  z-index: 20;
 }
-
 .molo-btn.transparent {
   background: transparent;
-  border: 1px solid rgba(30, 30, 30, 0.1);
-  padding: 0;
-
-  &:hover {
-    border: transparent;
-    background: rgba(224, 224, 224, 0.09);
-  }
+  border-color: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  padding: 4px;
 }
 
-
-.molo-btn.action {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  text-align: center;
-  gap: 10px;
-
-  &:hover {
-    border: 1px solid #b9b9b9;
-  }
-
-  &:disabled {
-    background: rgba(117, 117, 117, 0.58);
-
-    &:hover {
-      border: 1px solid red;
-      cursor: not-allowed;
-    }
-  }
-}
-
-.molo-btn.confirm {
-  background: var(--borber-color_main);
-  color: #020b18;
-  border: 1px solid transparent;
-
-  &:hover {
-    border: 1px solid #38bdf8;
-    background: var(--border-color_hover);
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(var(--borber-color_main), 0.3);
-  }
-
-  &:active {
-    transform: translateY(1px);
-    box-shadow: 0 2px 6px rgba(var(--borber-color_main), 0.2);
-  }
-
-  &:disabled {
-    background: var(--border-color_disabled);
-    transform: translateY(0);
-    box-shadow: none;
-  }
-}
-
-.molo-btn.close {
-  background: #e04141;
-  color: white;
-  border: 1px solid transparent;
-
-  &:hover {
-    background: #a61616;
-    transform: translateY(-1px);
-    border: 1px solid red;
-  }
-
-  &:active {
-    transform: translateY(1px);
-  }
-
-  &:disabled {
-    background: #600f0f;
-    transform: translateY(0);
-    box-shadow: none;
-  }
-}
-
-
-.molo-btn__spinner {
-  display: inline-flex;
-  border-radius: 50%;
-  color: red;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.molo-btn.confirm:hover:not(:disabled) {
-  animation: pulse 0.5s ease-out;
-}
-
-.molo-btn * {
+/* ==========================================================================
+   DISABLED & LOADING
+   ========================================================================== */
+.molo-btn:disabled,
+.molo-btn.is-disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: none !important;
   pointer-events: none;
 }
 
-/* ========================================
-   АДАПТИВНОСТЬ / ТАЧ-УСТРОЙСТВА
-======================================== */
-@media (hover: none) and (pointer: coarse) {
-  .molo-btn {
-    min-height: 44px;
-    padding: 10px 18px;
-  }
-
-  .molo-btn.small {
-    min-height: 38px;
-    padding: 8px 12px;
-  }
-
-  /* На тач-устройствах нет hover — убираем "залипающие" hover-эффекты,
-     оставляем только состояние :active для отклика на нажатие */
-  .molo-btn:hover {
-    transform: none;
-    animation: none;
-  }
+.molo-btn.is-loading {
+  cursor: wait;
 }
 
-@media (max-width: 480px) {
+.molo-btn__spinner {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1;
+}
+
+.loader-circle {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  animation: spin 0.75s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ==========================================================================
+   ТАЧ-УСТРОЙСТВА
+   ========================================================================== */
+@media (hover: none) and (pointer: coarse) {
   .molo-btn {
-    font-size: 14px;
+    min-height: 42px;
+  }
+  .molo-btn.small {
+    min-height: 34px;
+  }
+  .molo-btn:hover {
+    transform: none;
+    box-shadow: inset 0 1px 0 0 var(--btn-specular);
+  }
+  .molo-btn__sheen {
+    display: none;
   }
 }
 </style>

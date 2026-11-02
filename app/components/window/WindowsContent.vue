@@ -116,11 +116,11 @@ watch(rawUrl, () => {
               @click="toggleProxyEngine"
               :title="useProxyMode ? 'Переключить на прямое подключение' : 'Включить обход защиты от встраивания'"
           >
-            {{ useProxyMode ? '⚡ Прямой' : '🛡 Обход X-Frame' }}
+            <UIMoloSticker :name="useProxyMode ? 'zap' : 'shield'" :size="14" /> {{ useProxyMode ? 'Прямой' : 'Обход X-Frame' }}
           </button>
 
           <button class="action-btn open-tab-btn" @click="handleOpenTab" title="Открыть во внешней вкладке браузера">
-            ↗ Новая вкладка
+            <UIMoloSticker name="external-link" :size="14" /> Новая вкладка
           </button>
         </div>
       </div>

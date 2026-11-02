@@ -425,7 +425,7 @@ watch(activeTab, () => {
           <div class="item-preview" :style="{ backgroundColor: theme.previewColor }">
             <div class="mini-preview">
               <div class="mini-header" :style="{ background: theme.styles.headerBg }">
-                <span :style="{ color: theme.styles.headerText }">●</span>
+                <UIMoloSticker name="dot" :size="8" :color="theme.styles.headerText" />
               </div>
               <div class="mini-content" :style="{ background: theme.styles.contentBg }"></div>
             </div>
@@ -435,8 +435,8 @@ watch(activeTab, () => {
             <div class="item-desc">{{ theme.description }}</div>
           </div>
           <div class="item-actions">
-            <UIMoloButton class="small" @click="editTheme(theme)" title="Редактировать">✎</UIMoloButton>
-            <UIMoloButton class="small close" @click="openDeleteThemeModal(theme.id)" title="Удалить">✕</UIMoloButton>
+            <UIMoloButton class="small" @click="editTheme(theme)" title="Редактировать"><UIMoloSticker name="pen" :size="14" /></UIMoloButton>
+            <UIMoloButton class="small close" @click="openDeleteThemeModal(theme.id)" title="Удалить"><UIMoloSticker name="x" :size="14" /></UIMoloButton>
           </div>
         </div>
       </div>
@@ -459,17 +459,17 @@ watch(activeTab, () => {
                 border: style.styles.buttonBorder,
                 background: style.styles.buttonBg,
                 color: style.styles.buttonTextColor
-              }">_</span>
+              }"><UIMoloSticker name="minus" :size="12" /></span>
               <span class="mini-btn" :style="{
                 border: style.styles.buttonBorder,
                 background: style.styles.buttonBg,
                 color: style.styles.buttonTextColor
-              }">⛶</span>
+              }"><UIMoloSticker name="fullscreen" :size="12" /></span>
               <span class="mini-btn" :style="{
                 border: style.styles.buttonBorder,
                 background: style.styles.buttonBg,
                 color: style.styles.buttonTextColor
-              }">×</span>
+              }"><UIMoloSticker name="x" :size="14" /></span>
             </div>
           </div>
           <div class="item-info">
@@ -477,8 +477,8 @@ watch(activeTab, () => {
             <div class="item-desc">{{ style.description }}</div>
           </div>
           <div class="item-actions">
-            <UIMoloButton class="small" @click="editButtonStyle(style)" title="Редактировать">✎</UIMoloButton>
-            <UIMoloButton class="small close" @click="openDeleteButtonModal(style.id)" title="Удалить">✕</UIMoloButton>
+            <UIMoloButton class="small" @click="editButtonStyle(style)" title="Редактировать"><UIMoloSticker name="pen" :size="14" /></UIMoloButton>
+            <UIMoloButton class="small close" @click="openDeleteButtonModal(style.id)" title="Удалить"><UIMoloSticker name="x" :size="14" /></UIMoloButton>
           </div>
         </div>
       </div>
@@ -793,22 +793,22 @@ watch(activeTab, () => {
                 border: 'var(--preview-button-border)',
                 background: 'var(--preview-button-bg)',
                 color: 'var(--preview-button-text)'
-              }">↻</span>
+              }"><UIMoloSticker name="refresh" :size="14" /></span>
             <span class="demo-btn" :style="{
                 border: 'var(--preview-button-border)',
                 background: 'var(--preview-button-bg)',
                 color: 'var(--preview-button-text)'
-              }">_</span>
+              }"><UIMoloSticker name="minus" :size="12" /></span>
             <span class="demo-btn" :style="{
                 border: 'var(--preview-button-border)',
                 background: 'var(--preview-button-bg)',
                 color: 'var(--preview-button-text)'
-              }">⛶</span>
+              }"><UIMoloSticker name="fullscreen" :size="12" /></span>
             <span class="demo-btn" :style="{
                 border: 'var(--preview-button-border)',
                 background: 'var(--preview-button-bg)',
                 color: 'var(--preview-button-text)'
-              }">×</span>
+              }"><UIMoloSticker name="x" :size="14" /></span>
           </div>
         </div>
         <div class="demo-content">

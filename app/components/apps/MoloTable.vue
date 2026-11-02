@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import {nextTick, onBeforeUnmount, onMounted, reactive, ref, toRaw, watch} from 'vue'
+import {computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, toRaw, watch} from 'vue'
 import type {FUniver, Univer} from '@univerjs/presets'
 import {createUniver, LocaleType, mergeLocales} from '@univerjs/presets'
 import {UniverSheetsCorePreset} from '@univerjs/preset-sheets-core'
@@ -10,6 +10,8 @@ import * as XLSX from 'xlsx'
 import {type DirectoryLookupItem, useDirectoryInterpolator} from '~/composables/useDirectoryInterpolator'
 import DirectorySuggestDropdown from '~/components/directory/DirectorySuggestDropdown.vue'
 import type {ApiImportPayload, ApiSource} from '~/composables/table/useApiTable'
+import {createGSheetsEngine, errorMessage} from '~/composables/table/useGoogleSheetsSync'
+import {groupSegments, type CellChange, type GSheetsLink, type LinkMode} from '~/utils/gsheetsSync'
 
 const props = defineProps<{
   modelValue?: Record<string, any>
@@ -51,8 +53,17 @@ const IMPORT_DEFAULT_COL_W = 64
 
 /* ── Подключённые API-источники ── */
 const API_SOURCES_KEY = 'moloApiSources'
+/* ── Связи с Google Таблицами (хранятся внутри книги, как и API-источники) ── */
+const GS_LINKS_KEY = 'moloGSheetsLinks'
+const GS_POLL_MS = 30_000
 const apiModalOpen = ref(false)
 const apiSources = ref<ApiSource[]>([])
+
+const gsModalOpen = ref(false)
+const gsLinks = ref<GSheetsLink[]>([])
+const gsActive = ref<{ linkId: string | null; sheetName: string }>({linkId: null, sheetName: ''})
+const gsActiveLink = computed<GSheetsLink | null>(() => gsLinks.value.find(l => l.id === gsActive.value.linkId) ?? null)
+let gsPollTimer: ReturnType<typeof setInterval> | null = null
 
 function openMoloGraph() {
   const wb: any = univerAPIInstance?.getActiveWorkbook()
@@ -82,9 +93,14 @@ function readSources(data?: Record<string, any> | null): ApiSource[] {
   return Array.isArray(list) ? JSON.parse(JSON.stringify(list)) : []
 }
 
+function readGsLinks(data?: Record<string, any> | null): GSheetsLink[] {
+  const list = data?.[GS_LINKS_KEY]
+  return Array.isArray(list) ? JSON.parse(JSON.stringify(list)) : []
+}
+
 function stripSources(data: Record<string, any>): Record<string, any> {
-  if (!(API_SOURCES_KEY in data)) return data
-  const {[API_SOURCES_KEY]: _omit, ...rest} = data
+  if (!(API_SOURCES_KEY in data) && !(GS_LINKS_KEY in data)) return data
+  const {[API_SOURCES_KEY]: _omit, [GS_LINKS_KEY]: _omitGs, ...rest} = data
   return rest
 }
 
@@ -107,7 +123,10 @@ function flushEmit(workbook?: any) {
   }
   const base = (workbook ?? univerAPIInstance?.getActiveWorkbook())?.save()
   if (!base) return
-  const snapshot = apiSources.value.length ? {...base, [API_SOURCES_KEY]: serializeSources()} : base
+  const extra: Record<string, any> = {}
+  if (apiSources.value.length) extra[API_SOURCES_KEY] = serializeSources()
+  if (gsLinks.value.length) extra[GS_LINKS_KEY] = JSON.parse(JSON.stringify(gsLinks.value))
+  const snapshot = Object.keys(extra).length ? {...base, ...extra} : base
   lastEmitted = snapshot
   emit('update:modelValue', snapshot)
 }
@@ -124,6 +143,7 @@ function replaceWorkbook(data: Record<string, any>) {
     const oldId = api.getActiveWorkbook()?.getId()
     if (oldId) (api as any).disposeUnit?.(oldId)
     apiSources.value = readSources(data)
+    gsLinks.value = readGsLinks(data)
     return api.createWorkbook(stripSources(data))
   } catch (e) {
     console.error('Не удалось загрузить таблицу', e)
@@ -449,6 +469,92 @@ function handleApiImport({source, matrix, target}: ApiImportPayload) {
   }
 }
 
+/* ───────────────────────── Google Таблицы ───────────────────────── */
+
+const gsEngine = createGSheetsEngine({
+  readLocal: gsReadLocal,
+  writeLocal: gsWriteLocal,
+  persist: () => flushEmit(),
+})
+
+function gsLocalSheet(link: GSheetsLink): any {
+  const wb: any = univerAPIInstance?.getActiveWorkbook()
+  return wb?.getSheetBySheetId?.(link.localSheetId) ?? null
+}
+
+function gsReadLocal(link: GSheetsLink): any[][] | null {
+  const sheet = gsLocalSheet(link)
+  if (!sheet) return null
+  const rows = sheet.getRowCount?.() ?? 0
+  const cols = sheet.getColumnCount?.() ?? 0
+  if (rows <= 0 || cols <= 0) return []
+  const values: any[][] = sheet.getRange(0, 0, rows, cols).getValues?.() || []
+  return values.map(row => (row || []).map(v => (v === null || v === undefined ? '' : v)))
+}
+
+function gsWriteLocal(link: GSheetsLink, changes: CellChange[]) {
+  const sheet = gsLocalSheet(link)
+  if (!sheet) throw new Error('Лист не найден')
+  let needRows = 0
+  let needCols = 0
+  for (const ch of changes) {
+    needRows = Math.max(needRows, ch.r + 1)
+    needCols = Math.max(needCols, ch.c + 1)
+  }
+  ensureSheetCapacity(sheet, needRows, needCols)
+  for (const seg of groupSegments(changes)) {
+    sheet.getRange(seg.r, seg.c0, 1, seg.values.length).setValues([seg.values])
+  }
+}
+
+function openGsModal() {
+  const sheet: any = univerAPIInstance?.getActiveWorkbook()?.getActiveSheet()
+  gsActive.value = {
+    linkId: sheet ? (gsLinks.value.find(l => l.localSheetId === sheet.getSheetId())?.id ?? null) : null,
+    sheetName: sheet?.getSheetName?.() ?? '',
+  }
+  gsModalOpen.value = true
+}
+
+function handleGsLink({spreadsheetId, spreadsheetTitle, sheetTitle, mode}: {
+  spreadsheetId: string
+  spreadsheetTitle: string
+  sheetTitle: string
+  mode: LinkMode
+}) {
+  const sheet: any = univerAPIInstance?.getActiveWorkbook()?.getActiveSheet()
+  if (!sheet) return
+  if (gsLinks.value.some(l => l.localSheetId === sheet.getSheetId())) {
+    alert('Этот лист уже связан с Google Таблицей')
+    return
+  }
+  const link: GSheetsLink = {
+    id: `gs_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+    localSheetId: sheet.getSheetId(),
+    localSheetName: sheet.getSheetName(),
+    spreadsheetId,
+    spreadsheetTitle,
+    sheetTitle,
+    base: [],
+    createdAt: new Date().toISOString(),
+  }
+  gsLinks.value.push(link)
+  flushEmit()
+  gsEngine.initLink(link, mode).catch((e) => {
+    gsEngine.status[link.id] = {busy: false, lastError: errorMessage(e)}
+  })
+}
+
+function unlinkGs(id: string) {
+  gsLinks.value = gsLinks.value.filter(l => l.id !== id)
+  flushEmit()
+}
+
+function syncGsNow(id: string) {
+  const link = gsLinks.value.find(l => l.id === id)
+  if (link) void gsEngine.syncLink(link)
+}
+
 function removeApiSource(id: string) {
   apiSources.value = apiSources.value.filter(s => s.id !== id)
   flushEmit()
@@ -608,15 +714,22 @@ onMounted(async () => {
   univerAPIInstance = univerAPI
 
   const hasData = props.modelValue && Object.keys(props.modelValue).length > 0
-  if (hasData) apiSources.value = readSources(props.modelValue)
+  if (hasData) {
+    apiSources.value = readSources(props.modelValue)
+    gsLinks.value = readGsLinks(props.modelValue)
+  }
   const workbook = univerAPI.createWorkbook(hasData ? stripSources(props.modelValue!) : {name: 'Новая таблица'})
   lastEmitted = hasData ? toRaw(props.modelValue) : null
 
   bindEditorEvents(univerAPI)
+  gsPollTimer = setInterval(() => gsLinks.value.forEach(l => gsEngine.requestSync(l, 0)), GS_POLL_MS)
   window.addEventListener('keydown', handleGlobalKeyDown, true)
 
   const sub: any = univerAPI.onCommandExecuted((command: any) => {
-    if (command?.type === 2) scheduleEmit()
+    if (command?.type === 2) {
+      scheduleEmit()
+      if (!gsEngine.isMuted()) gsLinks.value.forEach(l => gsEngine.requestSync(l))
+    }
   })
   commandUnsub = () => (typeof sub === 'function' ? sub() : sub?.dispose?.())
   void workbook
@@ -642,6 +755,11 @@ watch(() => props.modelValue, (val) => {
 
 onBeforeUnmount(() => {
   if (saveTimeout) flushEmit()
+  if (gsPollTimer) {
+    clearInterval(gsPollTimer)
+    gsPollTimer = null
+  }
+  gsEngine.dispose()
   editDisposables.forEach(d => {
     try {
       typeof d === 'function' ? d() : d.dispose()
@@ -693,6 +811,9 @@ onBeforeUnmount(() => {
         <UIMoloButton class="small" title="Подключить API и показать данные таблицей" @click="apiModalOpen = true">
           <UIMoloSticker name="dev-json"/>
         </UIMoloButton>
+        <UIMoloButton class="small" title="Синхронизация с Google Таблицами" @click="openGsModal">
+          <UIMoloSticker name="cloud"/>
+        </UIMoloButton>
         <UIMoloButton class="small" title="MoloGraph: Авто-аналитика и диаграммы" @click="openMoloGraph">
           <UIMoloSticker name="sales"/>
         </UIMoloButton>
@@ -710,6 +831,16 @@ onBeforeUnmount(() => {
       :sources="apiSources"
       @import="handleApiImport"
       @remove="removeApiSource"
+  />
+  <AppsMoloGSheetsModal
+      v-model="gsModalOpen"
+      :links="gsLinks"
+      :active-link="gsActiveLink"
+      :active-sheet-name="gsActive.sheetName"
+      :statuses="gsEngine.status"
+      @link="handleGsLink"
+      @unlink="unlinkGs"
+      @sync="syncGsNow"
   />
   <AppsMoloGraphModal
       v-model="graphModalOpen"

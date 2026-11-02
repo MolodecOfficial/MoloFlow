@@ -145,6 +145,7 @@ export const syncCatalog = async (enterpriseId: string, raw: any) => {
                 version: d.version || 1,
                 isPublic: d.isPublic === true,
                 isActive: d.isActive !== false,
+                previewImage: d.previewImage || null,
                 updatedAt: new Date()
             }
         },

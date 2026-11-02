@@ -1,5 +1,5 @@
 // server/api/py/daemon.post.ts
-import { defineEventHandler, readBody, createError, getRequestURL } from 'h3'
+import { defineEventHandler, readBody, createError } from 'h3'
 import { spawn, execSync, type ChildProcess } from 'node:child_process'
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
@@ -57,6 +57,22 @@ export default defineEventHandler(async (event) => {
     const body = await readBody(event)
     const { action = 'restart', moduleId, enterpriseId } = body || {}
 
+    // ── 0. ПОЛУЧЕНИЕ СПИСКА ВСЕХ ЗАПУЩЕННЫХ ДЕМОНОВ (moduleId НЕ нужен!) ──
+    if (action === 'list') {
+        const list = []
+        for (const [mId, proc] of runningDaemons.entries()) {
+            list.push({
+                moduleId: mId,
+                pid: proc.pid,
+                startedAt: proc.startedAt,
+                running: true,
+                logs: proc.logs ? proc.logs.slice(-20) : []
+            })
+        }
+        return { success: true, daemons: list }
+    }
+
+    // Для остальных действий (start, stop, restart, status) moduleId обязателен:
     if (!moduleId) {
         throw createError({ statusCode: 400, message: 'moduleId обязателен' })
     }
@@ -73,7 +89,7 @@ export default defineEventHandler(async (event) => {
         return { success: true, message: 'Процесс полностью остановлен' }
     }
 
-    // ── 2. СТАТУС ──
+    // ── 2. СТАТУС КОНКРЕТНОГО МОДУЛЯ ──
     if (action === 'status') {
         const proc = runningDaemons.get(moduleId)
         return {
@@ -85,12 +101,10 @@ export default defineEventHandler(async (event) => {
     }
 
     // ── 3. СТАРТ / ПЕРЕЗАПУСК С НУЛЯ ──
-    // Если процесс уже запущен — принудительно убиваем старый инстанс и чистим кеш
     if (runningDaemons.has(moduleId)) {
         const oldProc = runningDaemons.get(moduleId)!
         await killProcessTree(oldProc)
         runningDaemons.delete(moduleId)
-        // Небольшая задержка для гарантированного освобождения портов/сокетов ОС
         await new Promise((resolve) => setTimeout(resolve, 300))
     }
 
@@ -101,17 +115,17 @@ export default defineEventHandler(async (event) => {
         throw createError({ statusCode: 404, message: 'Python-модуль не найден или не является .py' })
     }
 
-    // Создаем изолированную директорию с уникальным таймстемпом
+    // Создаем изолированную директорию
     const runId = `daemon_${moduleId}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
     const runDir = path.join(os.tmpdir(), runId)
     await fs.mkdir(runDir, { recursive: true })
 
-    // 1. Записываем свежий главный файл
+    // 1. Записываем главный файл
     const mainFileName = `${moduleDoc.fileName || 'main'}.py`
     const mainFilePath = path.join(runDir, mainFileName)
     await fs.writeFile(mainFilePath, moduleDoc.code || '', 'utf-8')
 
-    // 2. Раскладываем все дополнительные файлы и папки
+    // 2. Раскладываем все дополнительные файлы
     if (Array.isArray(moduleDoc.files)) {
         for (const f of moduleDoc.files) {
             if (!f.path && !f.name) continue
@@ -122,20 +136,18 @@ export default defineEventHandler(async (event) => {
         }
     }
 
-    // Клиент мини-баз MoloFlow: в боте достаточно  from moloflow_db import db
-    // (если у модуля есть собственный moloflow_db.py — он остаётся приоритетным)
+    // Клиент мини-баз MoloFlow: from moloflow_db import db
     const helperPath = path.join(runDir, 'moloflow_db.py')
     try {
         await fs.access(helperPath)
     } catch {
         await fs.writeFile(helperPath, PY_CLIENT_SOURCE, 'utf-8')
     }
-    // Адрес API берём из конфигурации сервера, а НЕ из порта входящего запроса:
-    // за прокси / на https порт запроса пустой или чужой, и бот не достучится до баз.
-    const apiBase = (process.env.MOLO_API_URL || `http://127.0.0.1:${process.env.NITRO_PORT || process.env.PORT || '3000'}`).replace(/\/$/, '')
-    const dbToken = await issueModuleToken(String(moduleDoc.enterpriseId), String(moduleDoc._id))
 
-    // Ставим pip-зависимости модуля ДО запуска бота (раньше этого не делалось → "module Not Found")
+    const apiBase = (process.env.MOLO_API_URL || `http://127.0.0.1:${process.env.NITRO_PORT || process.env.PORT || '3000'}`).replace(/\/$/, '')
+    const dbToken = await issueModuleToken(String(eid), String(moduleDoc._id))
+
+    // Ставим pip-зависимости модуля
     const depsObj: Record<string, string> = moduleDoc.dependencies instanceof Map
         ? Object.fromEntries(moduleDoc.dependencies)
         : { ...((moduleDoc.dependencies as any) || {}) }
@@ -144,7 +156,7 @@ export default defineEventHandler(async (event) => {
     })
     const logsBuffer: string[] = []
 
-    // Запуск процесса в новой директории без кэширования .pyc
+    // Запуск процесса
     const child = spawn(pythonCmd, ['-u', mainFileName], {
         cwd: runDir,
         detached: process.platform !== 'win32',
@@ -156,7 +168,7 @@ export default defineEventHandler(async (event) => {
             PYTHONIOENCODING: 'utf-8',
             PYTHONUTF8: '1',
             MOLO_API_URL: apiBase,
-            MOLO_ENTERPRISE_ID: String(moduleDoc.enterpriseId),
+            MOLO_ENTERPRISE_ID: String(eid),
             MOLO_MODULE_ID: String(moduleDoc._id),
             MOLO_DB_TOKEN: dbToken
         }
@@ -189,7 +201,7 @@ export default defineEventHandler(async (event) => {
         if (text) {
             managed.logs.push(`[ERR] ${text}`)
             if (managed.logs.length > 500) managed.logs.shift()
-            console.error(`[Daemon ${moduleDoc.name} ERR]`, text)
+            console.info(`[Daemon ${moduleDoc.name} ERR]`, text)
         }
     })
 

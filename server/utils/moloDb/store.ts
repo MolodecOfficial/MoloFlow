@@ -1,5 +1,4 @@
 import { getTenantConnection, tenantModels } from '~~/server/utils/tenantDb'
-import { modelForCollection } from '~~/server/utils/directoryCollections'
 import { Types } from 'mongoose'
 import {
     LIMITS,
@@ -24,7 +23,6 @@ export interface OpContext {
     actor: DbActor
 }
 
-/** Минимум методов драйвера, который нам нужен (позволяет подменять хранилище в тестах). */
 export interface RecordsCollection {
     find(filter: any): { sort(s: any): any; skip(n: number): any; limit(n: number): any; toArray(): Promise<any[]> }
     findOne(filter: any, opts?: any): Promise<any | null>
@@ -45,10 +43,6 @@ export interface StoreDeps {
 const READ_OPS = new Set(['find', 'findOne', 'get', 'count'])
 const WRITE_OPS = new Set(['insert', 'insertMany', 'update', 'delete'])
 const ADMIN_ROLE = 'Администратор'
-
-// ──────────────────────────────────────────────────────────────
-// Подключение к Mongo (лениво, чтобы файл можно было импортировать без БД)
-// ──────────────────────────────────────────────────────────────
 
 const recordsCache = new Map<string, Promise<RecordsCollection>>()
 
@@ -93,10 +87,6 @@ async function defaultLoadDef(enterpriseId: string, db: string): Promise<Databas
 }
 
 const defaultDeps: StoreDeps = { records: defaultRecords, loadDef: defaultLoadDef }
-
-// ──────────────────────────────────────────────────────────────
-// Вспомогательное
-// ──────────────────────────────────────────────────────────────
 
 function assertAccess(coll: CollectionDef, actor: DbActor, kind: 'read' | 'write') {
     if (actor.kind !== 'user' || actor.role === ADMIN_ROLE) return
@@ -150,7 +140,6 @@ async function insertRecords(
         return data
     })
 
-    // уникальность внутри самой пачки
     for (const f of coll.fields.filter((x) => x.unique)) {
         const seen = new Set<string>()
         for (const d of prepared) {
@@ -182,10 +171,6 @@ async function insertRecords(
     else await records.insertMany(docs)
     return docs.map(flattenRecord)
 }
-
-// ──────────────────────────────────────────────────────────────
-// Главная функция
-// ──────────────────────────────────────────────────────────────
 
 function moduleRow(doc: any) {
     return {
@@ -243,64 +228,36 @@ async function readSystemModules(ctx: OpContext, body: any) {
 }
 
 /**
- * Коллекции системных разделов должны читать/писать реальные tenant-коллекции,
- * а не универсальную molo_records. Это обеспечивает одинаковые данные в API
- * пространства/справочников и в MoloDB Studio.
+ * Виртуальная маршрутизация системных коллекций в MoloDB Studio
  */
 async function runTenantCollectionOp(ctx: OpContext, body: any): Promise<any> {
-    const { WorkspaceDocument, WorkspaceFolder, DirectoryDefinition } = tenantModels(ctx.enterpriseId)
-    let model: any
+    const { WorkspaceDocument, WorkspaceFolder, WorkspaceDocumentVersion, DirectoryDefinition, DirectoryItem } = tenantModels(ctx.enterpriseId)
+    let model: any = null
+    let directorySlugOverride: string | null = null
+
     if (ctx.db === 'workspace') {
         if (ctx.col === 'workspace_documents') model = WorkspaceDocument
         else if (ctx.col === 'workspace_folders') model = WorkspaceFolder
-        else if (ctx.col === 'workspace_versions') {
-            // История версий хранится в ws_<documentId>_versions. В Studio она доступна
-            // только для чтения, чтобы не создавать фиктивные записи в molo_records.
-            if (['insert', 'insertMany', 'update', 'delete'].includes(String(body?.op))) {
-                throw new MoloDbError('История версий создаётся автоматически при сохранении документа', 403)
-            }
-            const db = getTenantConnection(ctx.enterpriseId).db
-            if (!db) throw new MoloDbError('MongoDB ещё не подключена', 503)
-            const names = (await db.listCollections({ name: /^ws_.*_versions$/ }, { nameOnly: true }).toArray()).map((x: any) => x.name)
-            let items: any[] = []
-            for (const name of names) items.push(...await db.collection(name).find({ enterpriseId: ctx.enterpriseId }).toArray())
-            const rawFilter = body?.filter && typeof body.filter === 'object' ? body.filter : {}
-            items = items.filter((item) => Object.entries(rawFilter).every(([key, value]) => {
-                if (key === '_id') return String(item._id) === String(value)
-                return (item as any)[key] === value
-            }))
-            if (body?.op === 'count') return { count: items.length }
-            if (body?.op === 'get' || body?.op === 'findOne') {
-                const found = body?.id ? items.find((item) => String(item._id) === String(body.id)) : items[0]
-                return { item: found || null }
-            }
-            if (body?.op === 'find') {
-                const sortText = String(body.sort || '-createdAt')
-                const desc = sortText.startsWith('-')
-                const key = desc ? sortText.slice(1) : sortText
-                items.sort((a, b) => {
-                    const av = (a as any)[key], bv = (b as any)[key]
-                    const cmp = av instanceof Date || bv instanceof Date ? new Date(av).getTime() - new Date(bv).getTime() : String(av ?? '').localeCompare(String(bv ?? ''))
-                    return desc ? -cmp : cmp
-                })
-                const skip = clampInt(body.skip, 0, 0, 100_000)
-                const limit = clampInt(body.limit, 50, 1, LIMITS.queryLimit)
-                const page = items.slice(skip, skip + limit)
-                return { items: page, limit, skip, ...(body.withTotal === false ? {} : { total: items.length }) }
-            }
-            throw new MoloDbError(`Неизвестная операция «${body?.op}»`)
-        } else return null
-    } else if (ctx.db === 'directories') {
-        if (ctx.col === 'directory_definitions') model = DirectoryDefinition
-        else if (/^dir_[\p{L}\p{N}_-]+$/u.test(ctx.col)) model = modelForCollection(ctx.enterpriseId, ctx.col)
+        else if (ctx.col === 'workspace_versions') model = WorkspaceDocumentVersion
         else return null
-    } else return null
+    } else if (ctx.db === 'directories') {
+        if (ctx.col === 'directory_definitions') {
+            model = DirectoryDefinition
+        } else {
+            // Любой справочник в Studio (departments, 123, ...) виртуально мапится в DirectoryItem
+            model = DirectoryItem
+            directorySlugOverride = ctx.col.replace(/^dir_/, '')
+        }
+    } else {
+        return null
+    }
 
     const op = body?.op
     const idFilter = (value: any) => {
         if (value === undefined || value === null || value === '') return undefined
         return Types.ObjectId.isValid(String(value)) ? new Types.ObjectId(String(value)) : value
     }
+
     const normalizeFilter = (input: any): Record<string, any> => {
         if (!input || typeof input !== 'object' || Array.isArray(input)) return {}
         const out: Record<string, any> = {}
@@ -311,8 +268,14 @@ async function runTenantCollectionOp(ctx: OpContext, body: any): Promise<any> {
         }
         return out
     }
-    const scope = { enterpriseId: ctx.enterpriseId }
+
+    const scope: Record<string, any> = {}
+    if (directorySlugOverride) {
+        scope.directorySlug = directorySlugOverride
+    }
+
     const filter = { ...scope, ...normalizeFilter(body.filter) }
+
     const cleanDoc = (input: any) => {
         if (!input || typeof input !== 'object' || Array.isArray(input)) throw new MoloDbError('doc должен быть объектом')
         const doc = { ...input }
@@ -325,12 +288,13 @@ async function runTenantCollectionOp(ctx: OpContext, body: any): Promise<any> {
             doc.nameLower = String(doc.nameLower ?? doc.name ?? '').toLowerCase()
             doc.size = Number(doc.size ?? (typeof doc.content === 'string' ? Buffer.byteLength(doc.content) : 0))
         }
-        if (ctx.db === 'directories' && ctx.col.startsWith('dir_')) {
-            doc.directorySlug = doc.directorySlug || ctx.col.slice(4)
+        if (directorySlugOverride) {
+            doc.directorySlug = directorySlugOverride
             doc.attributes = doc.attributes && typeof doc.attributes === 'object' ? doc.attributes : {}
         }
         return { ...doc, enterpriseId: ctx.enterpriseId }
     }
+
     const plain = (value: any) => value ? (typeof value.toObject === 'function' ? value.toObject() : value) : null
     const limit = clampInt(body.limit, 50, 1, LIMITS.queryLimit)
     const skip = clampInt(body.skip, 0, 0, 100_000)
@@ -402,8 +366,6 @@ export async function runDbOp(ctx: OpContext, body: any, deps: StoreDeps = defau
     const tenantResult = await runTenantCollectionOp(ctx, body)
     if (tenantResult !== null) return tenantResult
 
-    // MoloDB Studio показывает системные модули из настоящей коллекции `modules`,
-    // а не из molo_records. Изменение модулей остаётся за API редактора модулей.
     if (ctx.db === 'company' && ctx.col === 'modules') return readSystemModules(ctx, body)
 
     const def = await deps.loadDef(ctx.enterpriseId, ctx.db)
@@ -507,7 +469,6 @@ export async function runDbOp(ctx: OpContext, body: any, deps: StoreDeps = defau
     }
 }
 
-/** Удаление всех записей базы или отдельных коллекций (при изменении/удалении схемы). */
 export async function purgeRecords(enterpriseId: string, db: string, cols?: string[], deps: StoreDeps = defaultDeps) {
     const records = await deps.records(enterpriseId)
     const q: Record<string, any> = { enterpriseId, db }

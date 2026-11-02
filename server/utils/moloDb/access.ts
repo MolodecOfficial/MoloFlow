@@ -64,7 +64,7 @@ async function verifyModuleToken(token: string): Promise<{ enterpriseId: string;
     const key = `${enterpriseId}:${moduleId}`
     const hit = activeCache.get(key)
     if (hit && Date.now() - hit.at < 30_000) return hit.ok ? { enterpriseId, moduleId } : null
-    const ok = !!(await tenantModels(enterpriseId).DynamicModule.exists({ _id: moduleId, isActive: true }))
+    const ok = !!(await tenantModels(enterpriseId).DynamicModule.exists({ _id: moduleId, isActive: { $ne: false } }))
     activeCache.set(key, { at: Date.now(), ok })
     return ok ? { enterpriseId, moduleId } : null
 }

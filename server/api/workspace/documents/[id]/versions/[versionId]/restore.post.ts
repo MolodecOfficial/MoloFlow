@@ -1,4 +1,3 @@
-import { versionModel } from '~~/server/utils/workspaceCollections'
 import { defineEventHandler } from 'h3'
 import { tenantModels } from '~~/server/utils/tenantDb'
 import { resolveActor } from '~~/server/utils/moloDb/access'
@@ -7,15 +6,12 @@ import {
     httpError, serializeDocument
 } from '~~/server/utils/workspace'
 
-// POST /api/workspace/documents/:id/versions/:versionId/restore?enterpriseId=
-// Перед восстановлением текущее состояние сохраняется как версия «Перед восстановлением».
 export default defineEventHandler(async (event) => {
     const enterpriseId = getEnterpriseId(event)
     await resolveActor(event, enterpriseId, 'data')
     const id = getRouteId(event)
     const versionId = getRouteId(event, 'versionId')
-    const { WorkspaceDocument } = tenantModels(enterpriseId)
-    const WorkspaceDocumentVersion = versionModel(enterpriseId, id)
+    const { WorkspaceDocument, WorkspaceDocumentVersion } = tenantModels(enterpriseId)
 
     const doc: any = await WorkspaceDocument.findOne({ _id: id }).lean()
     if (!doc) throw httpError(404, 'Документ не найден')

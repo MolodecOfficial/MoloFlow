@@ -832,8 +832,8 @@ onBeforeUnmount(() => {
 
     <div class="molo-ribbon" v-if="editor">
       <div class="ribbon-group">
-        <button title="Отменить" @click="exec('undo')">↶</button>
-        <button title="Повторить" @click="exec('redo')">↷</button>
+        <button title="Отменить" @click="exec('undo')"><UIMoloSticker name="undo" :size="14" /></button>
+        <button title="Повторить" @click="exec('redo')"><UIMoloSticker name="redo" :size="14" /></button>
       </div>
       <div class="ribbon-sep"/>
       <div class="ribbon-group">
@@ -861,14 +861,14 @@ onBeforeUnmount(() => {
         <button :class="{ active: isActive('italic') }" @click="exec('toggleItalic')"><i>К</i></button>
         <button :class="{ active: isActive('underline') }" @click="exec('toggleUnderline')"><u>Ч</u></button>
         <label class="color-swatch">A<input type="color" @input="setTextColor"/></label>
-        <label class="color-swatch">▧<input type="color" @input="setHighlight"/></label>
+        <label class="color-swatch"><UIMoloSticker name="highlighter" :size="14" /><input type="color" @input="setHighlight"/></label>
         <button @click="clearFormatting">Очистить</button>
       </div>
       <div class="ribbon-sep"/>
       <div class="ribbon-group">
-        <button :class="{ active: isActive('paragraph', { textAlign: 'left' }) }" @click="setAlign('left')">⯇</button>
-        <button :class="{ active: isActive('paragraph', { textAlign: 'center' }) }" @click="setAlign('center')">≡</button>
-        <button :class="{ active: isActive('paragraph', { textAlign: 'right' }) }" @click="setAlign('right')">⯈</button>
+        <button :class="{ active: isActive('paragraph', { textAlign: 'left' }) }" @click="setAlign('left')"><UIMoloSticker name="align-left" :size="16" /></button>
+        <button :class="{ active: isActive('paragraph', { textAlign: 'center' }) }" @click="setAlign('center')"><UIMoloSticker name="align-center" :size="16" /></button>
+        <button :class="{ active: isActive('paragraph', { textAlign: 'right' }) }" @click="setAlign('right')"><UIMoloSticker name="align-right" :size="16" /></button>
       </div>
       <div class="ribbon-sep"/>
       <div class="ribbon-group">

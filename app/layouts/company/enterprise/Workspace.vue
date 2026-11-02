@@ -850,7 +850,7 @@ onUnmounted(() => {
                 @dragleave="onFolderDragLeave"
                 @drop="onFolderDrop($event, null)"
             >
-              <span class="tree-chevron invisible">▾</span>
+              <span class="tree-chevron invisible"><UIMoloSticker name="down" :size="11" /></span>
               <MoloSticker name="folder-open" :size="16" class="tree-icon" />
               <span class="node-title">Все документы</span>
             </div>
@@ -878,7 +878,7 @@ onUnmounted(() => {
                     :class="{ invisible: !item.hasChildren, expanded: item.isExpanded }"
                     @click.stop="toggleFolderExpand(item.folder.id)"
                 >
-                  ▸
+                  <UIMoloSticker name="right" :size="11" />
                 </button>
 
                 <MoloSticker
@@ -1143,7 +1143,7 @@ onUnmounted(() => {
               />
               <span v-else class="tab-name">{{ doc.name }}</span>
 
-              <button class="tab-close" title="Закрыть вкладку" @click.stop="closeTab(doc.id)">✕</button>
+              <button class="tab-close" title="Закрыть вкладку" @click.stop="closeTab(doc.id)"><UIMoloSticker name="x" :size="14" /></button>
             </div>
           </div>
 
@@ -1205,7 +1205,7 @@ onUnmounted(() => {
               <strong>История версий</strong>
               <small>{{ activeDocument.name }}</small>
             </div>
-            <UIMoloButton class="small fit" title="Закрыть панель" @click="isVersionPanelOpen = false">✕</UIMoloButton>
+            <UIMoloButton class="small fit" title="Закрыть панель" @click="isVersionPanelOpen = false"><UIMoloSticker name="x" :size="14" /></UIMoloButton>
           </div>
 
           <div class="version-actions-bar">

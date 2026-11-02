@@ -49,7 +49,6 @@ const availableRoles = [
   { label: 'Администратор (полный доступ)', value: 'Администратор' },
   { label: 'Наблюдатель (только чтение)', value: 'Наблюдатель' },
   { label: 'Программист (работа с модулями)', value: 'Программист' },
-  { label: 'Управляющий', value: 'Управляющий' }
 ]
 const selectedRole = ref('Сотрудник')
 
@@ -376,16 +375,16 @@ onMounted(() => {
                   </div>
                 </div>
 
-                <div class="member-actions">
-                  <select
-                      class="role-select"
-                      :value="member.role"
+                <div class="btn-group">
+                  <UIMoloSelect
+                      :model-value="member.role"
                       :disabled="savingRoleFor === member.userId"
-                      title="Изменить роль в предприятии"
-                      @change="changeMemberRole(member, ($event.target as HTMLSelectElement).value)"
-                  >
-                    <option v-for="r in availableRoles" :key="r.value" :value="r.value">{{ r.value }}</option>
-                  </select>
+                      :parent="availableRoles"
+                      children="value"
+                      value-key="value"
+                      compact
+                      @update:model-value="changeMemberRole(member, $event)"
+                  />
                   <UIMoloButton
                       class="small close"
                       title="Отозвать доступ"

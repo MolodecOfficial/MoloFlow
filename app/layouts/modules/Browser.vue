@@ -206,7 +206,7 @@ onMounted(() => {
               <div class="card-info-main">
                 <p class="description">{{ mod.description || 'Нет описания' }}</p>
                 <div class="stats">
-                  <span>⬇️ {{ mod.stats?.downloads || 0 }}</span>
+                  <span><UIMoloSticker name="download" :size="12" /> {{ mod.stats?.downloads || 0 }}</span>
                 </div>
                 <div class="tags">
                   <span v-for="tag in mod.tags" :key="tag" class="tag">{{ tag }}</span>
@@ -219,9 +219,9 @@ onMounted(() => {
       </div>
 
       <div v-if="totalPages > 1" class="pagination">
-        <UIMoloButton :disabled="currentPage === 1" @click="changePage(currentPage - 1)">←</UIMoloButton>
+        <UIMoloButton :disabled="currentPage === 1" @click="changePage(currentPage - 1)"><UIMoloSticker name="left" :size="14" /></UIMoloButton>
         <span>Страница {{ currentPage }} из {{ totalPages }}</span>
-        <UIMoloButton :disabled="currentPage === totalPages" @click="changePage(currentPage + 1)">→</UIMoloButton>
+        <UIMoloButton :disabled="currentPage === totalPages" @click="changePage(currentPage + 1)"><UIMoloSticker name="right" :size="14" /></UIMoloButton>
       </div>
     </div>
   </div>

@@ -151,7 +151,7 @@ const collectFolderItems = (items: any[], groupId: string, level = 0): any[] => 
       result.push({
         id: item.id || item._id,
         groupId,
-        title: `${indent}📁 ${item.title.replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '').trim()}`,
+        title: `${indent}${item.title.replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '').trim()}`,
         level,
         type: 'folder'
       })
@@ -799,7 +799,7 @@ onUnmounted(() => {
     <header class="top-nav-bar">
       <div class="nav-left">
         <div class="badge-title">
-          <MoloSticker name="it" :size="15" glow />
+          <UIMoloSticker name="it" :size="15" glow />
           <span>{{ isEditing ? formData.name || 'Модуль' : 'Новый модуль' }}</span>
         </div>
 
@@ -810,7 +810,7 @@ onUnmounted(() => {
                 :class="selectedModuleId ? 'default' : 'confirm'"
                 @click="selectModule(null)"
             >
-              <UIMoloSticker name="pen"/>
+              <UIMoloSticker name="plus"/>
               Создать
             </UIMoloButton>
 
@@ -840,7 +840,7 @@ onUnmounted(() => {
               title="Справочные материалы"
               @click="openDocumentation"
           >
-            <MoloSticker name="glossary" :size="14" style="margin-right: 5px;" />
+            <UIMoloSticker name="glossary" :size="14" style="margin-right: 5px;" />
             Документация
           </UIMoloButton>
         </div>
@@ -867,7 +867,8 @@ onUnmounted(() => {
               @click="clearModuleCache"
           >
             <UIMoloLoaders v-if="clearingCache" btnLoader />
-            <span v-else>Очистить кеш</span>
+            <UIMoloSticker v-else name="cpu"/>
+            Очистить кеш
           </UIMoloButton>
 
           <UIMoloButton
@@ -878,7 +879,8 @@ onUnmounted(() => {
               @click="showDeleteConfirm = true"
           >
             <UIMoloLoaders v-if="isDeletingModule" btnLoader />
-            <span v-else>Удалить</span>
+            <UIMoloSticker v-else name="trash"/>
+            Удалить
           </UIMoloButton>
 
           <UIMoloButton
@@ -886,6 +888,8 @@ onUnmounted(() => {
               class="small confirm save-btn"
               @click="saveModule"
           >
+            <UIMoloSticker v-if="isEditing" name="upload"/>
+            <UIMoloSticker v-else name="production" />
             {{ isEditing ? 'Обновить' : 'Сохранить' }}
           </UIMoloButton>
         </section>
@@ -900,7 +904,7 @@ onUnmounted(() => {
               :class="{ active: activeMainTab === 'code' }"
               @click="activeMainTab = 'code'"
           >
-            <MoloSticker name="edit" :size="13" class="tab-sticker" />
+            <UIMoloSticker name="edit" :size="13" class="tab-sticker" />
             <span>Основной код ({{ formData.fileName || 'index' }}.{{ formData.format }})</span>
           </button>
 
@@ -909,7 +913,7 @@ onUnmounted(() => {
               :class="{ active: activeMainTab === 'files' }"
               @click="activeMainTab = 'files'"
           >
-            <MoloSticker name="folder" :size="13" class="tab-sticker" />
+            <UIMoloSticker name="folder" :size="13" class="tab-sticker" />
             <span>Файлы компонента</span>
             <span class="tab-count">{{ moduleFiles.length }}</span>
           </button>
@@ -919,7 +923,7 @@ onUnmounted(() => {
               :class="{ active: activeMainTab === 'deps' }"
               @click="activeMainTab = 'deps'"
           >
-            <MoloSticker name="nomenclature" :size="13" class="tab-sticker" />
+            <UIMoloSticker name="nomenclature" :size="13" class="tab-sticker" />
             <span>{{ formData.format === 'py' ? 'Зависимости (pip)' : 'Зависимости (NPM)' }}</span>
             <span class="tab-count">{{ Object.keys(formData.dependencies || {}).length }}</span>
           </button>
@@ -986,7 +990,7 @@ onUnmounted(() => {
                     Изменить
                   </UIMoloButton>
                   <UIMoloButton class="small close" @click="deleteFile(file.path)">
-                    ✕
+                    <UIMoloSticker name="x" :size="14" />
                   </UIMoloButton>
                 </div>
               </div>
@@ -1030,7 +1034,9 @@ onUnmounted(() => {
                       @click="addDependency"
                   >
                     <UIMoloLoaders v-if="loadingDEP" btnLoader />
-                    <span v-else>+ Установить</span>
+                    <div v-else>
+                      <UIMoloSticker name="plus"/>
+                    </div>
                   </UIMoloButton>
                 </div>
               </div>
@@ -1048,12 +1054,12 @@ onUnmounted(() => {
                     class="dep-row-item"
                 >
                   <span class="pkg-name">
-                    <MoloSticker name="nomenclature" :size="13" class="pkg-sticker" />
+                    <UIMoloSticker name="nomenclature" :size="13" class="pkg-sticker" />
                     {{ pkg }}
                   </span>
                   <span class="pkg-ver">{{ version }}</span>
                   <button class="dep-del-btn" title="Удалить пакет" @click="removeDependency(pkg as string)">
-                    ✕
+                    <UIMoloSticker name="x" :size="14" />
                   </button>
                 </div>
 
@@ -1078,7 +1084,7 @@ onUnmounted(() => {
 
         <footer class="ide-status-bar">
           <div class="status-left">
-            <span>● {{ isEditing ? 'Синхронизировано' : 'Черновик' }}</span>
+            <span><UIMoloSticker name="dot" :size="8" /> {{ isEditing ? 'Синхронизировано' : 'Черновик' }}</span>
             <span>Формат: <b>{{ formData.format.toUpperCase() }}</b></span>
             <span>Кодировка: UTF-8</span>
           </div>
@@ -1136,10 +1142,12 @@ onUnmounted(() => {
               />
 
               <div class="custom-check-row">
-                <label class="check-box-label">
-                  <input v-model="formData.isPublic" type="checkbox" />
-                  <span>Публичный доступ в каталоге</span>
-                </label>
+                  <UIMoloToggle
+                      tLabel="Публичный?"
+                      v-model="formData.isPublic"
+                      true-label="открытй"
+                      false-label="нет"
+                  />
               </div>
             </div>
           </template>
@@ -1197,7 +1205,7 @@ onUnmounted(() => {
             <div class="preview-box">
               <div v-if="formData.previewImage" class="img-frame">
                 <img :src="formData.previewImage" alt="Превью" />
-                <button class="del-preview-badge" title="Удалить" @click="removePreview">✕</button>
+                <button class="del-preview-badge" title="Удалить" @click="removePreview"><UIMoloSticker name="x" :size="14" /></button>
               </div>
               <div v-else class="img-placeholder">
                 <span>Нет изображения</span>
@@ -1555,7 +1563,6 @@ onUnmounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  flex-wrap: wrap;
   gap: 10px;
 }
 
@@ -1565,9 +1572,9 @@ onUnmounted(() => {
 }
 
 .dep-add-inline {
+  width: fit-content;
   display: flex;
   gap: 8px;
-  align-items: center;
 }
 
 .dep-list-table {

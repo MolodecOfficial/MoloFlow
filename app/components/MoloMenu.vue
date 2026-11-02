@@ -461,7 +461,7 @@ onUnmounted(() => {
                       @keydown.esc="closePanel"
                   />
                 </div>
-                <UIMoloButton class="small close" title="Закрыть (Esc)" @click="closePanel">✕</UIMoloButton>
+                <UIMoloButton class="small close" title="Закрыть (Esc)" @click="closePanel"><UIMoloSticker name="x" :size="14" /></UIMoloButton>
               </div>
 
               <div v-if="searchQuery.trim()" class="search-mode">
@@ -486,7 +486,7 @@ onUnmounted(() => {
                       <span class="search-title">{{ cleanTitle(result.item.title) }}</span>
                       <span class="search-path">{{ resultPath(result) }}</span>
                     </span>
-                    <span class="search-go">↵</span>
+                    <span class="search-go"><UIMoloSticker name="corner-down-left" :size="14" /></span>
                   </button>
                 </div>
                 <div v-else class="empty-block">
@@ -556,17 +556,6 @@ onUnmounted(() => {
                         </span>
                         <span v-else>скрипт · {{ item.format }}</span>
                       </span>
-                      <span v-else class="card-meta">открыть окно</span>
-
-                      <UIMoloButton
-                          v-if="item.isScript"
-                          class="restart-btn"
-                          :class="{ spinning: executingModules.has(item.moduleId) }"
-                          title="Перезапустить"
-                          @click.stop="restartModule(item.moduleData)"
-                      >
-                        <MoloSticker name="rotate" :size="12" />
-                      </UIMoloButton>
                     </UIMoloButton>
                   </div>
                   <div v-else class="empty-block">
