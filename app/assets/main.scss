@@ -93,6 +93,10 @@ input[type="checkbox"] {
   cursor: pointer;
 }
 
+select option {
+  background: #333333;
+}
+
 .loading-overlay {
   display: flex;
   align-items: center;
