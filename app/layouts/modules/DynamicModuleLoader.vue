@@ -6,7 +6,7 @@ import { useLogger } from '~/composables/useLogger'
 import { useNotifications } from '~/composables/useNotifications'
 import { useWindowManager } from '~/composables/window/useWindowManager'
 import { useAppStore } from '~~/stores/appStore'
-import PythonConsole from '~/components/UI/MoloPythonConsole.vue'
+
 const props = defineProps<{
   moduleData?: any
   moduleId?: string
@@ -155,7 +155,7 @@ onUnmounted(() => {
       <UIMoloLoaders wndLoader/>
       <span>Компиляция модуля...</span>
     </div>
-    <PythonConsole
+    <UIMoloPythonConsole
         v-else-if="pyModule"
         :key="pyModule.id"
         :code="pyModule.code"

@@ -2,7 +2,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { usePersistentState } from '~/composables/window/usePersistentState'
-import MoloSticker from '~/components/ui/MoloSticker.vue'
 
 interface HistoryEntry {
   id: string
@@ -350,7 +349,7 @@ function copyToClipboard(text: string) {
                 title="Скопировать результат"
                 @click="copyToClipboard(display)"
             >
-              <MoloSticker name="edit" :size="12" />
+              <UIMoloSticker name="edit" :size="12" />
             </UIMoloButton>
           </div>
         </div>
@@ -493,7 +492,7 @@ function copyToClipboard(text: string) {
         </div>
 
         <div v-if="!history.length" class="history-empty">
-          <MoloSticker name="history" :size="32" glow />
+          <UIMoloSticker name="history" :size="32" glow />
           <span>История вычислений пуста</span>
         </div>
 

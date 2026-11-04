@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import MoloSticker from '~/components/ui/MoloSticker.vue'
 
 const props = defineProps<{
   modelValue?: string

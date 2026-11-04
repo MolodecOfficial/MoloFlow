@@ -1,4 +1,3 @@
-<!-- app/components/devtools/MoloCalendarTool.vue -->
 <script setup lang="ts">
 import {ref, computed} from 'vue'
 import {usePersistentState} from '~/composables/window/usePersistentState'

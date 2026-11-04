@@ -10,7 +10,6 @@ import { useDirectoryInterpolator, type DirectoryLookupItem } from '~/composable
 import DirectoryResolutionModal from '~/components/directory/DirectoryResolutionModal.vue'
 import { useWorkspaceStore, type DocType, type DocData, type SpaceFolder, type SpaceDocument, type DocVersionMeta } from '~~/stores/workspaceStore'
 import { useAppStore } from '~~/stores/appStore'
-import MoloSticker from '~/components/ui/MoloSticker.vue'
 import mammoth from 'mammoth'
 
 const props = defineProps<{
@@ -851,7 +850,7 @@ onUnmounted(() => {
                 @drop="onFolderDrop($event, null)"
             >
               <span class="tree-chevron invisible"><UIMoloSticker name="down" :size="11" /></span>
-              <MoloSticker name="folder-open" :size="16" class="tree-icon" />
+              <UIMoloSticker name="folder-open" :size="16" class="tree-icon" />
               <span class="node-title">Все документы</span>
             </div>
 
@@ -881,7 +880,7 @@ onUnmounted(() => {
                   <UIMoloSticker name="right" :size="11" />
                 </button>
 
-                <MoloSticker
+                <UIMoloSticker
                     :name="item.isExpanded ? 'folder-open' : 'folder'"
                     :size="16"
                     class="tree-icon"
@@ -906,14 +905,14 @@ onUnmounted(() => {
                         title="Переименовать"
                         @click.stop="startFolderRename(item.folder)"
                     >
-                      <MoloSticker name="edit" :size="12" />
+                      <UIMoloSticker name="edit" :size="12" />
                     </UIMoloButton>
                     <UIMoloButton
                         class="icon-btn"
                         title="Удалить папку"
                         @click.stop="requestRemoveFolder(item.folder.id)"
                     >
-                      <MoloSticker name="trash" :size="12" />
+                      <UIMoloSticker name="trash" :size="12" />
                     </UIMoloButton>
                   </div>
                 </template>
@@ -951,14 +950,14 @@ onUnmounted(() => {
                         title="Переименовать"
                         @click.stop="startRename(item.doc)"
                     >
-                      <MoloSticker name="edit" :size="12" />
+                      <UIMoloSticker name="edit" :size="12" />
                     </UIMoloButton>
                     <UIMoloButton
                         class="icon-btn"
                         title="Удалить"
                         @click.stop="requestRemove(item.doc.id)"
                     >
-                      <MoloSticker name="trash" :size="12" />
+                      <UIMoloSticker name="trash" :size="12" />
                     </UIMoloButton>
                   </div>
                 </template>
@@ -1044,7 +1043,7 @@ onUnmounted(() => {
                     title="Переименовать"
                     @click.stop="startRename(doc)"
                 >
-                  <MoloSticker name="edit" :size="12" />
+                  <UIMoloSticker name="edit" :size="12" />
                 </UIMoloButton>
                 <UIMoloButton
                     v-if="renamingId !== doc.id"
@@ -1052,7 +1051,7 @@ onUnmounted(() => {
                     title="Удалить"
                     @click.stop="requestRemove(doc.id)"
                 >
-                  <MoloSticker name="trash" :size="12" />
+                  <UIMoloSticker name="trash" :size="12" />
                 </UIMoloButton>
               </div>
             </div>
@@ -1064,7 +1063,7 @@ onUnmounted(() => {
       <section class="workspace-main">
         <div v-if="openDocuments.length === 0" class="empty-state">
           <div class="empty-icon-wrap">
-            <MoloSticker name="folder-open" :size="36" glow />
+            <UIMoloSticker name="folder-open" :size="36" glow />
           </div>
 
           <h3>Рабочая область свободна</h3>

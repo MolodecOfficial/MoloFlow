@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { useWindowManager } from '~/composables/window/useWindowManager'
-import MoloSticker from '~/components/ui/MoloSticker.vue'
 
 const { openWindow } = useWindowManager()
 
@@ -45,7 +44,7 @@ const openTool = (tool: typeof tools[number]) => {
           <span class="tool-glow"></span>
 
           <span class="tool-icon">
-            <MoloSticker :name="tool.sticker" :size="16" />
+            <UIMoloSticker :name="tool.sticker" :size="16" />
           </span>
         </button>
       </div>

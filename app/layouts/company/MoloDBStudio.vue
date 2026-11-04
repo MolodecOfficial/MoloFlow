@@ -2,7 +2,6 @@
 <script setup>
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useLogger } from '~~/app/composables/useLogger'
-import UIMoloMonaco from '~/components/UI/MoloMonaco.vue'
 
 const { addLog } = useLogger('MoloDB')
 

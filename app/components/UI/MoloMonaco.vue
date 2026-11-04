@@ -2,7 +2,6 @@
 import { ref, onMounted, onUnmounted, watch, nextTick, shallowRef } from 'vue'
 import { initMonaco, buildEditorFiles, getMonacoLanguage } from '~~/app/composables/monaco/index'
 import type { FileNode } from '~~/app/composables/monaco/filesystem'
-import MonacoMenu from '../monaco/Menu.vue'
 import type { InsertPayload } from '../monaco/Menu.vue'
 
 // Пропсы

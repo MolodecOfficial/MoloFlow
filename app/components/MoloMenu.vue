@@ -14,7 +14,6 @@ import { useModulesStore } from '~~/stores/modulesStore'
 import { useWindowManager } from '~~/app/composables/window/useWindowManager'
 import { useModulePrefetch } from '~/composables/compiler/useModulePrefetch'
 import { executeServerModule } from '~~/app/composables/compiler/useServerExecute'
-import MoloSticker from '~/components/ui/MoloSticker.vue'
 
 const props = defineProps<{ role?: string }>()
 const emit = defineEmits<{
@@ -473,7 +472,7 @@ onUnmounted(() => {
                       @click="selectResult(result)"
                   >
                     <span class="search-icon">
-                      <MoloSticker
+                      <UIMoloSticker
                           v-if="result.item.items?.length"
                           name="folder"
                           :size="18"
@@ -490,7 +489,7 @@ onUnmounted(() => {
                   </button>
                 </div>
                 <div v-else class="empty-block">
-                  <MoloSticker name="it" :size="36" glow />
+                  <UIMoloSticker name="it" :size="36" glow />
                   <span>Ничего не найдено по «{{ searchQuery }}»</span>
                 </div>
               </div>
@@ -505,7 +504,7 @@ onUnmounted(() => {
                       @click="selectCategory(group)"
                   >
                     <span class="rail-sticker-wrap">
-                      <MoloSticker
+                      <UIMoloSticker
                           :name="getGroupSticker(group.id, group.title)"
                           :size="16"
                       />
@@ -538,7 +537,7 @@ onUnmounted(() => {
                         @mouseenter="item.isModule && item.moduleId && prefetchOne(item.moduleId, appStore.getEnterpriseId() || '')"
                     >
                       <span class="card-icon">
-                        <MoloSticker
+                        <UIMoloSticker
                             v-if="item.items?.length"
                             name="folder"
                             :size="20"
@@ -559,7 +558,7 @@ onUnmounted(() => {
                     </UIMoloButton>
                   </div>
                   <div v-else class="empty-block">
-                    <MoloSticker name="warehouse" :size="36" glow />
+                    <UIMoloSticker name="warehouse" :size="36" glow />
                     <span>Здесь пока пусто</span>
                   </div>
                 </main>

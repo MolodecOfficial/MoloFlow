@@ -10,8 +10,6 @@ import { useWindowManager } from '~~/app/composables/window/useWindowManager'
 import { useMonacoFiles } from '~~/app/composables/useMonacoFiles'
 import { useNotifications } from '~~/app/composables/useNotifications'
 import { useLogger } from '~~/app/composables/useLogger'
-import MoloSticker from '~/components/UI/MoloSticker.vue'
-import PythonConsole from '~/components/UI/MoloPythonConsole.vue'
 
 import jsIcon from '~~/app/assets/icons/js.svg'
 import tsIcon from '~~/app/assets/icons/ts.svg'
@@ -1072,7 +1070,7 @@ onUnmounted(() => {
         </div>
 
         <div v-if="formData.format === 'py' && showPyConsole" class="py-console-dock">
-          <PythonConsole
+          <UIMoloPythonConsole
               ref="pyConsoleRef"
               :code="formData.code"
               :file-name="formData.fileName"
