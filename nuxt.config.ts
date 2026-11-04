@@ -16,7 +16,7 @@ export default defineNuxtConfig({
   },
 
   nitro: {
-    preset: 'node-server',
+    preset: process.env.VERCEL ? undefined : 'node-server',
     plugins: ['~/server/plugins/mongoose.ts'],
     inlineDynamicImports: true,
     experimental: {
