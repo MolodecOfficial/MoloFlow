@@ -32,7 +32,7 @@ export default defineEventHandler(async (event) => {
 
         const moduleId = String(body.moduleId || '')
         if (!mongoose.Types.ObjectId.isValid(moduleId)) throw bad('Выберите модуль')
-        const mod: any = await tenantModels(enterpriseId).DynamicModule.findOne({ _id: moduleId, enterpriseId }).lean()
+        const mod: any = await tenantModels(enterpriseId).DynamicModule.findById(moduleId).lean()
         if (!mod) throw bad('Модуль не найден', 404)
         if (mod.format !== 'js' && mod.format !== 'ts') throw bad('Эндпоинт можно привязать только к js/ts-модулю')
 

@@ -1251,8 +1251,13 @@ function onKey(e) {
                   <span class="access-chip">{{ ACCESS.find((a) => a.v === e.access)?.t }}</span>
 
                   <div class="endpoint-quick-actions">
-                    <UIMoloButton class="small" title="Скопировать URL" @click="copy(admin.endpointUrl(e.slug))">
+                    <UIMoloButton
+                        class="small"
+                        title="Скопировать готовую ссылку для вызова"
+                        @click="copy(e.access === 'key' && e.secret ? `${admin.endpointUrl(e.slug)}?key=${e.secret}` : admin.endpointUrl(e.slug))"
+                    >
                       <UIMoloSticker name="copy" :size="11" />
+                      <span>Скопировать URL</span>
                     </UIMoloButton>
                     <UIMoloButton class="small" title="Параметры" @click="openEndpoint(e)">
                       <UIMoloSticker name="pen" :size="11" />
@@ -1441,9 +1446,14 @@ function onKey(e) {
             </div>
           </div>
 
-          <UIMoloSelect v-model="ep.moduleId" compact t-label="Модуль обработчика" @change="loadModuleFiles('')">
-            <option value="">— Выберите модуль —</option>
-            <option v-for="m in (mods || [])" :key="m._id" :value="m._id">{{ m.name }}</option>
+          <UIMoloSelect
+              v-model="ep.moduleId"
+              compact
+              disabled="Выберите модуль"
+              :parent="mods"
+              value-key="_id"
+              children="name"
+              t-label="Модуль обработчика" @change="loadModuleFiles('')">
           </UIMoloSelect>
 
           <UIMoloSelect v-if="ep.moduleId" v-model="ep.file" compact t-label="Исполняемый файл">

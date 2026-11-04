@@ -84,7 +84,7 @@ export default defineEventHandler(async (event) => {
         await checkEnterpriseAccess(event, enterpriseId)
     }
 
-    const mod: any = await tenantModels(enterpriseId).DynamicModule.findOne({ _id: ep.moduleId, enterpriseId, isActive: true }).select('format').lean()
+    const mod: any = await tenantModels(enterpriseId).DynamicModule.findOne({ _id: ep.moduleId, isActive: true }).select('format').lean()
     if (!mod || mod.format === 'py') throw createError({ statusCode: 502, message: 'Модуль эндпоинта недоступен' })
 
     // ── запрос → context ──
