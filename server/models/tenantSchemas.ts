@@ -71,7 +71,7 @@ const directoryDefinitionSchema = new Schema({
     fields: [{
         key: { type: String, required: true },
         label: { type: String, required: true },
-        type: { type: String, enum: ['text', 'number', 'date', 'select', 'boolean'], default: 'text' },
+        type: { type: String, enum: ['text', 'number', 'date', 'select', 'boolean', 'file'], default: 'text' },
         required: { type: Boolean, default: false },
         options: [{ label: String, value: Schema.Types.Mixed }],
         placeholder: { type: String, default: '' },

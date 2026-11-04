@@ -108,8 +108,9 @@ function scheduleRebuild() {
       code: code.value,
       files: (files.value || []).map((f: any) => ({
         path: f.path,
-        len: f.code?.length,
-        fmt: f.format
+        code: f.code || '',
+        fmt: f.format,
+        server: Boolean(f.isServerFile)
       })),
       deps: dependencies.value,
       mod: moduleId.value
@@ -129,7 +130,7 @@ function scheduleRebuild() {
 watch(
     [code, files, dependencies, moduleId],
     () => scheduleRebuild(),
-    { immediate: false }
+    { immediate: false, deep: true }
 )
 
 // При первом монтировании — сразу компилируем (без debounce),

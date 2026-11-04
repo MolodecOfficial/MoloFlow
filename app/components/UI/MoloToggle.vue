@@ -55,7 +55,7 @@ function toggle() {
         @keydown.enter.prevent="toggle"
     >
       <div class="switch-capsule">
-        <span class="switch-thumb">y
+        <span class="switch-thumb">
         </span>
       </div>
 

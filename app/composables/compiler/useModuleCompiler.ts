@@ -1,4 +1,4 @@
-// composables/useModuleCompiler.ts
+
 import * as Vue from 'vue'
 import { markRaw, ref, shallowRef } from 'vue'
 import * as compiler from '@vue/compiler-sfc'
@@ -7,13 +7,28 @@ import * as Babel from '@babel/standalone'
 import presetTypeScript from '@babel/preset-typescript'
 import { useModuleCache, makeModuleSignature, type CompiledResult } from './useModuleCache'
 
-// ======================================================
-// Типы
-// ======================================================
 type ComposableFunction = (...args: any[]) => any
 
+// Зарезервированные HTML-теги, которые НЕЛЬЗЯ регистрировать как глобальные компоненты во Vue
+const RESERVED_HTML_TAGS = new Set([
+    'html', 'body', 'base', 'head', 'link', 'meta', 'style', 'title',
+    'address', 'article', 'aside', 'footer', 'header', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+    'hgroup', 'nav', 'section', 'div', 'dd', 'dl', 'dt', 'figcaption', 'figure', 'picture',
+    'hr', 'img', 'li', 'main', 'ol', 'p', 'pre', 'ul', 'a', 'b', 'abbr', 'bdi', 'bdo', 'br',
+    'cite', 'code', 'data', 'dfn', 'em', 'i', 'kbd', 'mark', 'q', 'rp', 'rt', 'rtc', 'ruby',
+    's', 'samp', 'small', 'span', 'strong', 'sub', 'sup', 'time', 'u', 'var', 'wbr', 'area',
+    'audio', 'map', 'track', 'video', 'embed', 'object', 'param', 'source', 'canvas', 'script',
+    'noscript', 'del', 'ins', 'caption', 'col', 'colgroup', 'table', 'thead', 'tbody', 'td',
+    'th', 'tr', 'button', 'datalist', 'fieldset', 'form', 'input', 'label', 'legend', 'meter',
+    'optgroup', 'option', 'output', 'progress', 'select', 'textarea', 'details', 'dialog',
+    'menu', 'summary', 'template'
+])
+
+// Кэш внешних загруженных npm-библиотек из CDN
+const externalModulesCache = new Map<string, any>()
+
 // ======================================================
-// Загрузка компонентов проекта
+// Загрузка компонентов проекта с защитой от зарезервированных тегов
 // ======================================================
 const componentModules = import.meta.glob('~/components/**/*.vue')
 let loadedComponents: Record<string, any> | null = null
@@ -24,16 +39,18 @@ async function loadAllComponents(): Promise<Record<string, any>> {
     const entries = Object.entries(componentModules)
     const promises = entries.map(async ([path, importer]) => {
         try {
-            const name = path.split('/').pop()?.replace('.vue', '')
-            if (!name) return
+            const rawName = path.split('/').pop()?.replace('.vue', '')
+            if (!rawName) return
             const mod: any = await importer()
             const component = mod.default || mod
-            result[name] = component
-            result[name.toLowerCase()] = component
-            const pascalName = name.charAt(0).toUpperCase() + name.slice(1)
-            if (pascalName !== name) result[pascalName] = component
-            const camelName = name.charAt(0).toLowerCase() + name.slice(1)
-            if (camelName !== name) result[camelName] = component
+
+            const pascalName = rawName.charAt(0).toUpperCase() + rawName.slice(1)
+            const lowerName = rawName.toLowerCase()
+
+            result[pascalName] = component
+            if (!RESERVED_HTML_TAGS.has(lowerName)) {
+                result[lowerName] = component
+            }
         } catch (e) {
             console.warn(`[ModuleCompiler] Failed to load component: ${path}`, e)
         }
@@ -80,25 +97,6 @@ function parseCompilationError(error: any, code?: string): {
         }
     }
 
-    if (!line) {
-        const tsMatch = message.match(/line\s+(\d+)/i)
-        if (tsMatch) {
-            line = parseInt(tsMatch[1])
-        }
-    }
-
-    const fileMatch = message.match(/at\s+([^\s]+\.vue)/)
-    if (fileMatch) {
-        fileName = fileMatch[1]
-    }
-
-    if (!fileMatch && stack) {
-        const stackFileMatch = stack.match(/at\s+([^\s]+\.vue)/)
-        if (stackFileMatch) {
-            fileName = stackFileMatch[1]
-        }
-    }
-
     let codeContext = ''
     if (line && code) {
         const lines = code.split('\n')
@@ -139,9 +137,6 @@ function parseCompilationError(error: any, code?: string): {
     }
 }
 
-// ======================================================
-// Глобальные composables
-// ======================================================
 let globalComposables: Record<string, ComposableFunction> | null = null
 
 export function setGlobalComposables(composables: Record<string, ComposableFunction>) {
@@ -149,9 +144,6 @@ export function setGlobalComposables(composables: Record<string, ComposableFunct
     ;(window as any).__moduleComposables = composables
 }
 
-// ======================================================
-// Виртуальные модули
-// ======================================================
 const VIRTUAL_MODULES: Record<string, string[]> = {
     'composables/useLogger': ['useLogger'],
     'composables/useNotifications': ['useNotifications'],
@@ -176,9 +168,34 @@ function normalizePath(path: string): string {
     return path.replace(/^[@~]+\//, '').replace(/^\.\//, '').replace(/\\/g, '/').replace(/\/+/g, '/').split('?')[0].trim()
 }
 
-// ======================================================
-// Транспиляция TypeScript в JavaScript для SFC
-// ======================================================
+// Загрузка реальных npm зависимостей через ESM CDN
+async function loadExternalPackage(pkgName: string, version = 'latest'): Promise<any> {
+    const cleanVersion = version && version !== '*' ? version : 'latest'
+    const cacheKey = `${pkgName}@${cleanVersion}`
+    if (externalModulesCache.has(cacheKey)) {
+        return externalModulesCache.get(cacheKey)
+    }
+
+    try {
+        const cdnUrl = `https://esm.sh/${pkgName}${cleanVersion !== 'latest' ? `@${cleanVersion}` : ''}?bundle`
+        const mod: any = await import(/* @vite-ignore */ cdnUrl)
+
+        let resolved = mod
+        if (mod && mod.__esModule && mod.default !== undefined) {
+            resolved = mod.default
+        } else if (mod && mod.default !== undefined && (typeof mod.default === 'function' || Object.keys(mod).length === 1)) {
+            resolved = mod.default
+        }
+
+        externalModulesCache.set(cacheKey, resolved)
+        externalModulesCache.set(pkgName, resolved)
+        return resolved
+    } catch (e: any) {
+        console.error(`[ModuleCompiler] Не удалось загрузить зависимость "${pkgName}":`, e)
+        throw new Error(`Не удалось загрузить npm-пакет «${pkgName}». Проверьте интернет или имя пакета в зависимостях.`)
+    }
+}
+
 function transpileTypeScriptSFC(code: string): string {
     try {
         const result = Babel.transform(code, {
@@ -204,19 +221,94 @@ function transpileTypeScriptSFC(code: string): string {
     }
 }
 
-// ======================================================
-// Компиляция вложенного Vue компонента через vue3-sfc-loader
-//
-// ВАЖНО: раньше здесь был addStyle() {} — пустышка, из-за которой стили
-// импортированных .vue компонентов ("import Foo from './Foo.vue'")
-// молча выбрасывались. Теперь стиль прокидывается наружу через onStyle,
-// чтобы попасть в общий CSS модуля.
-// ======================================================
+// Получает реальное определение компонента из результата vue3-sfc-loader.
+// В разных версиях загрузчика результат может быть модулем, Promise,
+// defineAsyncComponent-обёрткой или объектом с внутренним promise.
+async function extractComponentDefinition(raw: any): Promise<any> {
+    let target = raw
+    const visited = new Set<any>()
+
+    for (let i = 0; i < 12 && target; i++) {
+        if ((typeof target !== 'object' && typeof target !== 'function') || visited.has(target)) break
+        visited.add(target)
+
+        if (typeof target.then === 'function') {
+            target = await target
+            continue
+        }
+
+        // Vue defineAsyncComponent exposes __asyncLoader and may already
+        // contain a resolved component in __asyncResolved.
+        if (target.__asyncResolved) {
+            target = target.__asyncResolved
+            continue
+        }
+        if (typeof target.__asyncLoader === 'function') {
+            target = await target.__asyncLoader()
+            continue
+        }
+
+        // vue3-sfc-loader versions may expose their pending module as `promise`.
+        if (target.promise && typeof target.promise.then === 'function') {
+            target = await target.promise
+            continue
+        }
+
+        // ES module namespace.
+        if (target.default && target.default !== target) {
+            target = target.default
+            continue
+        }
+
+        break
+    }
+
+    return target
+}
+
+function isVueComponentDefinition(value: any): boolean {
+    if (typeof value === 'function') return true
+    if (!value || typeof value !== 'object') return false
+    return Boolean(
+        value.render || value.setup || value.template || value.__asyncLoader ||
+        value.__asyncResolved || value.ssrRender
+    )
+}
+
+function normalizeLocalPath(path: string): string {
+    const parts: string[] = []
+    for (const part of normalizePath(path).split('/')) {
+        if (!part || part === '.') continue
+        if (part === '..') parts.pop()
+        else parts.push(part)
+    }
+    return parts.join('/')
+}
+
+function resolveLocalFile(importPath: string, importerPath: string, localFiles: Map<string, any>): any | null {
+    const raw = importPath.replace(/\\/g, '/')
+    const importerDir = importerPath.includes('/') ? importerPath.slice(0, importerPath.lastIndexOf('/')) : ''
+    const base = raw.startsWith('.') ? normalizeLocalPath(`${importerDir}/${raw}`) : normalizeLocalPath(raw)
+    const candidates = [base]
+    if (!/\.(vue|ts|js)$/i.test(base)) {
+        candidates.push(`${base}.vue`, `${base}.ts`, `${base}.js`, `${base}/index.vue`, `${base}/index.ts`, `${base}/index.js`)
+    }
+    for (const candidate of candidates) {
+        if (localFiles.has(candidate)) return localFiles.get(candidate)
+    }
+    // Compatibility fallback for older modules that imported by basename.
+    const basename = base.split('/').pop() || base
+    const matches = [...localFiles.entries()].filter(([key]) => key === basename || key.endsWith(`/${basename}`))
+    return matches.length === 1 ? matches[0][1] : null
+}
+
 async function compileVueComponentFromSource(
     code: string,
     fileName: string,
     moduleId: string,
-    onStyle?: (css: string) => void
+    dependencies: Record<string, string> = {},
+    onStyle?: (css: string) => void,
+    localFiles?: Map<string, any>
 ): Promise<any> {
     try {
         let processedCode = code
@@ -229,34 +321,46 @@ async function compileVueComponentFromSource(
             }
         }
 
-        const files: Record<string, string> = {
-            [fileName]: processedCode
+        const normalizedFileName = normalizeLocalPath(fileName)
+        const files: Record<string, string> = { [normalizedFileName]: processedCode }
+        for (const [path, data] of localFiles || []) {
+            if (data?.code != null) files[normalizeLocalPath(path)] = data.code
         }
 
         const options: any = {
             moduleCache: { vue: Vue },
             compiler,
             async getFile(url: any) {
-                const normalized = normalizePath(typeof url === 'string' ? url : url?.url || '')
-                if (files[normalized]) return files[normalized]
-                throw new Error(`File not found: ${normalized}`)
+                const requested = normalizePath(typeof url === 'string' ? url : url?.url || '')
+                const normalized = normalizeLocalPath(requested)
+                if (files[normalized] != null) return files[normalized]
+                const resolved = resolveLocalFile(requested, normalizedFileName, localFiles || new Map())
+                if (resolved?.code != null) return resolved.code
+                throw new Error(`Локальный файл «${requested}» не найден (импорт из «${normalizedFileName}»).` )
+            },
+            async handleModule(type: string, getContentData: any, path: string) {
+                const pkg = path.split('/')[0]
+                if (dependencies[pkg] || externalModulesCache.has(pkg)) {
+                    return await loadExternalPackage(pkg, dependencies[pkg])
+                }
             },
             addStyle(textContent: string) {
                 onStyle?.(textContent)
             },
         }
 
-        const mod: any = await loadModule(fileName, options)
-        return markRaw(mod.default || mod)
-    } catch (e) {
-        console.warn('[ModuleCompiler] Failed to compile Vue component:', e)
-        return null
+        const rawMod = await loadModule(normalizedFileName, options)
+        const component = await extractComponentDefinition(rawMod)
+        if (!isVueComponentDefinition(component)) {
+            throw new Error(`Файл «${normalizedFileName}» загружен, но не содержит корректного Vue-компонента (render/setup/template).`)
+        }
+        return markRaw(component)
+    } catch (e: any) {
+        console.error(`[ModuleCompiler] Ошибка компиляции ${fileName}:`, e)
+        throw new Error(`Не удалось скомпилировать «${fileName}»: ${e?.message || String(e)}`)
     }
 }
 
-// ======================================================
-// Обработка JS/TS модулей - сохраняем экспорты
-// ======================================================
 function processJSModule(code: string, isTypeScript: boolean): string {
     if (isTypeScript) {
         code = transpileTypeScriptSFC(code)
@@ -285,60 +389,26 @@ function processJSModule(code: string, isTypeScript: boolean): string {
     return code
 }
 
-// ======================================================
-// Поиск файлов
-// ======================================================
 function findFileData(importPath: string, localFiles: Map<string, any>): any | null {
-    let cleanPath = importPath
-        .replace(/^\.\//, '')
-        .replace(/^\.\.\//, '')
-        .replace(/\\/g, '/')
-        .trim()
+    const resolved = resolveLocalFile(importPath, 'dynamic.vue', localFiles)
+    if (resolved) return resolved
 
-    const extensions = ['.vue', '.ts', '.js']
-    const hasExtension = extensions.some(ext => cleanPath.endsWith(ext))
-
+    const cleanPath = normalizeLocalPath(importPath)
     if (localFiles.has(cleanPath)) return localFiles.get(cleanPath)
-
-    if (!hasExtension) {
-        for (const ext of extensions) {
-            if (localFiles.has(cleanPath + ext)) return localFiles.get(cleanPath + ext)
-        }
-    }
-
-    const fileName = cleanPath.split('/').pop() || cleanPath
-    const fileNameWithoutExt = fileName.replace(/\.(vue|ts|js)$/, '')
-
-    for (const [key, value] of localFiles) {
-        const keyFileName = key.split('/').pop() || key
-        const keyWithoutExt = keyFileName.replace(/\.(vue|ts|js)$/, '')
-
-        if (keyFileName === fileName || keyWithoutExt === fileNameWithoutExt) {
-            return value
-        }
-
-        if (key.endsWith('/' + fileName) || key.endsWith('/' + fileNameWithoutExt)) {
-            return value
-        }
-    }
-
     return null
 }
 
-// ======================================================
-// Обработка импортов в script
-// ======================================================
 async function processImports(
     scriptContent: string,
     localFiles: Map<string, any>,
     moduleId: string,
+    dependencies: Record<string, string> = {},
     onStyle?: (css: string) => void
 ): Promise<{ inlinedCode: string, dynamicComponents: Record<string, any> }> {
 
     const dynamicComponents: Record<string, any> = {}
     let processedCode = scriptContent
 
-    // 1. Импорт Vue компонентов: import X from './file.vue'
     const vueImportRegex = /import\s+(\w+)\s+from\s+['"]([^'"]+\.vue)['"]\s*;?/g
     const vueMatches = [...processedCode.matchAll(vueImportRegex)]
 
@@ -351,21 +421,22 @@ async function processImports(
                 fileData.code,
                 importPath.replace(/^\.\//, ''),
                 moduleId,
-                onStyle
+                dependencies,
+                onStyle,
+                localFiles
             )
             if (compiled) {
                 dynamicComponents[importName] = compiled
                 processedCode = processedCode.replace(fullMatch, `/* Component ${importName} registered */`)
             } else {
-                processedCode = processedCode.replace(fullMatch, `/* FAILED: ${importName} */`)
+                throw new Error(`Не удалось загрузить компонент «${importPath}» (импорт ${importName}).`)
             }
         } else {
-            processedCode = processedCode.replace(fullMatch, `/* NOT FOUND: ${importPath} */`)
+            throw new Error(`Не найден локальный компонент «${importPath}» (импорт ${importName}). Проверьте путь и наличие файла в модуле.`)
         }
     }
 
-    // 2. Именованный импорт из JS/TS: import { x, y } from './file.ts'
-    const namedImportRegex = /import\s+\{([^}]+)\}\s+from\s+['"]([^'"]+\.(?:ts|js))['"]\s*;?/g
+    const namedImportRegex = /import\s+\{([^}]+)\}\s+from\s+['"](\.[^'"]+\.(?:ts|js))['"]\s*;?/g
     const namedMatches = [...processedCode.matchAll(namedImportRegex)]
 
     for (const match of namedMatches) {
@@ -389,12 +460,11 @@ const {${destructured}} = (function() {
 `
             processedCode = processedCode.replace(fullMatch, replacement)
         } else {
-            processedCode = processedCode.replace(fullMatch, `/* NOT FOUND: ${importPath} */`)
+            throw new Error(`Не найден локальный файл «${importPath}». Проверьте путь и наличие файла в модуле.`)
         }
     }
 
-    // 3. Default импорт из JS/TS: import X from './file.ts'
-    const defaultImportRegex = /import\s+(\w+)\s+from\s+['"]([^'"]+\.(?:ts|js))['"]\s*;?/g
+    const defaultImportRegex = /import\s+(\w+)\s+from\s+['"](\.[^'"]+\.(?:ts|js))['"]\s*;?/g
     const defaultMatches = [...processedCode.matchAll(defaultImportRegex)]
 
     for (const match of defaultMatches) {
@@ -416,20 +486,18 @@ const ${importName} = (function() {
 `
             processedCode = processedCode.replace(fullMatch, replacement)
         } else {
-            processedCode = processedCode.replace(fullMatch, `/* NOT FOUND: ${importPath} */`)
+            throw new Error(`Не найден локальный файл «${importPath}». Проверьте путь и наличие файла в модуле.`)
         }
     }
 
     return { inlinedCode: processedCode, dynamicComponents }
 }
 
-// ======================================================
-// Подготовка SFC с поддержкой TypeScript
-// ======================================================
 async function prepareSFC(
     code: string,
     localFiles: Map<string, any>,
     moduleId: string,
+    dependencies: Record<string, string> = {},
     onStyle?: (css: string) => void
 ): Promise<{ sfc: string, dynamicComponents: Record<string, any> }> {
 
@@ -448,7 +516,7 @@ async function prepareSFC(
 
         if (scriptMatch) {
             const scriptContent = scriptMatch[1]
-            const { inlinedCode, dynamicComponents } = await processImports(scriptContent, localFiles, moduleId, onStyle)
+            const { inlinedCode, dynamicComponents } = await processImports(scriptContent, localFiles, moduleId, dependencies, onStyle)
 
             const declarations = globalComposables
                 ? Object.keys(globalComposables).map(name => `var ${name} = window.__moduleComposables?.${name}`).join('\n')
@@ -463,14 +531,6 @@ async function prepareSFC(
     return { sfc: processedCode, dynamicComponents: {} }
 }
 
-// ======================================================
-// Стили — теперь с рефкаунтом по moduleId, а не привязаны к
-// экземпляру composable. Раньше при закрытии одного окна модуля
-// (unmount -> reset() -> removeStyle()) мог удалиться тег стилей,
-// который уже успело создать/переиспользовать НОВОЕ окно того же
-// модуля, если оно открылось почти одновременно. Теперь стиль
-// физически удаляется из DOM только когда закрыты ВСЕ окна модуля.
-// ======================================================
 const cache = useModuleCache()
 
 function applyStyleToDom(moduleId: string, css: string) {
@@ -495,11 +555,7 @@ function removeStyleFromDomIfUnused(moduleId: string) {
 }
 
 // ======================================================
-// ЯДРО КОМПИЛЯЦИИ — не трогает Vue-рефы, не знает про UI.
-// Его можно вызывать из открытия окна ИЛИ из фонового прогрева
-// (precompileModule), с дедупликацией через кэш: если фоновый прогрев
-// уже компилирует модуль, окно просто дождётся тот же промис вместо
-// повторной компиляции.
+// ЯДРО КОМПИЛЯЦИИ
 // ======================================================
 async function runCompilation(
     code: string,
@@ -511,6 +567,24 @@ async function runCompilation(
 
     const registry = await loadAllComponents()
     ;(window as any).__moduleComposables = globalComposables
+
+    const safeDeps: Record<string, string> = {}
+    if (dependencies instanceof Map) {
+        dependencies.forEach((v, k) => { safeDeps[k] = v })
+    } else if (dependencies && typeof dependencies === 'object') {
+        Object.assign(safeDeps, dependencies)
+    }
+
+    const moduleCacheEntries: Record<string, any> = { vue: Vue }
+    const depPromises = Object.entries(safeDeps).map(async ([pkg, ver]) => {
+        try {
+            const loaded = await loadExternalPackage(pkg, ver)
+            moduleCacheEntries[pkg] = loaded
+        } catch (err) {
+            console.warn(`[ModuleCompiler] Ошибка предзагрузки пакета ${pkg}:`, err)
+        }
+    })
+    await Promise.allSettled(depPromises)
 
     let cssParts: string[] = []
     const onStyle = (css: string) => {
@@ -534,58 +608,136 @@ async function runCompilation(
         localFiles.set(withoutExt, { code: fileCode, path: filePath, format: file.format })
     }
 
-    const { sfc, dynamicComponents } = await prepareSFC(code, localFiles, moduleId, onStyle)
+    const { sfc, dynamicComponents } = await prepareSFC(code, localFiles, moduleId, safeDeps, onStyle)
 
     const files: Record<string, string> = { 'dynamic.vue': sfc }
 
     const options: any = {
-        moduleCache: { vue: Vue },
+        moduleCache: moduleCacheEntries,
         compiler,
         async getFile(url: any) {
             const normalized = normalizePath(typeof url === 'string' ? url : url?.url || '')
             const virtual = getVirtualModule(normalized)
             if (virtual) return virtual
-            if (files[normalized]) return files[normalized]
+            if (files[normalized] != null) return files[normalized]
+
+            const localFile = resolveLocalFile(normalized, 'dynamic.vue', localFiles)
+            if (localFile?.code != null) return localFile.code
+
             const pkg = normalized.split('/')[0]
-            if (dependencies[pkg]) return `export default {}`
+            if (moduleCacheEntries[pkg] || safeDeps[pkg] || externalModulesCache.has(pkg)) {
+                return ''
+            }
             throw new Error(`Module not found: ${normalized}`)
+        },
+        async handleModule(
+            type: string,
+            getContentData: any,
+            path: any
+        ) {
+            const requestPath = String(path)
+            const normalized = normalizePath(requestPath)
+
+            // Vue-файлы должны обрабатываться самим vue3-sfc-loader.
+            // Не пытаемся загружать dynamic.vue через CDN.
+            if (
+                type === '.vue' ||
+                normalized.endsWith('.vue')
+            ) {
+                return undefined
+            }
+
+            // Локальные импорты тоже оставляем загрузчику.
+            if (
+                normalized.startsWith('./') ||
+                normalized.startsWith('../') ||
+                normalized.startsWith('/')
+            ) {
+                return undefined
+            }
+
+            // Поддержка обычных и scoped npm-пакетов:
+            // dayjs
+            // lodash
+            // @vueuse/core
+            const segments = normalized.split('/').filter(Boolean)
+
+            const pkg = normalized.startsWith('@')
+                ? segments.slice(0, 2).join('/')
+                : segments[0]
+
+            if (!pkg) return undefined
+
+            // Уже загруженная зависимость.
+            if (
+                Object.prototype.hasOwnProperty.call(
+                    moduleCacheEntries,
+                    pkg
+                )
+            ) {
+                return moduleCacheEntries[pkg]
+            }
+
+            // Зависимость указана в настройках модуля
+            // либо уже загружалась ранее.
+            if (
+                safeDeps[pkg] ||
+                externalModulesCache.has(pkg)
+            ) {
+                const loaded = await loadExternalPackage(
+                    pkg,
+                    safeDeps[pkg] || 'latest'
+                )
+
+                moduleCacheEntries[pkg] = loaded
+                return loaded
+            }
+
+            // Неизвестные типы файлов оставляем
+            // стандартному обработчику vue3-sfc-loader.
+            return undefined
         },
         addStyle(textContent: string) {
             onStyle(textContent)
         },
     }
 
-    const mod: any = await loadModule('dynamic.vue', options)
-    const component = markRaw(mod.default || mod)
+    // Загружаем и полностью разрешаем асинхронные обёртки загрузчика.
+    const rawModule = await loadModule('dynamic.vue', options)
 
+    const wrapperPromise = rawModule?.promise
+
+    const resolvedComponent = await extractComponentDefinition(rawModule)
+
+    if (!isVueComponentDefinition(resolvedComponent)) {
+        const received = resolvedComponent && typeof resolvedComponent === 'object'
+            ? Object.keys(resolvedComponent).join(', ')
+            : typeof resolvedComponent
+        throw new Error(`Загрузчик вернул некорректный Vue-компонент. Получено: ${received || 'пустое значение'}. Проверьте импорты и template.`)
+    }
+
+    // Не мутируем объект, который мог быть разделён кэшем vue3-sfc-loader.
+    const component: any = typeof resolvedComponent === 'function'
+        ? resolvedComponent
+        : { ...resolvedComponent }
     component.components = {
-        ...(component.components || {}),
+        ...(resolvedComponent.components || {}),
         ...registry,
         ...dynamicComponents,
     }
     component.props = {
-        ...(component.props || {}),
+        ...(resolvedComponent.props || {}),
         moduleId: { type: String, default: moduleId },
     }
 
     return {
-        component,
+        component: markRaw(component),
         dynamicComponents,
         css: cssParts.join('\n'),
         signature
     }
 }
 
-/**
- * Компилирует модуль и кладёт результат в общий кэш, НЕ трогая
- * никакие UI-рефы. Предназначена для фонового прогрева: вызывается
- * сразу после того, как список модулей меню загрузился, чтобы к моменту
- * клика пользователя по модулю компиляция уже была готова (или хотя бы
- * уже шла — окно тогда просто дождётся тот же промис).
- *
- * Дублирующиеся вызовы (тот же moduleId+signature) переиспользуют
- * один и тот же in-flight промис.
- */
 export async function precompileModule(
     moduleId: string,
     code: string,
@@ -601,9 +753,6 @@ export async function precompileModule(
     if (cache.isCompiledFresh(moduleId, signature)) return
 
     const existing = cache.getCompiled(moduleId)
-    // Переиспользуем чужой in-flight промис ТОЛЬКО если он компилирует ту же
-    // сигнатуру — иначе это устаревшая компиляция (например, предыдущая
-    // версия сохранённого кода), и ждать её незачем.
     if (existing?.inFlight && existing.inFlightSignature === signature) {
         await existing.inFlight.catch(() => {})
         return
@@ -614,15 +763,11 @@ export async function precompileModule(
 
     try {
         const result = await promise
-        // Пока фоновая компиляция считалась, живой редактор мог уже
-        // запросить другую (более свежую) версию — не затираем её результат.
         if (cache.isDesiredSignature(moduleId, signature)) {
             cache.setCompiledResult(moduleId, result)
         }
     } catch (e) {
         console.warn(`[ModuleCompiler] Фоновая компиляция модуля ${moduleId} не удалась:`, e)
-        // не кэшируем ошибку — окно при открытии просто попробует ещё раз
-        // и покажет пользователю нормальную ошибку компиляции
     }
 }
 
@@ -630,9 +775,8 @@ export async function warmupComponentRegistry() {
     return loadAllComponents()
 }
 
-
 // ======================================================
-// ОСНОВНОЙ COMPOSABLE — используется конкретным окном
+// ОСНОВНОЙ COMPOSABLE
 // ======================================================
 export const useModuleCompiler = () => {
     const compiledComponent = shallowRef<any>(null)
@@ -675,15 +819,8 @@ export const useModuleCompiler = () => {
         const id = moduleId || 'anon'
         const signature = makeModuleSignature(code, filesList, dependencies, version)
 
-        // Фиксируем, что именно ЭТУ версию кода мы сейчас хотим видеть в
-        // превью. Если, пока мы ждём компиляцию, прилетит более новое
-        // редактирование — оно перезапишет это значение, и наш (к тому
-        // моменту устаревший) результат будет отброшен, а не покажется
-        // пользователю и не затрёт кэш поверх более свежего результата.
         cache.setDesiredSignature(id, signature)
 
-        // Переключение окна на другой модуль внутри того же composable —
-        // отпускаем "слот" предыдущего модуля прежде чем занять новый
         if (lastModuleId.value && lastModuleId.value !== id) {
             releaseCurrentInstance()
         }
@@ -694,8 +831,6 @@ export const useModuleCompiler = () => {
             instanceAcquiredFor = id
         }
 
-        // ---- 1. Кэш-хит: компиляция уже готова (скорее всего — прогрета в фоне) ----
-        // Никакого Babel, никакого vue3-sfc-loader — просто переиспользуем.
         if (cache.isCompiledFresh(id, signature)) {
             const cached = cache.getCompiled(id)!
             compiledComponent.value = cached.component
@@ -707,7 +842,7 @@ export const useModuleCompiler = () => {
 
         compiling.value = true
 
-        const TIMEOUT_MS = 15000
+        const TIMEOUT_MS = 25000
         let timeoutId: ReturnType<typeof setTimeout> | null = null
 
         try {
@@ -719,22 +854,6 @@ export const useModuleCompiler = () => {
                 }, TIMEOUT_MS)
             })
 
-            // ---- 2. Компиляция уже идёт (например, фоновый прогрев ещё не закончил) ----
-            // Ждём тот же промис ТОЛЬКО если он компилирует именно эту сигнатуру.
-            //
-            // Раньше здесь проверялось просто "есть ли вообще что-то в
-            // inFlight", без сверки сигнатур. Из-за этого: пользователь
-            // редактирует код -> запускается компиляция (она не мгновенная,
-            // vue3-sfc-loader реально компилирует SFC в браузере) -> пока она
-            // идёт, пользователь делает следующую правку -> НОВЫЙ вызов
-            // compileModule видел "inFlight есть" и просто дожидался СТАРОГО
-            // промиса, применяя результат компиляции старого кода как ответ
-            // на новое редактирование. Если компиляция стабильно дольше паузы
-            // между правками (что для SFC-компиляции в браузере — норма),
-            // это происходило на КАЖДОМ следующем изменении подряд, и превью
-            // застревало на первой удачно досчитавшейся версии — пока
-            // cache.invalidate() при сохранении не сбрасывал inFlight и не
-            // разрывал цепочку.
             const existing = cache.getCompiled(id)
             const compilePromise = (existing?.inFlight && existing.inFlightSignature === signature)
                 ? existing.inFlight
@@ -746,10 +865,6 @@ export const useModuleCompiler = () => {
 
             const result = await Promise.race([compilePromise, timeoutPromise]) as CompiledResult
 
-            // Пока мы ждали (особенно если реально ждали ЧУЖОЙ промис выше),
-            // могло прилететь ещё более новое редактирование. Если так —
-            // наш результат уже неактуален: не показываем его в превью и не
-            // затираем в кэше то, что успела записать более свежая компиляция.
             if (!cache.isDesiredSignature(id, signature)) {
                 return
             }
@@ -763,9 +878,6 @@ export const useModuleCompiler = () => {
             compileErrorDetails.value = null
 
         } catch (e: any) {
-            // Ошибка от уже неактуального (устаревшего) запроса — не показываем,
-            // иначе можно перекрыть валидный результат более свежей компиляции
-            // ошибкой, относящейся к уже отредактированному коду.
             if (!cache.isDesiredSignature(id, signature)) {
                 return
             }
@@ -777,13 +889,7 @@ export const useModuleCompiler = () => {
             compileError.value = parsed.message
             compileErrorDetails.value = parsed
             compiledComponent.value = null
-            // Ошибку не кэшируем как "готовую компиляцию" — cache.setCompiledResult
-            // просто не вызывался в этой ветке, так что следующая попытка
-            // (после того как автор поправит код) начнётся с чистого листа
         } finally {
-            // Не гасим индикатор загрузки, если наш запрос уже устарел —
-            // это значит более новый вызов сейчас активно компилирует и сам
-            // управляет своим compiling/finally.
             if (cache.isDesiredSignature(id, signature)) {
                 compiling.value = false
             }
@@ -808,13 +914,6 @@ export const useModuleCompiler = () => {
         releaseCurrentInstance()
     }
 
-    /**
-     * Обязательно вызывать в onUnmounted окна/компонента.
-     * Отличие от reset(): семантически это "окно закрылось", а не
-     * "внутри окна сменился модуль" — но по факту делает то же самое:
-     * отпускает свой "слот" использования модуля и удаляет стиль из DOM,
-     * только если это было последнее окно, использовавшее модуль.
-     */
     function dispose() {
         releaseCurrentInstance()
     }

@@ -6,7 +6,9 @@ export const PROFILE_COL = 'profile'
 export const SYSTEM_ACTOR = { kind: 'system' as const, id: 'system' }
 
 const PROFILE_DEF = {
-    name: PROFILE_COL, title: 'Реквизиты организации', strict: false,
+    name: PROFILE_COL,
+    title: 'Реквизиты организации',
+    strict: false,
     fields: [
         { name: 'enterpriseName', label: 'Наименование', type: 'string', required: true },
         { name: 'inn', label: 'ИНН', type: 'string', required: true },
@@ -27,49 +29,121 @@ const WORKSPACE_DB = 'workspace'
 const DIRECTORIES_DB = 'directories'
 
 const WORKSPACE_DEFS = [
-    { name: 'workspace_documents', title: 'Файлы пространства', strict: false, system: 'workspaceDocuments',
-      fields: [
-        { name: 'name', label: 'Название', type: 'string', required: true },
-        { name: 'type', label: 'Тип', type: 'string' }, { name: 'folderId', label: 'Папка', type: 'string' },
-        { name: 'size', label: 'Размер', type: 'number' }, { name: 'createdAt', label: 'Создан', type: 'date' },
-        { name: 'updatedAt', label: 'Изменён', type: 'date' }
-      ] },
-    { name: 'workspace_folders', title: 'Папки пространства', strict: false, system: 'workspaceFolders',
-      fields: [
-        { name: 'name', label: 'Название', type: 'string', required: true },
-        { name: 'parentId', label: 'Родительская папка', type: 'string' },
-        { name: 'createdAt', label: 'Создана', type: 'date' }, { name: 'updatedAt', label: 'Изменена', type: 'date' }
-      ] },
-    { name: 'workspace_versions', title: 'История версий пространства', strict: false, system: 'workspaceVersions',
-      fields: [
-        { name: 'documentId', label: 'ID документа', type: 'string' }, { name: 'size', label: 'Размер', type: 'number' },
-        { name: 'comment', label: 'Комментарий', type: 'string' }, { name: 'createdAt', label: 'Создана', type: 'date' }
-      ] }
+    {
+        name: 'workspace_documents',
+        title: 'Файлы пространства',
+        strict: false,
+        system: 'workspaceDocuments',
+        fields: [
+            { name: 'name', label: 'Название', type: 'string', required: true },
+            { name: 'type', label: 'Тип', type: 'string' },
+            { name: 'folderId', label: 'Папка', type: 'string' },
+            { name: 'size', label: 'Размер', type: 'number' },
+            { name: 'createdAt', label: 'Создан', type: 'date' },
+            { name: 'updatedAt', label: 'Изменён', type: 'date' }
+        ]
+    },
+    {
+        name: 'workspace_folders',
+        title: 'Папки пространства',
+        strict: false,
+        system: 'workspaceFolders',
+        fields: [
+            { name: 'name', label: 'Название', type: 'string', required: true },
+            { name: 'parentId', label: 'Родительская папка', type: 'string' },
+            { name: 'createdAt', label: 'Создана', type: 'date' },
+            { name: 'updatedAt', label: 'Изменена', type: 'date' }
+        ]
+    },
+    {
+        name: 'workspace_versions',
+        title: 'История версий пространства',
+        strict: false,
+        system: 'workspaceVersions',
+        fields: [
+            { name: 'documentId', label: 'ID документа', type: 'string' },
+            { name: 'size', label: 'Размер', type: 'number' },
+            { name: 'comment', label: 'Комментарий', type: 'string' },
+            { name: 'createdAt', label: 'Создана', type: 'date' }
+        ]
+    }
 ]
 
 const MODULES_DEF = {
-    name: 'modules', title: 'Модули предприятия', strict: false, system: 'dynamicModules',
+    name: 'modules',
+    title: 'Модули предприятия',
+    strict: false,
+    system: 'dynamicModules',
     fields: [
-        { name: 'name', label: 'Название', type: 'string' }, { name: 'fileName', label: 'Имя файла', type: 'string' },
-        { name: 'format', label: 'Формат', type: 'string' }, { name: 'description', label: 'Описание', type: 'text' },
-        { name: 'isPublic', label: 'Публичный', type: 'boolean' }, { name: 'isActive', label: 'Активен', type: 'boolean' },
-        { name: 'version', label: 'Версия', type: 'number' }, { name: 'hasServerCode', label: 'Есть серверный код', type: 'boolean' },
-        { name: 'tags', label: 'Теги', type: 'json' }, { name: 'createdAt', label: 'Создан', type: 'date' },
+        { name: 'name', label: 'Название', type: 'string' },
+        { name: 'fileName', label: 'Имя файла', type: 'string' },
+        { name: 'format', label: 'Формат', type: 'string' },
+        { name: 'description', label: 'Описание', type: 'text' },
+        { name: 'isPublic', label: 'Публичный', type: 'boolean' },
+        { name: 'isActive', label: 'Активен', type: 'boolean' },
+        { name: 'version', label: 'Версия', type: 'number' },
+        { name: 'hasServerCode', label: 'Есть серверный код', type: 'boolean' },
+        { name: 'tags', label: 'Теги', type: 'json' },
+        { name: 'createdAt', label: 'Создан', type: 'date' },
         { name: 'updatedAt', label: 'Изменён', type: 'date' }
     ]
 }
 
-/**
- * Ровно пять стандартных справочников. bank_accounts намеренно включён:
- * его можно удалить из интерфейса/реестра позже, но базовая синхронизация
- * должна создавать одинаковый набор из пяти записей на каждом предприятии.
- */
 export const BASE_DIRECTORY_DEFS = [
-    { slug: 'departments', title: 'Сотрудники', codeLabel: 'Табельный номер / ID', titleLabel: 'ФИО сотрудника' },
-    { slug: 'counterparties', title: 'Контрагенты', codeLabel: 'ИНН', titleLabel: 'Наименование / ФИО' },
-    { slug: 'bank_accounts', title: 'Банковские реквизиты', codeLabel: 'БИК банка', titleLabel: 'Наименование банка' },
-    { slug: 'nomenclature', title: 'Номенклатура', codeLabel: 'Артикул / SKU', titleLabel: 'Наименование' },
-    { slug: 'glossary', title: 'Глоссарий', codeLabel: 'Аббревиатура', titleLabel: 'Термин' }
+    {
+        slug: 'departments',
+        title: 'Сотрудники',
+        codeLabel: 'Табельный номер / ID',
+        titleLabel: 'ФИО сотрудника',
+        fields: [
+            { name: 'avatar', label: 'Фотография', type: 'file' },
+            { name: 'role', label: 'Должность', type: 'string' },
+            { name: 'department', label: 'Отдел', type: 'string' },
+            { name: 'phone', label: 'Телефон', type: 'string' },
+            { name: 'birthDate', label: 'Дата рождения', type: 'date' },
+            { name: 'isProbation', label: 'Испытательный срок', type: 'boolean' }
+        ]
+    },
+    {
+        slug: 'counterparties',
+        title: 'Контрагенты',
+        codeLabel: 'ИНН',
+        titleLabel: 'Наименование / ФИО',
+        fields: [
+            { name: 'logo', label: 'Логотип / Документ', type: 'file' },
+            { name: 'kpp', label: 'КПП', type: 'string' },
+            { name: 'phone', label: 'Телефон', type: 'string' },
+            { name: 'isVerified', label: 'Проверен', type: 'boolean' }
+        ]
+    },
+    {
+        slug: 'bank_accounts',
+        title: 'Банковские реквизиты',
+        codeLabel: 'БИК банка',
+        titleLabel: 'Наименование банка',
+        fields: [
+            { name: 'accountNumber', label: 'Расчётный счёт', type: 'string', required: true },
+            { name: 'isMain', label: 'Основной счёт', type: 'boolean' }
+        ]
+    },
+    {
+        slug: 'nomenclature',
+        title: 'Номенклатура',
+        codeLabel: 'Артикул / SKU',
+        titleLabel: 'Наименование',
+        fields: [
+            { name: 'photo', label: 'Изображение товара', type: 'file' },
+            { name: 'unit', label: 'Единица измерения', type: 'string', required: true },
+            { name: 'inStock', label: 'В наличии', type: 'boolean' }
+        ]
+    },
+    {
+        slug: 'glossary',
+        title: 'Глоссарий',
+        codeLabel: 'Аббревиатура',
+        titleLabel: 'Термин',
+        fields: []
+    }
 ] as const
 
 const slugAliases: Record<string, string> = {
@@ -93,6 +167,7 @@ function canonicalBaseSlug(name: any, title?: any): string | null {
 }
 
 function directoryCollection(def: any) {
+    const customFields = Array.isArray(def.fields) ? def.fields : []
     return {
         name: String(def.slug),
         title: String(def.title || def.slug),
@@ -102,6 +177,7 @@ function directoryCollection(def: any) {
             { name: 'title', label: def.titleLabel || 'Наименование', type: 'string', required: true },
             { name: 'code', label: def.codeLabel || 'Код', type: 'string' },
             { name: 'description', label: 'Описание', type: 'text' },
+            ...customFields,
             { name: 'attributes', label: 'Дополнительные поля', type: 'json' },
             { name: 'createdAt', label: 'Создано', type: 'date' },
             { name: 'updatedAt', label: 'Изменено', type: 'date' }
@@ -115,7 +191,6 @@ function dedupeCollections(existing: any[], incoming: any[], databaseName: strin
         if (!raw?.name) continue
         const name = String(raw.name).trim()
         if (databaseName === DIRECTORIES_DB) {
-            // directory_definitions — служебная схема приложения, не пользовательская коллекция Studio.
             if (name === 'directory_definitions' || raw.system === 'directoryDefinitions') continue
             const base = canonicalBaseSlug(name, raw.title)
             const key = base || name.replace(/^dir_/, '')
@@ -152,23 +227,22 @@ async function ensureStudioDatabase(enterpriseId: string, name: string, title: s
     invalidateDefCache(enterpriseId, name)
 }
 
-/** Регистрирует один пользовательский справочник как виртуальную коллекцию directories.<slug>. */
 export async function ensureDirectoryStudioCollection(enterpriseId: string, slug: string, title?: string, _customFields: any[] = []): Promise<void> {
     const cleanSlug = String(slug || '').trim().toLowerCase()
     if (!/^[a-z][a-z0-9_]{0,48}$/.test(cleanSlug)) return
-    // Не позволяем пользовательскому определению создать дубль системного справочника.
     const canonical = canonicalBaseSlug(cleanSlug, title)
     const actualSlug = canonical || cleanSlug
     const base = BASE_DIRECTORY_DEFS.find(x => x.slug === actualSlug)
     await ensureStudioDatabase(
         enterpriseId, DIRECTORIES_DB, 'Справочники', 'Справочники предприятия',
-        [directoryCollection({ slug: actualSlug, title: base?.title || title || actualSlug, codeLabel: base?.codeLabel, titleLabel: base?.titleLabel })]
+        [directoryCollection({ slug: actualSlug, title: base?.title || title || actualSlug, codeLabel: base?.codeLabel, titleLabel: base?.titleLabel, fields: base?.fields || [] })]
     )
 }
 
 export const ensureCompanyDb = async (enterpriseId: string): Promise<void> => {
     const { MoloDatabase, DirectoryDefinition } = tenantModels(enterpriseId)
 
+    // 1. База company (профиль + модули)
     const company: any = await MoloDatabase.findOne({ name: COMPANY_DB }).lean()
     if (!company) {
         await MoloDatabase.create({
@@ -184,8 +258,34 @@ export const ensureCompanyDb = async (enterpriseId: string): Promise<void> => {
     }
     invalidateDefCache(enterpriseId, COMPANY_DB)
 
+    // 2. База workspace (файлы и версии)
     await ensureStudioDatabase(enterpriseId, WORKSPACE_DB, 'Пространство', 'Файлы, папки и история версий документов предприятия', WORKSPACE_DEFS)
 
+    // 3. Синхронизируем базовые схемы справочников (Сотрудники с аватаром, Номенклатура с фото и т.д.)
+    for (const baseDef of BASE_DIRECTORY_DEFS) {
+        await DirectoryDefinition.updateOne(
+            { slug: baseDef.slug },
+            {
+                $setOnInsert: {
+                    enterpriseId,
+                    slug: baseDef.slug,
+                    title: baseDef.title,
+                    codeLabel: baseDef.codeLabel,
+                    titleLabel: baseDef.titleLabel,
+                    fields: (baseDef.fields || []).map(f => ({
+                        key: f.name,
+                        label: f.label,
+                        type: f.type,
+                        required: !!(f as any).required
+                    })),
+                    isSystem: true
+                }
+            },
+            { upsert: true }
+        )
+    }
+
+    // 4. Собираем схемы всех справочников в БД directories для MoloDB Studio
     const defs: any[] = await DirectoryDefinition.find().lean()
     const bySlug = new Map<string, any>()
     for (const item of BASE_DIRECTORY_DEFS) bySlug.set(item.slug, item)
@@ -196,9 +296,11 @@ export const ensureCompanyDb = async (enterpriseId: string): Promise<void> => {
         const key = canonical || slug
         const base = BASE_DIRECTORY_DEFS.find(x => x.slug === key)
         bySlug.set(key, {
-            slug: key, title: base?.title || d.title || key,
+            slug: key,
+            title: base?.title || d.title || key,
             codeLabel: base?.codeLabel || d.codeLabel || 'Код',
-            titleLabel: base?.titleLabel || d.titleLabel || 'Наименование'
+            titleLabel: base?.titleLabel || d.titleLabel || 'Наименование',
+            fields: base?.fields || (d.fields || []).map((f: any) => ({ name: f.key, label: f.label, type: f.type }))
         })
     }
 

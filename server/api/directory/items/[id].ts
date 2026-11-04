@@ -17,29 +17,62 @@ export default defineEventHandler(async (event) => {
         const enterpriseId = requireTenantId(event)
         await resolveActor(event, enterpriseId, 'data')
 
-        const { DirectoryItem } = tenantModels(enterpriseId)
+        const { DirectoryItem, Department } = tenantModels(enterpriseId)
         const doc = await DirectoryItem.findOne({ _id: new Types.ObjectId(id), enterpriseId })
         if (!doc) {
             throw createError({ statusCode: 404, message: 'Запись не найдена' })
         }
 
         if (doc.attributes?.system && event.node.req.method === 'DELETE') {
-            throw createError({ statusCode: 403, message: 'Системная запись не может быть удалена' })
+            throw createError({ statusCode: 403, message: 'Системная запись сотрудника не может быть удалена напрямую. Исключите его из штата.' })
         }
 
         if (event.node.req.method === 'PATCH') {
             const body = (await readBody(event).catch(() => ({}))) || {}
             const $set: Record<string, any> = {}
+
             for (const k of ['title', 'code', 'description'] as const) {
                 if (Object.prototype.hasOwnProperty.call(body, k)) {
                     $set[k] = String(body[k] ?? '').trim()
                 }
             }
-            if (!doc.attributes?.system && body.attributes && typeof body.attributes === 'object' && !Array.isArray(body.attributes)) {
+
+            // Обновление ключа отдела
+            if (Object.prototype.hasOwnProperty.call(body, 'departmentKey')) {
+                const key = String(body.departmentKey || '').trim().toLowerCase()
+                $set['departmentKey'] = key
+                $set['attributes.departmentKey'] = key
+            }
+
+            // РАЗРЕШАЕМ редактировать атрибуты (включая аватар и отдел) даже если запись системная!
+            if (body.attributes && typeof body.attributes === 'object' && !Array.isArray(body.attributes)) {
                 for (const [k, v] of Object.entries(body.attributes)) {
-                    if (SAFE_KEY.test(k)) $set[`attributes.${k}`] = v
+                    if (SAFE_KEY.test(k)) {
+                        $set[`attributes.${k}`] = v
+                    }
+                }
+
+                if (body.attributes.department) {
+                    const deptName = String(body.attributes.department).trim()
+                    const dept = await Department.findOne({
+                        $or: [
+                            { name: new RegExp(`^${deptName}$`, 'i') },
+                            { key: deptName.toLowerCase() }
+                        ]
+                    }).lean()
+
+                    if (dept) {
+                        $set['departmentKey'] = dept.key
+                        $set['attributes.departmentKey'] = dept.key
+                        $set['attributes.department'] = dept.name
+                    }
+                } else if (body.attributes.department === '') {
+                    $set['departmentKey'] = ''
+                    $set['attributes.departmentKey'] = ''
+                    $set['attributes.department'] = ''
                 }
             }
+
             if (Object.keys($set).length) {
                 await DirectoryItem.updateOne({ _id: new Types.ObjectId(id) }, { $set })
             }

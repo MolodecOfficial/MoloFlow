@@ -3,7 +3,7 @@ import { Schema, model, type Document, type Types } from 'mongoose'
 export interface IDirectoryField {
     key: string
     label: string
-    type: 'text' | 'number' | 'select' | 'boolean'
+    type: 'text' | 'number' | 'select' | 'boolean' | 'file'
     required?: boolean
     options?: Array<{ label: string; value: string | number }>
     placeholder?: string
@@ -15,7 +15,7 @@ export interface IDirectoryDefinition extends Document {
     slug: string
     title: string
     description?: string
-    aliases: string[] // Ключи для префикса {@}, например: ['автомобили', 'авто', 'машины', 'cars']
+    aliases: string[]
     icon?: string
     codeLabel?: string
     titleLabel?: string
@@ -41,7 +41,7 @@ const DirectoryDefinitionSchema = new Schema<IDirectoryDefinition>(
             {
                 key: { type: String, required: true },
                 label: { type: String, required: true },
-                type: { type: String, enum: ['text', 'number', 'select', 'boolean'], default: 'text' },
+                type: { type: String, enum: ['text', 'number', 'select', 'boolean', 'file'], default: 'text' },
                 required: { type: Boolean, default: false },
                 options: [{ label: String, value: Schema.Types.Mixed }],
                 placeholder: { type: String, default: '' },

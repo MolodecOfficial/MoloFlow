@@ -1,6 +1,3 @@
-// server/api/enterprises/[id]/moloDb/[db]/index.put.ts
-// Изменение базы: название, описание, схема коллекций (нужно право MODULES_DEV).
-// Если среди коллекций есть удалённые, нужно явно передать confirmDelete: true — их записи будут стёрты.
 import { defineEventHandler, getRouterParam, readBody, createError } from 'h3'
 import { resolveActor, toHttpError } from '~~/server/utils/moloDb/access'
 import { tenantModels } from '~~/server/utils/tenantDb'
@@ -17,19 +14,21 @@ export default defineEventHandler(async (event) => {
         const body = (await readBody(event)) || {}
         const def = normalizeDatabaseDef({ ...body, name: dbName })
 
-        const { MoloDatabase } = tenantModels(enterpriseId)
+        const { MoloDatabase, DirectoryDefinition, DirectoryItem } = tenantModels(enterpriseId)
         const existing: any = await MoloDatabase.findOne({ name: dbName }).lean()
         if (!existing) throw createError({ statusCode: 404, message: `База «${dbName}» не найдена` })
 
-        // Системная коллекция модулей всегда остаётся в company и не удаляет настоящие модули.
+        // Системная коллекция модулей всегда остаётся в company
         if (dbName === 'company') {
             const systemModules = (existing.collections || []).find((c: any) => c.name === 'modules')
             if (systemModules && !def.collections.some((c: any) => c.name === 'modules')) {
                 def.collections.push(systemModules)
             }
         }
+
         const keep = new Set(def.collections.map((c) => c.name))
         const removed = (existing.collections || []).map((c: any) => c.name).filter((n: string) => !keep.has(n))
+
         if (removed.length && body.confirmDelete !== true) {
             throw createError({
                 statusCode: 409,
@@ -42,7 +41,21 @@ export default defineEventHandler(async (event) => {
             { name: dbName },
             { $set: { title: def.title, description: def.description, collections: def.collections, updatedAt: new Date() } }
         )
-        if (removed.length) await purgeRecords(enterpriseId, dbName, removed)
+
+        // 1. Очистка пользовательских записей molo_records
+        if (removed.length) {
+            await purgeRecords(enterpriseId, dbName, removed)
+
+            // 2. Если это база справочников — удаляем физические определения и их элементы
+            if (dbName === 'directories') {
+                for (const slug of removed) {
+                    const cleanSlug = slug.replace(/^dir_/, '')
+                    await DirectoryDefinition.deleteOne({ slug: cleanSlug })
+                    await DirectoryItem.deleteMany({ enterpriseId, directorySlug: cleanSlug })
+                }
+            }
+        }
+
         invalidateDefCache(enterpriseId, dbName)
         return { success: true, database: def, removed }
     } catch (e) {

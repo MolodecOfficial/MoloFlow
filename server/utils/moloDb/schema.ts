@@ -8,7 +8,7 @@ export class MoloDbError extends Error {
     }
 }
 
-export const FIELD_TYPES = ['string', 'text', 'number', 'boolean', 'date', 'select', 'json'] as const
+export const FIELD_TYPES = ['string', 'text', 'number', 'boolean', 'date', 'select', 'json', 'file'] as const
 export type FieldType = (typeof FIELD_TYPES)[number]
 
 export interface FieldDef {
@@ -133,6 +133,15 @@ export function coerceField(f: FieldDef, v: any): { value?: any; error?: string 
                 assertSafeJson(v)
             } catch (e: any) {
                 return { error: `Поле «${name}»: ${e.message}` }
+            }
+            return { value: v }
+        }
+        case 'file': {
+            if (typeof v !== 'string') {
+                if (v && typeof v === 'object' && v.url) {
+                    return { value: v }
+                }
+                return { error: `Поле «${name}» должно содержать файл/изображение` }
             }
             return { value: v }
         }
@@ -285,7 +294,14 @@ function normalizeCollection(raw: any, where: string, errs: string[]): Collectio
     const title = str(raw.title, 100)
     if (title) c.title = title
 
-    const rawFields = Array.isArray(raw.fields) ? raw.fields : []
+    // createdAt/updatedAt — системные метаданные MoloDB, а не поля схемы.
+    // Старые определения коллекций могли сохранить их в fields; при любом
+    // обновлении структуры (в том числе удалении соседней коллекции) такие
+    // записи нужно мигрировать молча, иначе normalizeField отклонит весь PUT.
+    const SYSTEM_MANAGED_FIELDS = new Set(['createdAt', 'updatedAt'])
+    const rawFields = Array.isArray(raw.fields)
+        ? raw.fields.filter((field: any) => !SYSTEM_MANAGED_FIELDS.has(str(field?.name, 50)))
+        : []
     const seen = new Set<string>()
     for (const rf of rawFields.slice(0, LIMITS.fields)) {
         const f = normalizeField(rf, here, errs)
