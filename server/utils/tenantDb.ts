@@ -10,6 +10,7 @@ const OBJECT_ID_RE = /^[a-f0-9]{24}$/i
 // Имена коллекций внутри базы предприятия (molo_ent_<id>)
 export const COLLECTION_NAMES: Partial<Record<TenantModelName, string>> = {
     DynamicModule: 'modules',
+    MoloEndpoint: 'molo_endpoints',
     Department: 'directory_departments',
     DirectoryItem: 'directory_items',
     DirectoryDefinition: 'directory_definitions',

@@ -1270,7 +1270,7 @@ function onKey(e) {
                 </div>
 
                 <p v-if="e.description" class="endpoint-desc">{{ e.description }}</p>
-
+                <hr>
                 <div class="endpoint-meta-line">
                   <div class="meta-item">
                     <UIMoloSticker name="it" :size="12" />
@@ -2108,8 +2108,6 @@ function onKey(e) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding-top: 6px;
-  border-top: 1px solid var(--line);
   font-size: 11.5px;
   color: var(--text-muted);
 }
