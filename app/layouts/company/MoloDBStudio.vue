@@ -1273,10 +1273,6 @@ function onKey(e) {
                 <hr>
                 <div class="endpoint-meta-line">
                   <div class="meta-item">
-                    <UIMoloSticker name="it" :size="12" />
-                    <span>{{ modName(e.moduleId) }}<template v-if="e.file"> → {{ e.file }}</template></span>
-                  </div>
-                  <div class="meta-item">
                     <UIMoloToggle :model-value="e.enabled" compact label="Активен" @change="toggleEndpoint(e)" />
                   </div>
                 </div>

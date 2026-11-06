@@ -622,8 +622,10 @@ async function confirmDeleteDepartment() {
 async function loadDefinitions() {
   try {
     const result = await interpolator.fetchDefinitions()
+
+    // Оставляем ТОЛЬКО пользовательские справочники (которых нет в BASE_CONFIG)
     customDirectories.value = (Array.isArray(result) ? result : [])
-        .filter(definition => definition?.slug)
+        .filter(definition => definition?.slug && !BASE_CONFIG[definition.slug])
         .map(definition => ({
           label: definition.title || definition.slug,
           value: definition.slug,
@@ -644,7 +646,6 @@ async function loadDefinitions() {
     addNotification('error', 'Не удалось загрузить пользовательские справочники')
   }
 }
-
 function openCreateDirectoryModal() {
   editingDefinitionSlug.value = null
   newDirForm.value = {
