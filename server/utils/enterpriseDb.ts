@@ -111,6 +111,7 @@ export const BASE_DIRECTORY_DEFS = [
         titleLabel: 'Наименование / ФИО',
         fields: [
             { name: 'logo', label: 'Логотип / Документ', type: 'file' },
+            { name: 'website', label: 'Веб-сайт', type: 'link' },
             { name: 'kpp', label: 'КПП', type: 'string' },
             { name: 'phone', label: 'Телефон', type: 'string' },
             { name: 'isVerified', label: 'Проверен', type: 'boolean' }
@@ -167,7 +168,13 @@ function canonicalBaseSlug(name: any, title?: any): string | null {
 }
 
 function directoryCollection(def: any) {
-    const customFields = Array.isArray(def.fields) ? def.fields : []
+    const customFields = (Array.isArray(def.fields) ? def.fields : []).map((f: any) => ({
+        name: f.name || f.key,
+        label: f.label || f.name || f.key,
+        type: f.type || 'string',
+        required: !!f.required
+    }))
+
     return {
         name: String(def.slug),
         title: String(def.title || def.slug),
@@ -227,15 +234,25 @@ async function ensureStudioDatabase(enterpriseId: string, name: string, title: s
     invalidateDefCache(enterpriseId, name)
 }
 
-export async function ensureDirectoryStudioCollection(enterpriseId: string, slug: string, title?: string, _customFields: any[] = []): Promise<void> {
+export async function ensureDirectoryStudioCollection(enterpriseId: string, slug: string, title?: string, customFields: any[] = []): Promise<void> {
     const cleanSlug = String(slug || '').trim().toLowerCase()
     if (!/^[a-z][a-z0-9_]{0,48}$/.test(cleanSlug)) return
     const canonical = canonicalBaseSlug(cleanSlug, title)
     const actualSlug = canonical || cleanSlug
     const base = BASE_DIRECTORY_DEFS.find(x => x.slug === actualSlug)
+
+    // Если переданы кастомные поля, берем их, иначе смотрим базовые дефолты
+    const fieldsToUse = customFields.length ? customFields : (base?.fields || [])
+
     await ensureStudioDatabase(
         enterpriseId, DIRECTORIES_DB, 'Справочники', 'Справочники предприятия',
-        [directoryCollection({ slug: actualSlug, title: base?.title || title || actualSlug, codeLabel: base?.codeLabel, titleLabel: base?.titleLabel, fields: base?.fields || [] })]
+        [directoryCollection({
+            slug: actualSlug,
+            title: title || base?.title || actualSlug,
+            codeLabel: base?.codeLabel,
+            titleLabel: base?.titleLabel,
+            fields: fieldsToUse
+        })]
     )
 }
 
@@ -261,46 +278,49 @@ export const ensureCompanyDb = async (enterpriseId: string): Promise<void> => {
     // 2. База workspace (файлы и версии)
     await ensureStudioDatabase(enterpriseId, WORKSPACE_DB, 'Пространство', 'Файлы, папки и история версий документов предприятия', WORKSPACE_DEFS)
 
-    // 3. Синхронизируем базовые схемы справочников (Сотрудники с аватаром, Номенклатура с фото и т.д.)
+    // 3. Создаем базовые справочники ТОЛЬКО ЕСЛИ их еще нет в БД (не затирая существующие правки!)
     for (const baseDef of BASE_DIRECTORY_DEFS) {
-        await DirectoryDefinition.updateOne(
-            { slug: baseDef.slug },
-            {
-                $setOnInsert: {
-                    enterpriseId,
-                    slug: baseDef.slug,
-                    title: baseDef.title,
-                    codeLabel: baseDef.codeLabel,
-                    titleLabel: baseDef.titleLabel,
-                    fields: (baseDef.fields || []).map(f => ({
-                        key: f.name,
-                        label: f.label,
-                        type: f.type,
-                        required: !!(f as any).required
-                    })),
-                    isSystem: true
-                }
-            },
-            { upsert: true }
-        )
+        const alreadyExists = await DirectoryDefinition.exists({ slug: baseDef.slug })
+        if (!alreadyExists) {
+            await DirectoryDefinition.create({
+                enterpriseId,
+                slug: baseDef.slug,
+                title: baseDef.title,
+                codeLabel: baseDef.codeLabel,
+                titleLabel: baseDef.titleLabel,
+                fields: (baseDef.fields || []).map(f => ({
+                    key: f.name,
+                    label: f.label,
+                    type: f.type,
+                    required: !!(f as any).required
+                })),
+                isSystem: true
+            })
+        }
     }
 
-    // 4. Собираем схемы всех справочников в БД directories для MoloDB Studio
+    // 4. Подтягиваем АКТУАЛЬНЫЕ схемы из базы (со всеми новыми полями пользователя)
     const defs: any[] = await DirectoryDefinition.find().lean()
     const bySlug = new Map<string, any>()
-    for (const item of BASE_DIRECTORY_DEFS) bySlug.set(item.slug, item)
+
     for (const d of defs) {
         const slug = String(d.slug || '').trim().toLowerCase()
         if (!/^[a-z][a-z0-9_]{0,48}$/.test(slug)) continue
         const canonical = canonicalBaseSlug(slug, d.title)
         const key = canonical || slug
         const base = BASE_DIRECTORY_DEFS.find(x => x.slug === key)
+
         bySlug.set(key, {
             slug: key,
-            title: base?.title || d.title || key,
-            codeLabel: base?.codeLabel || d.codeLabel || 'Код',
-            titleLabel: base?.titleLabel || d.titleLabel || 'Наименование',
-            fields: base?.fields || (d.fields || []).map((f: any) => ({ name: f.key, label: f.label, type: f.type }))
+            title: d.title || base?.title || key,
+            codeLabel: d.codeLabel || base?.codeLabel || 'Код',
+            titleLabel: d.titleLabel || base?.titleLabel || 'Наименование',
+            // Берём актуальные поля из базы данных, а не жесткие дефолты
+            fields: (d.fields || []).map((f: any) => ({
+                name: f.key || f.name,
+                label: f.label,
+                type: f.type
+            }))
         })
     }
 

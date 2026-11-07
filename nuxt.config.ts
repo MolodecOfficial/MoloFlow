@@ -8,8 +8,9 @@ export default defineNuxtConfig({
 
   runtimeConfig: {
     // Дефолтная строка подключения подставится, если в среде пусто
-    mongodb: process.env.MONGODB_URI || 'mongodb+srv://molomongodb:molodecfordb@cluster0.cjtt1.mongodb.net/MoloFlowDB',
-
+    mongodb: process.env.MONGODB_URI || '',
+    moloFlowConnectUrl: process.env.MOLOFLOW_CONNECT_URL || '',
+    moloFlowConnectPublishKey: process.env.MOLOFLOW_CONNECT_PUBLISH_KEY || '',
     public: {
       appVersion: pkg.version || '1.0.0'
     }

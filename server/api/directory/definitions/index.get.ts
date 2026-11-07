@@ -8,7 +8,8 @@ export default defineEventHandler(async (event) => {
         const enterpriseId = requireTenantId(event)
         await resolveActor(event, enterpriseId, 'data')
         const { DirectoryDefinition } = tenantModels(enterpriseId)
-        return await DirectoryDefinition.find().lean()
+        const defs = await DirectoryDefinition.find().lean()
+        return defs || []
     } catch (e) {
         throw toHttpError(e)
     }

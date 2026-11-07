@@ -4,7 +4,6 @@ import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useLogger } from '~~/app/composables/useLogger'
 
 const { addLog } = useLogger('MoloDB')
-
 const admin = typeof useMoloDbAdmin === 'function' ? useMoloDbAdmin() : null
 
 const booting = ref(true)
@@ -13,8 +12,8 @@ const dbs = ref([])
 const eps = ref([])
 const mods = ref([])
 const canManage = ref(false)
-const view = ref('collection') // collection | endpoints
-const tab = ref('data') // data | structure | code
+const view = ref('collection')
+const tab = ref('data')
 const openDbs = reactive({})
 const sel = reactive({ db: '', col: '' })
 const syncing = ref(false)
@@ -38,9 +37,9 @@ const TYPES = [
 const TYPE_TITLE = Object.fromEntries(TYPES.map((t) => [t.v, t.t]))
 const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']
 const ACCESS = [
-  { v: 'members', t: 'Участники предприятия', d: 'вход в MoloFlow' },
-  { v: 'key', t: 'По секретному ключу', d: 'вебхуки и интеграции' },
-  { v: 'public', t: 'Открытый', d: 'публичный доступ' }
+  { v: 'members', t: 'Участники предприятия (MoloFlow)' },
+  { v: 'key', t: 'По секретному ключу (вебхуки)' },
+  { v: 'public', t: 'Открытый (публичный доступ)' }
 ]
 
 const msg = (e) => e?.message || e?.data?.message || 'Что-то пошло не так'
@@ -77,7 +76,7 @@ async function syncData() {
     await loadAll()
     sel.db = 'company'
     sel.col = 'profile'
-    openDbs['company'] = true
+    openDbs.company = true
     await loadRows()
   } catch (e) {
     addLog('error', `Ошибка синхронизации: ${msg(e)}`)
@@ -95,7 +94,7 @@ async function loadAll() {
     ...db,
     collections: (db.collections || []).map((col) => ({
       ...col,
-      fields: Array.isArray(col.fields) ? col.fields : [],
+      fields: Array.isArray(col.fields) ? col.fields : []
     }))
   }))
 
@@ -108,9 +107,7 @@ function pickDefault() {
   sel.db = db?.name || ''
   sel.col = db?.collections?.[0]?.name || ''
   if (db) openDbs[db.name] = true
-  if (sel.db) {
-    addLog('info', `Выбрана активная БД: [${sel.db} / ${sel.col || 'нет коллекций'}]`)
-  }
+  if (sel.db) addLog('info', `Выбрана активная БД: [${sel.db} / ${sel.col || 'нет коллекций'}]`)
 }
 
 async function loadEndpoints() {
@@ -128,12 +125,14 @@ async function loadEndpoints() {
 
 onMounted(async () => {
   window.addEventListener('keydown', onKey)
+
   if (!admin) {
     addLog('error', 'useMoloDbAdmin не найден в контексте!')
     fatal.value = 'Не подключён useMoloDbAdmin: проверьте плагин moduleComposables.client.ts.'
     booting.value = false
     return
   }
+
   try {
     await loadAll()
     await loadEndpoints()
@@ -175,8 +174,10 @@ async function loadRows() {
     total.value = 0
     return
   }
+
   rowsLoading.value = true
   rowsError.value = ''
+
   try {
     const r = await admin.data(sel.db, sel.col, {
       op: 'find',
@@ -185,6 +186,7 @@ async function loadRows() {
       search: search.value || undefined,
       sort: sortKey.value
     })
+
     rows.value = r.items || []
     total.value = r.total ?? 0
   } catch (e) {
@@ -216,7 +218,9 @@ watch(search, () => {
   }, 300)
 })
 
-const activeColFields = computed(() => (activeCol.value && Array.isArray(activeCol.value.fields) ? activeCol.value.fields : []))
+const activeColFields = computed(() => (
+    activeCol.value && Array.isArray(activeCol.value.fields) ? activeCol.value.fields : []
+))
 const shownFields = computed(() => activeColFields.value.slice(0, 8))
 const pageFrom = computed(() => (total.value ? skip.value + 1 : 0))
 const pageTo = computed(() => Math.min(skip.value + PAGE, total.value))
@@ -229,12 +233,18 @@ function go(delta) {
 }
 
 function sortBy(key) {
-  sortKey.value = sortKey.value === key ? '-' + key : sortKey.value === '-' + key ? key : '-' + key
+  sortKey.value = sortKey.value === key
+      ? '-' + key
+      : sortKey.value === '-' + key
+          ? key
+          : '-' + key
   skip.value = 0
   loadRows()
 }
 
-const sortDir = (key) => (sortKey.value === key ? 'asc' : sortKey.value === '-' + key ? 'desc' : '')
+const sortDir = (key) => (
+    sortKey.value === key ? 'asc' : sortKey.value === '-' + key ? 'desc' : ''
+)
 
 const pad = (n) => String(n).padStart(2, '0')
 const toLocalInput = (v) => {
@@ -243,7 +253,9 @@ const toLocalInput = (v) => {
       ? ''
       : `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
-const fmtDate = (v) => (v ? new Date(v).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' }) : '—')
+const fmtDate = (v) => (
+    v ? new Date(v).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' }) : '—'
+)
 
 function fmtCell(f, v) {
   if (v === undefined || v === null || v === '') return '—'
@@ -254,28 +266,55 @@ function fmtCell(f, v) {
   return String(v)
 }
 
-const rec = reactive({ open: false, id: '', values: {}, error: '', saving: false, confirmDelete: false })
+const rec = reactive({
+  open: false,
+  id: '',
+  values: {},
+  error: '',
+  saving: false,
+  confirmDelete: false
+})
 
 function openRecord(row) {
   const values = {}
   const fields = activeColFields.value
+
   for (const f of fields) {
     const v = row ? row[f.name] : undefined
-    if (f.type === 'boolean') values[f.name] = v === undefined || v === null ? !!f.default && f.default !== 'false' : !!v
-    else if (f.type === 'date') values[f.name] = v ? toLocalInput(v) : ''
-    else if (f.type === 'json') values[f.name] = v === undefined || v === null ? '' : JSON.stringify(v, null, 2)
-    else values[f.name] = v === undefined || v === null ? (row || f.default === undefined || f.default === 'now' ? '' : String(f.default)) : v
+
+    if (f.type === 'boolean') {
+      values[f.name] = v === undefined || v === null
+          ? !!f.default && f.default !== 'false'
+          : !!v
+    } else if (f.type === 'date') {
+      values[f.name] = v ? toLocalInput(v) : ''
+    } else if (f.type === 'json') {
+      values[f.name] = v === undefined || v === null ? '' : JSON.stringify(v, null, 2)
+    } else {
+      values[f.name] = v === undefined || v === null
+          ? (row || f.default === undefined || f.default === 'now' ? '' : String(f.default))
+          : v
+    }
   }
-  Object.assign(rec, { open: true, id: row?._id || '', values, error: '', saving: false, confirmDelete: false })
+
+  Object.assign(rec, {
+    open: true,
+    id: row?._id || '',
+    values,
+    error: '',
+    saving: false,
+    confirmDelete: false
+  })
 }
 
 function recordPayload() {
   const doc = {}
   const editing = !!rec.id
-  const fields = activeColFields.value
-  for (const f of fields) {
+
+  for (const f of activeColFields.value) {
     const v = rec.values[f.name]
     const empty = v === '' || v === undefined || v === null
+
     if (f.type === 'boolean') {
       doc[f.name] = !!v
     } else if (empty) {
@@ -287,21 +326,24 @@ function recordPayload() {
     } else if (f.type === 'json') {
       try {
         doc[f.name] = JSON.parse(v)
-      } catch (e) {
+      } catch {
         throw new Error(`Поле «${f.label || f.name}»: некорректный JSON`)
       }
     } else {
       doc[f.name] = v
     }
   }
+
   return doc
 }
 
 async function saveRecord() {
   rec.error = ''
   rec.saving = true
+
   try {
     const doc = recordPayload()
+
     if (rec.id) {
       await admin.data(sel.db, sel.col, { op: 'update', id: rec.id, patch: doc })
       addLog('success', `Запись [${rec.id}] обновлена`)
@@ -309,6 +351,7 @@ async function saveRecord() {
       await admin.data(sel.db, sel.col, { op: 'insert', doc })
       addLog('success', `Добавлена новая запись в [${sel.col}]`)
     }
+
     rec.open = false
     notify(rec.id ? 'Запись сохранена' : 'Запись добавлена', 'success')
     await loadRows()
@@ -336,7 +379,13 @@ const confirmDrop = ref('')
 const saving = ref(false)
 
 const split = (s) => String(s || '').split(',').map((x) => x.trim()).filter(Boolean)
-const dflt = (f) => (f.default === undefined || f.default === null ? '' : typeof f.default === 'object' ? JSON.stringify(f.default) : String(f.default))
+const dflt = (f) => (
+    f.default === undefined || f.default === null
+        ? ''
+        : typeof f.default === 'object'
+            ? JSON.stringify(f.default)
+            : String(f.default)
+)
 
 function toDraft(c) {
   return {
@@ -367,25 +416,33 @@ function parseDefault(f) {
   if (v === '' || v === undefined) return undefined
   if (f.type === 'number') return Number(v)
   if (f.type === 'boolean') return v === 'true'
+
   if (f.type === 'json') {
     try {
       return JSON.parse(v)
-    } catch (e) {
+    } catch {
       throw new Error(`Поле «${f.name}»: значение по умолчанию — не JSON`)
     }
   }
+
   return v
 }
 
 function fromDraft(d, name) {
-  const num = (v) => (v === '' || v === null || v === undefined ? undefined : Number(v))
+  const num = (v) => (
+      v === '' || v === null || v === undefined ? undefined : Number(v)
+  )
+
   return {
     name,
     title: d.title,
     strict: d.strict,
     ttlDays: num(d.ttlDays),
     maxDocs: num(d.maxDocs),
-    access: { read: split(d.readRoles), write: split(d.writeRoles) },
+    access: {
+      read: split(d.readRoles),
+      write: split(d.writeRoles)
+    },
     fields: (d.fields || []).map((f) => ({
       name: f.name.trim(),
       label: f.label.trim(),
@@ -409,19 +466,41 @@ function resetDraft() {
 
 watch(activeCol, resetDraft)
 
-const dirty = computed(() => !!draft.value && !!activeCol.value && JSON.stringify(draft.value) !== JSON.stringify(toDraft(activeCol.value)))
-const dbDirty = computed(() => !!activeDb.value && (dbDraft.title !== (activeDb.value.title || '') || dbDraft.description !== (activeDb.value.description || '')))
+const dirty = computed(() => (
+    !!draft.value &&
+    !!activeCol.value &&
+    JSON.stringify(draft.value) !== JSON.stringify(toDraft(activeCol.value))
+))
+
+const dbDirty = computed(() => (
+    !!activeDb.value &&
+    (
+        dbDraft.title !== (activeDb.value.title || '') ||
+        dbDraft.description !== (activeDb.value.description || '')
+    )
+))
 
 function addField() {
   if (!draft.value) return
+
   draft.value.fields.push({
-    name: '', label: '', type: 'string', required: false, unique: false,
-    default: '', options: '', min: '', max: '', maxLength: '', saved: false
+    name: '',
+    label: '',
+    type: 'string',
+    required: false,
+    unique: false,
+    default: '',
+    options: '',
+    min: '',
+    max: '',
+    maxLength: '',
+    saved: false
   })
 }
 
 function moveField(i, d) {
   if (!draft.value) return
+
   const a = draft.value.fields
   const j = i + d
   if (j < 0 || j >= a.length) return
@@ -430,28 +509,46 @@ function moveField(i, d) {
 
 const removeField = (i) => draft.value && draft.value.fields.splice(i, 1)
 
-async function pushDb(collections, title = activeDb.value?.title, description = activeDb.value?.description, confirmDelete = false) {
+async function pushDb(
+    collections,
+    title = activeDb.value?.title,
+    description = activeDb.value?.description,
+    confirmDelete = false
+) {
   if (!activeDb.value) return
+
   addLog('info', `Синхронизация структуры БД [${activeDb.value.name}]...`)
-  await admin.updateDb(activeDb.value.name, { title, description, collections }, { confirmDelete })
+  await admin.updateDb(
+      activeDb.value.name,
+      { title, description, collections },
+      { confirmDelete }
+  )
   addLog('success', `Структура БД [${activeDb.value.name}] успешно обновлена`)
   await loadAll()
 }
 
 async function saveStructure() {
   saving.value = true
+
   await guard(async () => {
     const col = fromDraft(draft.value, sel.col)
-    await pushDb(activeDb.value.collections.map((c) => (c.name === sel.col ? col : c)))
+    await pushDb(activeDb.value.collections.map((c) => (
+        c.name === sel.col ? col : c
+    )))
     resetDraft()
     notify('Структура сохранена', 'success')
   })
+
   saving.value = false
 }
 
 async function saveDbInfo() {
   await guard(async () => {
-    await pushDb(activeDb.value.collections, dbDraft.title.trim(), dbDraft.description.trim())
+    await pushDb(
+        activeDb.value.collections,
+        dbDraft.title.trim(),
+        dbDraft.description.trim()
+    )
     notify('Настройки базы сохранены', 'success')
   })
 }
@@ -461,12 +558,13 @@ async function dropCollection() {
     confirmDrop.value = 'col'
     return
   }
+
   await guard(async () => {
     const left = activeDb.value.collections.filter((c) => c.name !== sel.col)
     await pushDb(left, undefined, undefined, true)
     sel.col = left[0]?.name || ''
     confirmDrop.value = ''
-    addLog('warning', `Коллекция удалена`)
+    addLog('warning', 'Коллекция удалена')
     notify('Коллекция удалена', 'warning')
   })
 }
@@ -476,6 +574,7 @@ async function dropDatabase() {
     confirmDrop.value = 'db'
     return
   }
+
   await guard(async () => {
     await admin.deleteDb(sel.db)
     confirmDrop.value = ''
@@ -486,24 +585,55 @@ async function dropDatabase() {
   })
 }
 
-const nd = reactive({ open: false, name: '', title: '', description: '', error: '', saving: false })
-const nc = reactive({ open: false, name: '', title: '', error: '', saving: false })
+const nd = reactive({
+  open: false,
+  name: '',
+  title: '',
+  description: '',
+  error: '',
+  saving: false
+})
+
+const nc = reactive({
+  open: false,
+  name: '',
+  title: '',
+  error: '',
+  saving: false
+})
+
 const NAME_RE = /^[a-z][a-z0-9_]{0,23}$/
 
 function openNewDb() {
-  Object.assign(nd, { open: true, name: '', title: '', description: '', error: '', saving: false })
+  Object.assign(nd, {
+    open: true,
+    name: '',
+    title: '',
+    description: '',
+    error: '',
+    saving: false
+  })
 }
 
 async function createDb() {
   nd.error = ''
+
   if (!NAME_RE.test(nd.name)) {
     nd.error = 'Имя: строчные латинские буквы, цифры и «_», начинается с буквы, до 24 символов'
     return
   }
+
   nd.saving = true
+
   try {
     addLog('info', `Создание базы [${nd.name}]...`)
-    await admin.createDb({ name: nd.name, title: nd.title.trim(), description: nd.description.trim(), collections: [] })
+    await admin.createDb({
+      name: nd.name,
+      title: nd.title.trim(),
+      description: nd.description.trim(),
+      collections: []
+    })
+
     nd.open = false
     await loadAll()
     sel.db = nd.name
@@ -522,20 +652,39 @@ async function createDb() {
 
 function openNewCol(db) {
   if (!db) return
+
   sel.db = db.name
-  Object.assign(nc, { open: true, name: '', title: '', error: '', saving: false })
+  Object.assign(nc, {
+    open: true,
+    name: '',
+    title: '',
+    error: '',
+    saving: false
+  })
 }
 
 async function createCol() {
   nc.error = ''
+
   if (!NAME_RE.test(nc.name)) {
     nc.error = 'Имя: строчные латинские буквы, цифры и «_», начинается с буквы, до 24 символов'
     return
   }
+
   nc.saving = true
+
   try {
     addLog('info', `Создание коллекции [${nc.name}] в [${activeDb.value.name}]...`)
-    await pushDb([...(activeDb.value?.collections || []), { name: nc.name, title: nc.title.trim(), fields: [], strict: true }])
+    await pushDb([
+      ...(activeDb.value?.collections || []),
+      {
+        name: nc.name,
+        title: nc.title.trim(),
+        fields: [],
+        strict: true
+      }
+    ])
+
     nc.open = false
     view.value = 'collection'
     sel.col = nc.name
@@ -550,36 +699,153 @@ async function createCol() {
   }
 }
 
+/* -------------------------------------------------------------------------- */
+/* HTTP ENDPOINTS + MOLO-KEY                                                  */
+/* -------------------------------------------------------------------------- */
+
 const ep = reactive({
-  open: false, _id: '', slug: '', description: '', methods: ['POST'], moduleId: '', file: '',
-  access: 'members', enabled: true, regenerateKey: false, files: [], error: '', saving: false
+  open: false,
+  _id: '',
+  slug: '',
+  description: '',
+  methods: ['POST'],
+  moduleId: '',
+  file: '',
+  access: 'members',
+  enabled: true,
+  regenerateKey: false,
+  regenerateConnectKey: false,
+  files: [],
+  error: '',
+  saving: false
 })
-const modName = (id) => (mods.value || []).find((m) => m._id === id)?.name || 'модуль удалён'
+
+const connectKeyDialog = reactive({
+  open: false,
+  key: '',
+  url: '',
+  slug: ''
+})
+const connectKeyTab = ref('curl')
+
+const connectKeyBusy = ref('')
+const modName = (id) => (
+    (mods.value || []).find((m) => m._id === id)?.name || 'модуль удалён'
+)
 const fileTitle = (f) => f.path || f.name
-const revealed = reactive({})
+
+function getEndpointSavePayload(source = ep) {
+  return {
+    _id: source._id || undefined,
+    slug: source.slug,
+    description: source.description,
+    methods: source.methods,
+    moduleId: source.moduleId,
+    file: source.file,
+    access: source.access,
+    enabled: source.enabled,
+    regenerateKey: source.regenerateKey === true,
+    regenerateConnectKey: source.regenerateConnectKey === true
+  }
+}
+
+function showConnectKey(result, fallback = {}) {
+  const key = result?.connectKey || result?.data?.connectKey || ''
+  if (!key) return false
+
+  connectKeyDialog.key = key
+  connectKeyDialog.url =
+      result?.connectUrl ||
+      result?.data?.connectUrl ||
+      fallback.connectUrl ||
+      ''
+  connectKeyDialog.slug = result?.slug || fallback.slug || ''
+  connectKeyDialog.open = true
+
+  return true
+}
+
+function connectCurl(url, key) {
+  return `curl -X GET '${url || 'https://api.moloflow.ru/connect/...'}' \\\n  -H 'X-Molo-Key: ${key}'`
+}
+
+function connectFetch(url, key) {
+  return `const response = await fetch('${url || 'https://api.moloflow.ru/connect/...'}', {
+  method: 'GET',
+  headers: {
+    'X-Molo-Key': '${key}'
+  }
+})
+
+if (!response.ok) {
+  throw new Error(\`HTTP error \${response.status}\`)
+}
+
+const data = await response.json()
+console.log(data)`
+}
+
+async function copyConnectKey() {
+  if (!connectKeyDialog.key) return
+  await copy(connectKeyDialog.key)
+  notify('Molo-Key скопирован в буфер обмена', 'success')
+}
+
+async function copyConnectUrl(e) {
+  if (!e?.connectUrl) return
+  await copy(e.connectUrl)
+  notify('Адрес MoloFlow Connect скопирован', 'success')
+}
+
+async function copyConnectCurlForEndpoint(e) {
+  if (!e?.connectUrl) {
+    notify('Сначала опубликуйте эндпоинт', 'warning')
+    return
+  }
+
+  if (connectKeyDialog.key && connectKeyDialog.url === e.connectUrl) {
+    await copy(connectCurl(e.connectUrl, connectKeyDialog.key))
+    return
+  }
+
+  await copy(
+      `curl -X GET '${e.connectUrl}' \\\n  -H 'X-Molo-Key: ВСТАВЬТЕ_MOLO_KEY'`
+  )
+  notify('Скопирован cURL-шаблон. Вставьте свой Molo-Key.', 'info')
+}
 
 async function openEndpoint(e) {
-  if (!mods.value.length) await guard(async () => (mods.value = await admin.modules()))
+  if (!mods.value.length) {
+    await guard(async () => {
+      mods.value = await admin.modules()
+    })
+  }
+
   Object.assign(ep, {
     open: true,
     _id: e?._id || '',
     slug: e?.slug || '',
     description: e?.description || '',
-    methods: e ? [...e.methods] : ['POST'],
+    methods: e ? [...(e.methods || [])] : ['POST'],
     moduleId: e?.moduleId || '',
     file: e?.file || '',
     access: e?.access || 'members',
     enabled: e ? e.enabled : true,
     regenerateKey: false,
+    regenerateConnectKey: !e || !e.connectKeyConfigured,
     files: [],
     error: '',
     saving: false
   })
+
   if (ep.moduleId) await loadModuleFiles(e?.file || '')
 }
 
 async function loadModuleFiles(keep = '') {
-  ep.files = ep.moduleId ? (await guard(() => admin.moduleFiles(ep.moduleId))) || [] : []
+  ep.files = ep.moduleId
+      ? (await guard(() => admin.moduleFiles(ep.moduleId))) || []
+      : []
+
   ep.file = ep.files.some((f) => fileTitle(f) === keep) ? keep : ''
 }
 
@@ -592,22 +858,24 @@ function toggleMethod(m) {
 async function saveEndpoint() {
   ep.error = ''
   ep.saving = true
+
   try {
-    await admin.endpoints.save({
-      _id: ep._id || undefined,
-      slug: ep.slug,
-      description: ep.description,
-      methods: ep.methods,
-      moduleId: ep.moduleId,
-      file: ep.file,
-      access: ep.access,
-      enabled: ep.enabled,
-      regenerateKey: ep.regenerateKey
-    })
+    const saved = await admin.endpoints.save(getEndpointSavePayload())
     ep.open = false
     addLog('success', `Эндпоинт "${ep.slug}" сохранён`)
+
+    const keyWasShown = showConnectKey(saved, {
+      slug: ep.slug,
+      connectUrl: saved?.connectUrl
+    })
+
     await loadEndpoints()
-    notify('Эндпоинт сохранён', 'success')
+
+    if (keyWasShown) {
+      notify('Эндпоинт сохранён. Новый Molo-Key показан.', 'success')
+    } else {
+      notify('Эндпоинт сохранён', 'success')
+    }
   } catch (e) {
     addLog('error', `Ошибка сохранения эндпоинта: ${msg(e)}`)
     ep.error = msg(e)
@@ -616,9 +884,77 @@ async function saveEndpoint() {
   }
 }
 
+async function issueConnectKey(e) {
+  if (!e?._id) return
+  if (connectKeyBusy.value) return
+
+  connectKeyBusy.value = e._id
+
+  try {
+    const saved = await admin.endpoints.save({
+      _id: e._id,
+      slug: e.slug,
+      description: e.description || '',
+      methods: e.methods || ['GET'],
+      moduleId: e.moduleId,
+      file: e.file || '',
+      access: e.access || 'members',
+      enabled: e.enabled !== false,
+      regenerateKey: false,
+      regenerateConnectKey: true
+    })
+
+    const shown = showConnectKey(saved, {
+      slug: e.slug,
+      connectUrl: saved?.connectUrl || e.connectUrl
+    })
+
+    await loadEndpoints()
+
+    if (!shown) {
+      notify('Сервер не вернул Molo-Key', 'warning')
+    } else {
+      addLog('success', `Molo-Key для "${e.slug}" перевыпущен`)
+      notify('Новый Molo-Key создан', 'success')
+    }
+  } catch (error) {
+    notify(msg(error), 'error', 'Ошибка выпуска Molo-Key')
+  } finally {
+    connectKeyBusy.value = ''
+  }
+}
+
+async function publishEndpoint(e) {
+  await guard(async () => {
+    const result = await admin.endpoints.publish(e._id)
+    addLog('success', `Эндпоинт опубликован: ${result.publicUrl || result.connectUrl || ''}`)
+    notify('Эндпоинт опубликован в MoloFlow Connect', 'success')
+    await loadEndpoints()
+  })
+}
+
+async function unpublishEndpoint(e) {
+  await guard(async () => {
+    await admin.endpoints.unpublish(e._id)
+    addLog('warning', `Публикация эндпоинта "${e.slug}" снята`)
+    notify('Публичная публикация отключена', 'success')
+    await loadEndpoints()
+  })
+}
+
 async function toggleEndpoint(e) {
   await guard(async () => {
-    await admin.endpoints.save({ ...e, regenerateKey: false, enabled: !e.enabled })
+    if (e.connectPublished && e.enabled) {
+      await admin.endpoints.unpublish(e._id)
+    }
+
+    await admin.endpoints.save({
+      ...e,
+      regenerateKey: false,
+      regenerateConnectKey: false,
+      enabled: !e.enabled
+    })
+
     await loadEndpoints()
   })
 }
@@ -630,6 +966,7 @@ async function removeEndpoint(e) {
     epDel.value = e._id
     return
   }
+
   await guard(async () => {
     await admin.endpoints.remove(e._id)
     epDel.value = ''
@@ -639,30 +976,57 @@ async function removeEndpoint(e) {
   })
 }
 
+/* -------------------------------------------------------------------------- */
+/* CODE SNIPPETS                                                              */
+/* -------------------------------------------------------------------------- */
+
 const lang = ref('js')
-const sample = (f) =>
-    ({
-      string: 'текст', text: 'длинный текст', number: 1, boolean: true,
-      date: new Date().toISOString(), select: f.options?.[0] || '', json: {}
-    })[f.type]
+
+const sample = (f) => ({
+  string: 'текст',
+  text: 'длинный текст',
+  number: 1,
+  boolean: true,
+  date: new Date().toISOString(),
+  select: f.options?.[0] || '',
+  json: {}
+})[f.type]
 
 const exampleDoc = computed(() => {
   const fields = activeColFields.value
-  const pick = [...fields.filter((f) => f.required), ...fields.filter((f) => !f.required)].slice(0, 4)
+  const pick = [
+    ...fields.filter((f) => f.required),
+    ...fields.filter((f) => !f.required)
+  ].slice(0, 4)
+
   return Object.fromEntries(pick.map((f) => [f.name, sample(f)]))
 })
-const filterField = computed(() => activeColFields.value.find((f) => ['string', 'select', 'number'].includes(f.type)))
+
+const filterField = computed(() => (
+    activeColFields.value.find((f) => ['string', 'select', 'number'].includes(f.type))
+))
+
 const j = (v) => JSON.stringify(v)
-const pyJson = (v) => JSON.stringify(v, null, 2).replace(/\btrue\b/g, 'True').replace(/\bfalse\b/g, 'False').replace(/\bnull\b/g, 'None')
+const pyJson = (v) => (
+    JSON.stringify(v, null, 2)
+        .replace(/\btrue\b/g, 'True')
+        .replace(/\bfalse\b/g, 'False')
+        .replace(/\bnull\b/g, 'None')
+)
 
 const snippet = computed(() => {
   if (!activeCol.value) return ''
-  const d = sel.db, c = sel.col
+
+  const d = sel.db
+  const c = sel.col
   const doc = exampleDoc.value
   const ff = filterField.value
   const flt = ff ? { [ff.name]: sample(ff) } : {}
-  const acc = /^[a-z_][a-z0-9_]*$/i.test(c) ? `.${c}` : `.collection('${c}')`
-  if (lang.value === 'js')
+  const acc = /^[a-z_][a-z0-9_]*$/i.test(c)
+      ? `.${c}`
+      : `.collection('${c}')`
+
+  if (lang.value === 'js') {
     return `// Vue / JS модуль
 const items = useMoloDb('${d}')${acc}
 
@@ -672,7 +1036,9 @@ const page    = await items.page({}, { search: 'текст', limit: 25, skip: 0 
 await items.update(created._id, ${j(doc)})
 await items.update(${j(flt)}, {}, { upsert: true })
 await items.delete(created._id)`
-  if (lang.value === 'server')
+  }
+
+  if (lang.value === 'server') {
     return `// Серверный файл модуля
 export async function handler(context) {
   const items = db('${d}')${acc}
@@ -683,7 +1049,9 @@ export async function handler(context) {
 
   return { status: 201, body: { created, count: list.length } }
 }`
-  if (lang.value === 'py')
+  }
+
+  if (lang.value === 'py') {
     return `# Python-клиент
 from moloflow_db import db
 
@@ -692,6 +1060,8 @@ items = db("${d}").${/^[a-z_][a-z0-9_]*$/i.test(c) ? c : `collection("${c}")`}
 created = items.insert(${pyJson(doc)})
 rows = items.find(${pyJson(flt)}, sort="-createdAt", limit=20)
 items.update(created["_id"], ${pyJson(doc)})`
+  }
+
   return `POST /api/enterprises/${admin?.enterpriseId() || '<id>'}/moloDb/${d}/${c}
 Content-Type: application/json
 
@@ -701,7 +1071,7 @@ ${JSON.stringify({ op: 'insert', doc }, null, 2)}`
 async function copy(text) {
   try {
     await navigator.clipboard.writeText(text)
-  } catch (e) {
+  } catch {
     const ta = document.createElement('textarea')
     ta.value = text
     document.body.appendChild(ta)
@@ -709,16 +1079,25 @@ async function copy(text) {
     document.execCommand('copy')
     ta.remove()
   }
+
   addLog('info', 'Код скопирован в буфер обмена')
   notify('Код скопирован в буфер обмена', 'info')
 }
 
 function onKey(e) {
   if (e.key !== 'Escape') return
-  if (rec.open) rec.open = false
-  else if (nd.open) nd.open = false
-  else if (nc.open) nc.open = false
-  else if (ep.open) ep.open = false
+
+  if (connectKeyDialog.open) {
+    connectKeyDialog.open = false
+  } else if (rec.open) {
+    rec.open = false
+  } else if (nd.open) {
+    nd.open = false
+  } else if (nc.open) {
+    nc.open = false
+  } else if (ep.open) {
+    ep.open = false
+  }
 }
 </script>
 
@@ -729,6 +1108,7 @@ function onKey(e) {
       <UIMoloSticker name="refresh" :size="24" class="spin-anim" />
       <span>Инициализация окружения MoloDB…</span>
     </div>
+
     <div v-else-if="fatal" class="mdb-state-center err">
       <UIMoloSticker name="alert" :size="28" />
       <span>{{ fatal }}</span>
@@ -753,6 +1133,7 @@ function onKey(e) {
             >
               <UIMoloSticker name="download" :size="12" :class="{ 'spin-anim': syncing }" />
             </UIMoloButton>
+
             <UIMoloButton
                 v-if="canManage"
                 class="small confirm"
@@ -768,7 +1149,11 @@ function onKey(e) {
         <nav class="sidebar-tree">
           <div v-for="db in dbs" :key="db.name" class="tree-db-node">
             <button class="db-header-row" @click="openDbs[db.name] = !openDbs[db.name]">
-              <UIMoloSticker name="arrow" :size="11" class="chev-icon" :class="{ open: openDbs[db.name] }" />
+              <UIMoloSticker
+                  :name="openDbs[db.name] ? 'down' : 'right'"
+                  :size="11"
+                  class="chev-icon"
+              />
               <UIMoloSticker name="folder" :size="14" />
               <span class="db-title">{{ db.title || db.name }}</span>
               <span class="badge-pill">{{ (db.collections || []).length }}</span>
@@ -820,19 +1205,24 @@ function onKey(e) {
         <section v-if="view === 'collection' && !activeCol" class="viewport-empty">
           <div class="empty-glass-card">
             <UIMoloSticker name="nomenclature" :size="42" glow />
-            <h3>{{ activeDb ? 'В выбранной базе ещё нет таблиц' : 'База данных не инициализирована' }}</h3>
+            <h3>
+              {{ activeDb ? 'В выбранной базе ещё нет таблиц' : 'База данных не инициализирована' }}
+            </h3>
             <p>
               MoloDB хранит типизированные документы со схемой полей, валидацией и доступом по ролям.
             </p>
-            <div class="empty-actions" v-if="canManage">
+
+            <div v-if="canManage" class="empty-actions">
               <UIMoloButton v-if="!activeDb" class="small confirm" @click="openNewDb">
                 <UIMoloSticker name="plus" :size="13" />
                 <span>Создать базу</span>
               </UIMoloButton>
+
               <UIMoloButton v-if="!activeDb" class="small" :disabled="syncing" @click="syncData">
                 <UIMoloSticker name="download" :size="13" :class="{ 'spin-anim': syncing }" />
                 <span>Импортировать данные</span>
               </UIMoloButton>
+
               <UIMoloButton v-if="activeDb" class="small confirm" @click="openNewCol(activeDb)">
                 <UIMoloSticker name="plus" :size="13" />
                 <span>Добавить коллекцию</span>
@@ -887,16 +1277,17 @@ function onKey(e) {
           <section v-if="tab === 'data'" class="tab-pane data-pane">
             <div class="data-toolbar">
               <div class="search-wrap">
-                <UIMoloInput
-                    v-model="search"
-                    compact
-                    placeholder="Быстрый поиск по строкам..."
-                />
+                <UIMoloInput v-model="search" compact placeholder="Быстрый поиск по строкам..." />
               </div>
 
-              <div v-if="isReadOnlyCollection" class="records-counter" title="Редактирование выполняется в редакторе модулей">
+              <div
+                  v-if="isReadOnlyCollection"
+                  class="records-counter"
+                  title="Редактирование выполняется в редакторе модулей"
+              >
                 <span>Только просмотр</span>
               </div>
+
               <div class="records-counter">
                 <span class="count-val">{{ total }}</span>
                 <span class="count-lbl">{{ total === 1 ? 'запись' : 'записей' }}</span>
@@ -926,7 +1317,9 @@ function onKey(e) {
 
             <div v-if="!activeColFields.length" class="empty-banner">
               <span>Схема коллекции не сформирована.</span>
-              <button v-if="canManage" class="text-link" @click="tab = 'structure'">Добавить поля структуры</button>
+              <button v-if="canManage" class="text-link" @click="tab = 'structure'">
+                Добавить поля структуры
+              </button>
             </div>
 
             <div v-if="rowsError" class="error-banner">
@@ -934,12 +1327,20 @@ function onKey(e) {
               <span>{{ rowsError }}</span>
             </div>
 
-            <div v-if="activeColFields.length" class="table-container" :class="{ busy: rowsLoading }">
+            <div
+                v-if="activeColFields.length"
+                class="table-container"
+                :class="{ busy: rowsLoading }"
+            >
               <table class="molo-data-grid">
                 <thead>
                 <tr>
                   <th v-for="f in shownFields" :key="f.name">
-                    <button v-if="f.type !== 'json'" class="sort-header-btn" @click="sortBy(f.name)">
+                    <button
+                        v-if="f.type !== 'json'"
+                        class="sort-header-btn"
+                        @click="sortBy(f.name)"
+                    >
                       <span>{{ f.label || f.name }}</span>
                       <UIMoloSticker
                           v-if="sortDir(f.name)"
@@ -949,6 +1350,7 @@ function onKey(e) {
                     </button>
                     <span v-else class="static-header">{{ f.label || f.name }}</span>
                   </th>
+
                   <th class="time-header">
                     <button class="sort-header-btn" @click="sortBy('createdAt')">
                       <span>Создано</span>
@@ -961,16 +1363,33 @@ function onKey(e) {
                   </th>
                 </tr>
                 </thead>
+
                 <tbody>
-                <tr v-for="r in rows" :key="r._id" class="grid-data-row" @click="!isReadOnlyCollection && openRecord(r)">
+                <tr
+                    v-for="r in rows"
+                    :key="r._id"
+                    class="grid-data-row"
+                    @click="!isReadOnlyCollection && openRecord(r)"
+                >
                   <td
                       v-for="f in shownFields"
                       :key="f.name"
-                      :class="['cell-' + f.type, { 'cell-empty': r[f.name] === undefined || r[f.name] === null || r[f.name] === '' }]"
+                      :class="[
+                        'cell-' + f.type,
+                        {
+                          'cell-empty':
+                            r[f.name] === undefined ||
+                            r[f.name] === null ||
+                            r[f.name] === ''
+                        }
+                      ]"
                   >
-                    <span v-if="f.type === 'select' && r[f.name]" class="pill-badge">{{ r[f.name] }}</span>
+                      <span v-if="f.type === 'select' && r[f.name]" class="pill-badge">
+                        {{ r[f.name] }}
+                      </span>
                     <span v-else>{{ fmtCell(f, r[f.name]) }}</span>
                   </td>
+
                   <td class="cell-date">{{ fmtDate(r.createdAt) }}</td>
                 </tr>
 
@@ -984,16 +1403,26 @@ function onKey(e) {
             </div>
 
             <footer v-if="total > PAGE" class="pagination-footer">
-              <UIMoloButton class="small" :disabled="skip === 0" @click="go(-1)"><UIMoloSticker name="left" :size="14" /> Назад</UIMoloButton>
+              <UIMoloButton class="small" :disabled="skip === 0" @click="go(-1)">
+                <UIMoloSticker name="left" :size="14" />
+                Назад
+              </UIMoloButton>
+
               <span class="pager-info">{{ pageFrom }}–{{ pageTo }} из {{ total }}</span>
-              <UIMoloButton class="small" :disabled="skip + PAGE >= total" @click="go(1)">Далее <UIMoloSticker name="right" :size="14" /></UIMoloButton>
+
+              <UIMoloButton class="small" :disabled="skip + PAGE >= total" @click="go(1)">
+                Далее
+                <UIMoloSticker name="right" :size="14" />
+              </UIMoloButton>
             </footer>
           </section>
 
           <!-- 2. СТРУКТУРА ПОЛЕЙ -->
-          <section v-else-if="tab === 'structure' && draft && !isReadOnlyCollection" class="tab-pane structure-pane">
+          <section
+              v-else-if="tab === 'structure' && draft && !isReadOnlyCollection"
+              class="tab-pane structure-pane"
+          >
             <div class="structure-content-scroll">
-              <!-- Секция полей -->
               <UIMoloSection>
                 <template #header>
                   <div class="sec-header-line">
@@ -1001,6 +1430,7 @@ function onKey(e) {
                       <UIMoloSticker name="table" :size="14" />
                       <strong>Поля коллекции</strong>
                     </div>
+
                     <UIMoloButton class="small confirm" @click="addField">
                       <UIMoloSticker name="plus" :size="12" />
                       <span>Новое поле</span>
@@ -1010,8 +1440,11 @@ function onKey(e) {
 
                 <template #main>
                   <div class="fields-list-stack">
-                    <div v-for="(f, i) in (draft.fields || [])" :key="i" class="field-item-card">
-                      <!-- Основная строка конфигурации -->
+                    <div
+                        v-for="(f, i) in (draft.fields || [])"
+                        :key="i"
+                        class="field-item-card"
+                    >
                       <div class="field-row-primary">
                         <div class="input-col name-col">
                           <UIMoloInput
@@ -1041,8 +1474,7 @@ function onKey(e) {
                               :parent="TYPES"
                               children="t"
                               value-key="v"
-                          >
-                          </UIMoloSelect>
+                          />
                         </div>
 
                         <div class="toggles-col">
@@ -1057,20 +1489,33 @@ function onKey(e) {
 
                         <div class="actions-col">
                           <div class="btn-group">
-                            <UIMoloButton class="small transparent" title="Переместить выше" @click="moveField(i, -1)">
+                            <UIMoloButton
+                                class="small transparent"
+                                title="Переместить выше"
+                                @click="moveField(i, -1)"
+                            >
                               <UIMoloSticker name="up" :size="10" />
                             </UIMoloButton>
-                            <UIMoloButton class="small transparent" title="Переместить ниже" @click="moveField(i, 1)">
+
+                            <UIMoloButton
+                                class="small transparent"
+                                title="Переместить ниже"
+                                @click="moveField(i, 1)"
+                            >
                               <UIMoloSticker name="down" :size="10" />
                             </UIMoloButton>
                           </div>
-                          <UIMoloButton class="small close" title="Удалить поле" @click="removeField(i)">
+
+                          <UIMoloButton
+                              class="small close"
+                              title="Удалить поле"
+                              @click="removeField(i)"
+                          >
                             <UIMoloSticker name="trash" :size="10" />
                           </UIMoloButton>
                         </div>
                       </div>
 
-                      <!-- Дополнительные параметры поля -->
                       <div class="field-row-secondary">
                         <div class="extra-field-item">
                           <UIMoloInput
@@ -1099,7 +1544,10 @@ function onKey(e) {
                           </div>
                         </template>
 
-                        <div v-if="f.type === 'string' || f.type === 'text'" class="extra-field-item num">
+                        <div
+                            v-if="f.type === 'string' || f.type === 'text'"
+                            class="extra-field-item num"
+                        >
                           <UIMoloInput
                               v-model="f.maxLength"
                               compact
@@ -1114,7 +1562,6 @@ function onKey(e) {
                 </template>
               </UIMoloSection>
 
-              <!-- Настройки коллекции -->
               <UIMoloSection>
                 <template #header>
                   <div class="sec-title-wrap">
@@ -1122,21 +1569,27 @@ function onKey(e) {
                     <strong>Параметры коллекции</strong>
                   </div>
                 </template>
+
                 <template #main>
                   <div class="grid-form-two-col">
                     <UIMoloInput v-model="draft.title" compact t-label="Название коллекции" placeholder="Заказы" />
                     <UIMoloInput v-model="draft.maxDocs" compact type="number" t-label="Лимит строк" placeholder="50000" />
                     <UIMoloInput v-model="draft.ttlDays" compact type="number" t-label="Хранение (дней)" placeholder="Бессрочно" />
+
                     <div class="toggle-wrapper-aligned">
-                      <UIMoloToggle v-model="draft.strict" compact label="Строгая схема" true-label="Да" false-label="Любые поля" />
+                      <UIMoloToggle
+                          v-model="draft.strict"
+                          compact
+                          label="Строгая схема"
+                      />
                     </div>
+
                     <UIMoloInput v-model="draft.readRoles" compact t-label="Роли чтения" placeholder="все участники" />
                     <UIMoloInput v-model="draft.writeRoles" compact t-label="Роли записи" placeholder="все участники" />
                   </div>
                 </template>
               </UIMoloSection>
 
-              <!-- Параметры текущей БД -->
               <UIMoloSection>
                 <template #header>
                   <div class="sec-header-line">
@@ -1144,11 +1597,13 @@ function onKey(e) {
                       <UIMoloSticker name="folder" :size="14" />
                       <strong>База данных «{{ activeDb?.title || activeDb?.name }}»</strong>
                     </div>
+
                     <UIMoloButton class="small action" :disabled="!dbDirty" @click="saveDbInfo">
                       Сохранить свойства БД
                     </UIMoloButton>
                   </div>
                 </template>
+
                 <template #main>
                   <div class="grid-form-two-col">
                     <UIMoloInput v-model="dbDraft.title" compact t-label="Отображаемое имя базы" />
@@ -1157,7 +1612,6 @@ function onKey(e) {
                 </template>
               </UIMoloSection>
 
-              <!-- Опасная зона -->
               <UIMoloSection class="danger-section">
                 <template #header>
                   <div class="sec-title-wrap text-danger">
@@ -1165,6 +1619,7 @@ function onKey(e) {
                     <strong>Опасная зона</strong>
                   </div>
                 </template>
+
                 <template #main>
                   <div class="danger-actions-row">
                     <UIMoloButton class="small close" @click="dropCollection">
@@ -1177,18 +1632,20 @@ function onKey(e) {
                       <span>{{ confirmDrop === 'db' ? 'Подтвердите удаление всей БД' : 'Удалить базу данных' }}</span>
                     </UIMoloButton>
 
-                    <UIMoloButton v-if="confirmDrop" class="small" @click="confirmDrop = ''">Отмена</UIMoloButton>
+                    <UIMoloButton v-if="confirmDrop" class="small" @click="confirmDrop = ''">
+                      Отмена
+                    </UIMoloButton>
                   </div>
                 </template>
               </UIMoloSection>
             </div>
 
-            <!-- Плавающая плашка сохранения структуры -->
             <footer class="floating-savebar" :class="{ visible: dirty }">
               <div class="savebar-text">
                 <UIMoloSticker name="alert" :size="14" />
                 <span>В структуру внесены изменения</span>
               </div>
+
               <div class="btn-group">
                 <UIMoloButton class="small" @click="resetDraft">Сбросить</UIMoloButton>
                 <UIMoloButton class="small confirm" :loading="saving" @click="saveStructure">
@@ -1202,10 +1659,18 @@ function onKey(e) {
           <section v-else-if="tab === 'code'" class="tab-pane code-pane">
             <div class="code-env-bar">
               <div class="btn-group">
-                <UIMoloButton class="small" :class="{ confirm: lang === 'js' }" @click="lang = 'js'">Vue / JS</UIMoloButton>
-                <UIMoloButton class="small" :class="{ confirm: lang === 'server' }" @click="lang = 'server'">Сервер</UIMoloButton>
-                <UIMoloButton class="small" :class="{ confirm: lang === 'py' }" @click="lang = 'py'">Python</UIMoloButton>
-                <UIMoloButton class="small" :class="{ confirm: lang === 'http' }" @click="lang = 'http'">HTTP (cURL)</UIMoloButton>
+                <UIMoloButton class="small" :class="{ confirm: lang === 'js' }" @click="lang = 'js'">
+                  Vue / JS
+                </UIMoloButton>
+                <UIMoloButton class="small" :class="{ confirm: lang === 'server' }" @click="lang = 'server'">
+                  Сервер
+                </UIMoloButton>
+                <UIMoloButton class="small" :class="{ confirm: lang === 'py' }" @click="lang = 'py'">
+                  Python
+                </UIMoloButton>
+                <UIMoloButton class="small" :class="{ confirm: lang === 'http' }" @click="lang = 'http'">
+                  HTTP (cURL)
+                </UIMoloButton>
               </div>
             </div>
 
@@ -1214,6 +1679,7 @@ function onKey(e) {
                 <UIMoloSticker name="copy" :size="12" />
                 <span>Копировать</span>
               </UIMoloButton>
+
               <pre class="code-pre"><code>{{ snippet }}</code></pre>
             </div>
           </section>
@@ -1225,6 +1691,7 @@ function onKey(e) {
             <div class="header-breadcrumb">
               <span class="col-curr">HTTP Эндпоинты</span>
             </div>
+
             <UIMoloButton class="small confirm" @click="openEndpoint(null)">
               <UIMoloSticker name="plus" :size="12" />
               <span>Создать эндпоинт</span>
@@ -1237,31 +1704,52 @@ function onKey(e) {
             </div>
 
             <div class="endpoints-list-grid">
-              <div v-for="e in eps" :key="e._id" class="endpoint-card" :class="{ disabled: !e.enabled }">
+              <div
+                  v-for="e in eps"
+                  :key="e._id"
+                  class="endpoint-card"
+                  :class="{ disabled: !e.enabled }"
+              >
                 <div class="endpoint-top-line">
-                  <div class="route-tag">
-                    <UIMoloSticker name="link" :size="12" />
-                    <code>/api/x/…/{{ e.slug }}</code>
-                  </div>
+                  <section style="display: flex; align-items: center; gap: 10px" >
+                    <div class="route-tag">
+                      <UIMoloSticker name="link" :size="12" />
+                      <code>/api/x/…/{{ e.slug }}</code>
+                    </div>
 
-                  <div class="methods-badges">
-                    <span v-for="m in e.methods" :key="m" class="method-chip" :class="m.toLowerCase()">{{ m }}</span>
-                  </div>
+                    <div class="methods-badges">
+                    <span
+                        v-for="m in e.methods"
+                        :key="m"
+                        class="method-chip"
+                        :class="m.toLowerCase()"
+                    >
+                      {{ m }}
+                    </span>
+                    </div>
 
-                  <span class="access-chip">{{ ACCESS.find((a) => a.v === e.access)?.t }}</span>
-
-                  <div class="endpoint-quick-actions">
+                    <span class="access-chip">
+                    {{ ACCESS.find((a) => a.v === e.access)?.t }}
+                  </span>
+                  </section>
+                  <div class="btn-group">
                     <UIMoloButton
                         class="small"
                         title="Скопировать готовую ссылку для вызова"
-                        @click="copy(e.access === 'key' && e.secret ? `${admin.endpointUrl(e.slug)}?key=${e.secret}` : admin.endpointUrl(e.slug))"
+                        @click="copy(
+                        e.access === 'key' && e.secret
+                          ? `${admin.endpointUrl(e.slug)}?key=${e.secret}`
+                          : admin.endpointUrl(e.slug)
+                      )"
                     >
                       <UIMoloSticker name="copy" :size="11" />
                       <span>Скопировать URL</span>
                     </UIMoloButton>
+
                     <UIMoloButton class="small" title="Параметры" @click="openEndpoint(e)">
                       <UIMoloSticker name="pen" :size="11" />
                     </UIMoloButton>
+
                     <UIMoloButton class="small close" title="Удалить" @click="removeEndpoint(e)">
                       <UIMoloSticker v-if="epDel !== e._id" name="trash" :size="11" />
                       <span v-else>Да?</span>
@@ -1270,10 +1758,131 @@ function onKey(e) {
                 </div>
 
                 <p v-if="e.description" class="endpoint-desc">{{ e.description }}</p>
+
+                <!-- MOLOFLOW CONNECT -->
+                <div class="connect-publish-row">
+                  <div class="connect-publish-info">
+                    <span class="connect-publish-label">
+                      <UIMoloSticker name="cloud" :size="12" />
+                      MoloFlow Connect
+                    </span>
+
+                    <a
+                        :href="e.connectUrl"
+                        v-if="e.connectPublished && e.connectUrl"
+                        class="connect-public-url"
+                    >
+                      {{ e.connectUrl }}
+                    </a>
+
+                    <small v-else>Snapshot-копия GET-ответа в Cloudflare KV</small>
+
+                    <small v-if="e.connectLastError" class="connect-publish-error">
+                      {{ e.connectLastError }}
+                    </small>
+                  </div>
+
+                  <div class="btn-group">
+                    <UIMoloButton
+                        v-if="e.connectPublished"
+                        class="small"
+                        title="Скопировать ссылку"
+                        @click="copyConnectUrl(e)"
+                    >
+                      <UIMoloSticker name="copy" :size="11" />
+                    </UIMoloButton>
+
+                    <UIMoloButton
+                        v-if="e.connectPublished"
+                        class="small"
+                        title="Обновить snapshot"
+                        @click="publishEndpoint(e)"
+                    >
+                      <UIMoloSticker name="refresh" :size="11" />
+                      <span>Обновить</span>
+                    </UIMoloButton>
+
+                    <UIMoloButton
+                        v-if="e.connectPublished"
+                        class="small close"
+                        title="Снять публикацию"
+                        @click="unpublishEndpoint(e)"
+                    >
+                      <UIMoloSticker name="x" :size="11" />
+                      <span>Снять</span>
+                    </UIMoloButton>
+
+                    <UIMoloButton
+                        v-else
+                        class="small confirm"
+                        :disabled="!e.enabled || !e.methods?.includes('GET')"
+                        title="Опубликовать результат GET-обработчика"
+                        @click="publishEndpoint(e)"
+                    >
+                      <UIMoloSticker name="upload" :size="11" />
+                      <span>Опубликовать</span>
+                    </UIMoloButton>
+                  </div>
+                </div>
+
+                <!-- ЗАЩИТА MOLO-KEY -->
+                <div v-if="e.connectPublished" class="connect-key-panel">
+                  <div class="connect-key-status">
+                    <UIMoloSticker
+                        :name="e.connectKey ? 'check-circle' : 'alert-circle'"
+                        :size="15"
+                    />
+
+                    <div class="connect-key-status-text">
+                      <strong>
+                        {{ e.hasConnectKey ? 'Molo-Key активен' : 'Molo-Key не настроен' }}
+                      </strong>
+
+                      <small>
+                        {{
+                          e.hasConnectKey
+                              ? 'Доступ к данным разрешён только с ключом'
+                              : 'Эндпоинт не имеет настроенного ключа доступа'
+                        }}
+                      </small>
+                    </div>
+                  </div>
+
+                  <div class="btn-group">
+                    <UIMoloButton
+                        class="small"
+                        title="Скопировать cURL-шаблон с заголовком X-Molo-Key"
+                        @click="copyConnectCurlForEndpoint(e)"
+                    >
+                      <UIMoloSticker name="code" :size="11" />
+                      <span>cURL</span>
+                    </UIMoloButton>
+
+                    <UIMoloButton
+                        class="small"
+                        :class="{ confirm: !e.connectKeyConfigured }"
+                        :loading="connectKeyBusy === e._id"
+                        :disabled="!!connectKeyBusy"
+                        @click="issueConnectKey(e)"
+                    >
+                      <UIMoloSticker name="key" :size="11" />
+                      <span>
+                        {{ e.connectKeyConfigured ? 'Перевыпустить Molo-Key' : 'Выпустить Molo-Key' }}
+                      </span>
+                    </UIMoloButton>
+                  </div>
+                </div>
+
                 <hr>
+
                 <div class="endpoint-meta-line">
                   <div class="meta-item">
-                    <UIMoloToggle :model-value="e.enabled" compact label="Активен" @change="toggleEndpoint(e)" />
+                    <UIMoloToggle
+                        :model-value="e.enabled"
+                        compact
+                        label="Активен"
+                        @change="toggleEndpoint(e)"
+                    />
                   </div>
                 </div>
               </div>
@@ -1287,7 +1896,7 @@ function onKey(e) {
     <UIMoloModal
         v-model="rec.open"
         :title="rec.id ? 'Редактирование записи' : 'Новая запись'"
-        width="640px"
+        width="660px"
         confirm-text="Сохранить"
         cancel-text="Отмена"
         :loading="rec.saving"
@@ -1327,17 +1936,20 @@ function onKey(e) {
                 compact
                 :t-label="f.label || f.name"
                 :l-required="f.required"
-            >
-              <option value="">— Не выбрано —</option>
-              <option v-for="o in (f.options || [])" :key="o" :value="o">{{ o }}</option>
-            </UIMoloSelect>
+                :parent="f.options || []"
+                clearable
+            />
 
-            <div v-else-if="f.type === 'text' || f.type === 'json'" class="form-monaco-field">
+            <div
+                v-else-if="f.type === 'text' || f.type === 'json'"
+                class="form-monaco-field"
+            >
               <label class="field-label">
                 {{ f.label || f.name }}
                 <span v-if="f.required" class="required">*</span>
-                <small class="type-hint">{{ TYPE_TITLE[f.type] }}</small>
+                <small class="type-hint">({{ TYPE_TITLE[f.type] }})</small>
               </label>
+
               <div class="monaco-wrapper-box">
                 <UIMoloMonaco
                     :initial-code="rec.values[f.name] || ''"
@@ -1358,14 +1970,16 @@ function onKey(e) {
           </template>
 
           <div v-if="rec.error" class="error-banner">
+            <UIMoloSticker name="alert" :size="14" />
             <span>{{ rec.error }}</span>
           </div>
         </div>
       </template>
+
       <template #footer>
-        <UIMoloButton @click="deleteRecord" class="close small">
-          <UIMoloSticker name="trash"/>
-          Удалить
+        <UIMoloButton v-if="rec.id" class="close small" @click="deleteRecord">
+          <UIMoloSticker name="trash" :size="12" />
+          <span>Удалить запись</span>
         </UIMoloButton>
       </template>
     </UIMoloModal>
@@ -1374,7 +1988,7 @@ function onKey(e) {
     <UIMoloModal
         v-model="nd.open"
         title="Создание базы данных"
-        width="440px"
+        width="460px"
         confirm-text="Создать базу"
         cancel-text="Отмена"
         :loading="nd.saving"
@@ -1383,10 +1997,29 @@ function onKey(e) {
     >
       <template #body>
         <div class="modal-form-stack">
-          <UIMoloInput v-model="nd.name" compact t-label="Идентификатор базы (латиница)" placeholder="analytics" l-required />
-          <UIMoloInput v-model="nd.title" compact t-label="Название" placeholder="Аналитика предприятия" />
-          <UIMoloInput v-model="nd.description" compact t-label="Описание" placeholder="Логи и внутренние отчеты" />
-          <div v-if="nd.error" class="error-banner">{{ nd.error }}</div>
+          <UIMoloInput
+              v-model="nd.name"
+              compact
+              t-label="Идентификатор базы (латиница)"
+              placeholder="analytics"
+              l-required
+          />
+          <UIMoloInput
+              v-model="nd.title"
+              compact
+              t-label="Название"
+              placeholder="Аналитика предприятия"
+          />
+          <UIMoloInput
+              v-model="nd.description"
+              compact
+              t-label="Описание"
+              placeholder="Логи и внутренние отчеты"
+          />
+          <div v-if="nd.error" class="error-banner">
+            <UIMoloSticker name="alert" :size="14" />
+            <span>{{ nd.error }}</span>
+          </div>
         </div>
       </template>
     </UIMoloModal>
@@ -1395,7 +2028,7 @@ function onKey(e) {
     <UIMoloModal
         v-model="nc.open"
         title="Создание коллекции"
-        width="440px"
+        width="460px"
         confirm-text="Создать коллекцию"
         cancel-text="Отмена"
         :loading="nc.saving"
@@ -1404,9 +2037,23 @@ function onKey(e) {
     >
       <template #body>
         <div class="modal-form-stack">
-          <UIMoloInput v-model="nc.name" compact t-label="Имя таблицы (латиница)" placeholder="orders" l-required />
-          <UIMoloInput v-model="nc.title" compact t-label="Отображаемое название" placeholder="Заказы клиентов" />
-          <div v-if="nc.error" class="error-banner">{{ nc.error }}</div>
+          <UIMoloInput
+              v-model="nc.name"
+              compact
+              t-label="Имя таблицы (латиница)"
+              placeholder="orders"
+              l-required
+          />
+          <UIMoloInput
+              v-model="nc.title"
+              compact
+              t-label="Отображаемое название"
+              placeholder="Заказы клиентов"
+          />
+          <div v-if="nc.error" class="error-banner">
+            <UIMoloSticker name="alert" :size="14" />
+            <span>{{ nc.error }}</span>
+          </div>
         </div>
       </template>
     </UIMoloModal>
@@ -1415,7 +2062,7 @@ function onKey(e) {
     <UIMoloModal
         v-model="ep.open"
         :title="ep._id ? 'Настройка HTTP эндпоинта' : 'Новый HTTP эндпоинт'"
-        width="540px"
+        width="560px"
         confirm-text="Сохранить"
         cancel-text="Отмена"
         :loading="ep.saving"
@@ -1424,60 +2071,228 @@ function onKey(e) {
     >
       <template #body>
         <div class="modal-form-stack">
-          <UIMoloInput v-model="ep.slug" compact t-label="Адрес (/api/x/{предприятие}/…)" placeholder="orders/webhook" l-required />
-          <UIMoloInput v-model="ep.description" compact t-label="Описание" placeholder="Прием внешних заказов" />
+          <UIMoloSection>
+            <template #header>
+              <div class="sec-title-wrap">
+                <UIMoloSticker name="link" :size="14" />
+                <strong>Параметры маршрута</strong>
+              </div>
+            </template>
+            <template #main>
+              <UIMoloInput
+                  v-model="ep.slug"
+                  compact
+                  t-label="Маршрут (/api/x/{предприятие}/…)"
+                  placeholder="orders/webhook"
+                  l-required
+              />
 
-          <div class="methods-selector-block">
-            <span class="field-label">Методы запроса</span>
-            <div class="methods-row">
-              <UIMoloButton
-                  v-for="m in METHODS"
-                  :key="m"
-                  class="small"
-                  :class="{ confirm: ep.methods.includes(m) }"
-                  @click="toggleMethod(m)"
+              <UIMoloInput
+                  v-model="ep.description"
+                  compact
+                  t-label="Описание"
+                  placeholder="Прием внешних заказов"
+              />
+
+              <div class="methods-selector-block">
+                <span class="field-label">Поддерживаемые HTTP методы</span>
+                <div class="methods-row">
+                  <UIMoloButton
+                      v-for="m in METHODS"
+                      :key="m"
+                      class="small"
+                      :class="{ confirm: ep.methods.includes(m) }"
+                      @click="toggleMethod(m)"
+                  >
+                    {{ m }}
+                  </UIMoloButton>
+                </div>
+              </div>
+            </template>
+          </UIMoloSection>
+
+          <UIMoloSection>
+            <template #header>
+              <div class="sec-title-wrap">
+                <UIMoloSticker name="code" :size="14" />
+                <strong>Исполняемый код</strong>
+              </div>
+            </template>
+            <template #main>
+              <UIMoloSelect
+                  v-model="ep.moduleId"
+                  compact
+                  disabled="Выберите модуль"
+                  :parent="mods"
+                  value-key="_id"
+                  children="name"
+                  t-label="Модуль обработчика"
+                  @change="loadModuleFiles('')"
+              />
+
+              <UIMoloSelect
+                  v-if="ep.moduleId"
+                  v-model="ep.file"
+                  compact
+                  t-label="Исполняемый файл"
               >
-                {{ m }}
-              </UIMoloButton>
-            </div>
-          </div>
+                <option value="">Основной файл модуля</option>
+                <option
+                    v-for="f in ep.files"
+                    :key="fileTitle(f)"
+                    :value="fileTitle(f)"
+                >
+                  {{ fileTitle(f) }}
+                </option>
+              </UIMoloSelect>
 
-          <UIMoloSelect
-              v-model="ep.moduleId"
-              compact
-              disabled="Выберите модуль"
-              :parent="mods"
-              value-key="_id"
-              children="name"
-              t-label="Модуль обработчика" @change="loadModuleFiles('')">
-          </UIMoloSelect>
+              <UIMoloSelect
+                  v-model="ep.access"
+                  compact
+                  :parent="ACCESS"
+                  children="t"
+                  value-key="v"
+                  t-label="Уровень доступа"
+              />
 
-          <UIMoloSelect v-if="ep.moduleId" v-model="ep.file" compact t-label="Исполняемый файл">
-            <option value="">Основной файл модуля</option>
-            <option v-for="f in ep.files" :key="fileTitle(f)" :value="fileTitle(f)">{{ fileTitle(f) }}</option>
-          </UIMoloSelect>
+              <UIMoloToggle
+                  v-if="ep.access === 'key' && ep._id"
+                  v-model="ep.regenerateKey"
+                  compact
+                  label="Сгенерировать новый ключ API /api/x"
+              />
+            </template>
+          </UIMoloSection>
 
-          <div class="access-selector-block">
-            <span class="field-label">Доступ к эндпоинту</span>
-            <div class="access-radios">
-              <label v-for="a in ACCESS" :key="a.v" class="radio-label">
-                <input v-model="ep.access" type="radio" :value="a.v" />
-                <span class="radio-title">{{ a.t }}</span>
-                <small class="radio-hint">{{ a.d }}</small>
-              </label>
-            </div>
-          </div>
-
-          <UIMoloToggle
-              v-if="ep.access === 'key' && ep._id"
-              v-model="ep.regenerateKey"
-              compact
-              label="Сгенерировать новый ключ"
-          />
+          <UIMoloSection>
+            <template #header>
+              <div class="sec-title-wrap">
+                <UIMoloSticker name="shield" :size="14" glow />
+                <strong>Защита MoloFlow Connect</strong>
+              </div>
+            </template>
+            <template #main>
+              <UIMoloToggle
+                  v-model="ep.regenerateConnectKey"
+                  compact
+                  label="Выпустить новый Molo-Key при сохранении"
+              />
+              <small class="muted-subtext">
+                Передаётся в заголовке X-Molo-Key. Полный ключ будет показан один раз после сохранения.
+              </small>
+            </template>
+          </UIMoloSection>
 
           <UIMoloToggle v-model="ep.enabled" compact label="Включить эндпоинт" />
 
-          <div v-if="ep.error" class="error-banner">{{ ep.error }}</div>
+          <div v-if="ep.error" class="error-banner">
+            <UIMoloSticker name="alert" :size="14" />
+            <span>{{ ep.error }}</span>
+          </div>
+        </div>
+      </template>
+    </UIMoloModal>
+
+    <!-- МОДАЛКА: ОДНОКРАТНЫЙ ПОКАЗ MOLO-KEY -->
+    <UIMoloModal
+        v-model="connectKeyDialog.open"
+        title="Секретный Molo-Key"
+        width="600px"
+        cancel-text="Закрыть"
+        hide-cancel
+        close-on-overlay
+        help-text="Внимание: это единственный показ секретного ключа. Скопируйте и сохраните его в надёжном месте прямо сейчас."
+    >
+      <template #body>
+        <div class="modal-form-stack">
+          <!-- РЕКВИЗИТЫ -->
+          <UIMoloSection>
+            <template #header>
+              <div class="sec-title-wrap">
+                <UIMoloSticker name="key" :size="15" glow />
+                <strong>Параметры подключения</strong>
+              </div>
+            </template>
+            <template #main>
+              <div class="copyable-input-row">
+                <UIMoloInput
+                    :model-value="connectKeyDialog.key"
+                    readonly
+                    compact
+                    t-label="Секретный Molo-Key"
+                />
+                <UIMoloButton class="small confirm copy-inline-btn" @click="copyConnectKey">
+                  <UIMoloSticker name="copy" :size="12" />
+                  <span>Копировать</span>
+                </UIMoloButton>
+              </div>
+
+              <div v-if="connectKeyDialog.url" class="copyable-input-row">
+                <UIMoloInput
+                    :model-value="connectKeyDialog.url"
+                    readonly
+                    compact
+                    t-label="URL эндпоинта Connect"
+                />
+                <UIMoloButton class="small copy-inline-btn" @click="copy(connectKeyDialog.url)">
+                  <UIMoloSticker name="copy" :size="12" />
+                  <span>Ссылка</span>
+                </UIMoloButton>
+              </div>
+            </template>
+          </UIMoloSection>
+
+          <!-- ПРИМЕРЫ ВЫЗОВА -->
+          <UIMoloSection>
+            <template #header>
+              <div class="sec-header-line">
+                <div class="sec-title-wrap">
+                  <UIMoloSticker name="code" :size="14" />
+                  <strong>Пример интеграции</strong>
+                </div>
+
+                <div class="btn-group">
+                  <UIMoloButton
+                      class="small"
+                      :class="{ confirm: connectKeyTab === 'curl' }"
+                      @click="connectKeyTab = 'curl'"
+                  >
+                    cURL
+                  </UIMoloButton>
+                  <UIMoloButton
+                      class="small"
+                      :class="{ confirm: connectKeyTab === 'js' }"
+                      @click="connectKeyTab = 'js'"
+                  >
+                    JavaScript
+                  </UIMoloButton>
+                </div>
+              </div>
+            </template>
+
+            <template #main>
+              <div class="monaco-wrapper-box key-snippet-box">
+                <UIMoloMonaco
+                    :initial-code="connectKeyTab === 'curl'
+                    ? connectCurl(connectKeyDialog.url, connectKeyDialog.key)
+                    : connectFetch(connectKeyDialog.url, connectKeyDialog.key)"
+                    :language="connectKeyTab === 'curl' ? 'shell' : 'javascript'"
+                />
+              </div>
+
+              <div class="snippet-actions">
+                <UIMoloButton
+                    class="small fit"
+                    @click="copy(connectKeyTab === 'curl'
+                    ? connectCurl(connectKeyDialog.url, connectKeyDialog.key)
+                    : connectFetch(connectKeyDialog.url, connectKeyDialog.key))"
+                >
+                  <UIMoloSticker name="copy" :size="12" />
+                  <span>Скопировать {{ connectKeyTab === 'curl' ? 'cURL' : 'Fetch' }}</span>
+                </UIMoloButton>
+              </div>
+            </template>
+          </UIMoloSection>
         </div>
       </template>
     </UIMoloModal>
@@ -1546,11 +2361,6 @@ function onKey(e) {
   letter-spacing: 0.3px;
 }
 
-.head-actions {
-  display: flex;
-  gap: 4px;
-}
-
 .sidebar-tree {
   flex: 1;
   overflow-y: auto;
@@ -1585,10 +2395,6 @@ function onKey(e) {
 
 .chev-icon {
   color: var(--text-muted);
-  transition: transform 0.15s ease;
-}
-.chev-icon.open {
-  transform: rotate(90deg);
 }
 
 .db-title {
@@ -1710,11 +2516,6 @@ function onKey(e) {
   font-size: 15px;
 }
 
-.header-tabs {
-  display: flex;
-  gap: 4px;
-}
-
 /* Вкладки */
 .tab-pane {
   flex: 1;
@@ -1754,7 +2555,7 @@ function onKey(e) {
   margin-left: auto;
 }
 
-/* Сетка таблицы */
+/* Таблица */
 .table-container {
   flex: 1;
   overflow: auto;
@@ -2008,14 +2809,6 @@ function onKey(e) {
 .code-env-bar {
   display: flex;
 }
-.seg-buttons {
-  display: flex;
-  gap: 4px;
-  background: rgba(255, 255, 255, 0.03);
-  padding: 3px;
-  border-radius: 6px;
-  border: 1px solid var(--line);
-}
 .code-viewport-block {
   position: relative;
   border: 1px solid var(--line);
@@ -2061,8 +2854,9 @@ function onKey(e) {
   opacity: 0.55;
 }
 .endpoint-top-line {
+  justify-content: space-between;
+
   display: flex;
-  align-items: center;
   gap: 8px;
 }
 .route-tag {
@@ -2174,7 +2968,7 @@ function onKey(e) {
   padding: 0 4px;
 }
 
-/* Модальные окна */
+/* Модальные формы */
 .modal-form-stack {
   display: flex;
   flex-direction: column;
@@ -2186,6 +2980,7 @@ function onKey(e) {
   display: flex;
   align-items: center;
   gap: 4px;
+  margin-bottom: 4px;
 }
 .required {
   color: #ef4444;
@@ -2194,14 +2989,15 @@ function onKey(e) {
   color: var(--text-muted);
 }
 .monaco-wrapper-box {
-  height: 200px;
+  height: 180px;
   border: 1px solid var(--line);
   border-radius: 6px;
   overflow: hidden;
-  margin-top: 4px;
 }
-.methods-selector-block,
-.access-selector-block {
+.key-snippet-box {
+  height: 140px;
+}
+.methods-selector-block {
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -2209,24 +3005,111 @@ function onKey(e) {
 .methods-row {
   display: flex;
   gap: 6px;
+  flex-wrap: wrap;
 }
-.access-radios {
+
+/* Специфика модалки Molo-Key */
+.copyable-input-row {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  align-items: flex-end;
+  gap: 8px;
+  width: 100%;
 }
-.radio-label {
+.copyable-input-row :deep(.form-group) {
+  flex: 1;
+}
+.copy-inline-btn {
+  margin-bottom: 1px;
+  flex-shrink: 0;
+}
+.snippet-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+.muted-subtext {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+/* Connect Row */
+.connect-publish-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  cursor: pointer;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 11px 12px;
+  margin: 12px 0;
+  border: 1px solid rgba(56, 189, 248, 0.16);
+  border-radius: 12px;
+  background: rgba(56, 189, 248, 0.035);
 }
-.radio-title {
-  font-size: 12.5px;
+.connect-publish-info {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 5px;
 }
-.radio-hint {
+.connect-publish-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.connect-public-url {
+  overflow: hidden;
+  max-width: 100%;
+  color: var(--accent);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+}
+.connect-publish-info small {
   color: var(--text-muted);
   font-size: 11px;
+}
+.connect-publish-info .connect-publish-error {
+  color: #fb7185;
+}
+.connect-publish-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+}
+
+.connect-key-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.015);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.connect-key-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.connect-key-status-text {
+  display: flex;
+  flex-direction: column;
+}
+.connect-key-status-text strong {
+  font-size: 12px;
+}
+.connect-key-status-text small {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.connect-key-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 /* Анимация вращения */
@@ -2251,6 +3134,16 @@ function onKey(e) {
   }
   .grid-form-two-col {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .connect-publish-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .connect-publish-actions {
+    align-self: flex-end;
   }
 }
 </style>

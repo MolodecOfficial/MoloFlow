@@ -2,11 +2,12 @@
 <script lang="ts" setup>
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useAppStore } from '~~/stores/appStore'
+import { buildAuthHeaders } from '~~/server/utils/authContext'
 import { useDirectoryInterpolator } from '~/composables/useDirectoryInterpolator'
 import { useLogger } from '~/composables/useLogger'
 import { useNotifications } from '~/composables/useNotifications'
 
-type FieldType = 'text' | 'number' | 'date' | 'boolean' | 'select' | 'file'
+type FieldType = 'text' | 'number' | 'date' | 'boolean' | 'select' | 'file' | 'link'
 
 interface FieldOption {
   label: string
@@ -80,12 +81,7 @@ const BASE_CONFIG: Record<string, DirectoryMeta> = {
     groupByKey: 'department',
     fields: [
       { key: 'avatar', label: 'Фотография', type: 'file' },
-      {
-        key: 'department',
-        label: 'Отдел',
-        type: 'select',
-        options: []
-      },
+      { key: 'department', label: 'Отдел', type: 'select', options: [] },
       { key: 'role', label: 'Должность', placeholder: 'Ведущий инженер' },
       { key: 'phone', label: 'Телефон', placeholder: '+7 (999) 000-00-00' },
       { key: 'birthDate', label: 'Дата рождения', type: 'date' },
@@ -102,6 +98,7 @@ const BASE_CONFIG: Record<string, DirectoryMeta> = {
     titlePlaceholder: 'ООО «Компания»',
     fields: [
       { key: 'logo', label: 'Логотип / Документ', type: 'file' },
+      { key: 'website', label: 'Веб-сайт', type: 'link', placeholder: 'https://example.com' },
       { key: 'kpp', label: 'КПП', placeholder: '770101001' },
       { key: 'phone', label: 'Телефон', placeholder: '+7...' },
       { key: 'isVerified', label: 'Проверен', type: 'boolean' }
@@ -130,6 +127,7 @@ const BASE_CONFIG: Record<string, DirectoryMeta> = {
     titlePlaceholder: 'Товар или услуга',
     fields: [
       { key: 'photo', label: 'Изображение товара', type: 'file' },
+      { key: 'productUrl', label: 'Ссылка на товар', type: 'link', placeholder: 'https://...' },
       { key: 'unit', label: 'Единица измерения', placeholder: 'шт.', required: true },
       { key: 'inStock', label: 'В наличии', type: 'boolean' }
     ]
@@ -142,12 +140,14 @@ const BASE_CONFIG: Record<string, DirectoryMeta> = {
     codePlaceholder: 'SLA',
     titleLabel: 'Термин',
     titlePlaceholder: 'Service Level Agreement',
-    fields: []
+    fields: [
+      { key: 'sourceUrl', label: 'Источник / Справка', type: 'link', placeholder: 'https://wiki.org/...' }
+    ]
   }
 }
 
 const currentType = ref('departments')
-const customDirectories = ref<DirectoryMeta[]>([])
+const loadedDefinitions = ref<any[]>([])
 const departments = ref<DepartmentItem[]>([])
 const items = ref<DirectoryItem[]>([])
 const allEmployeesList = ref<DirectoryItem[]>([])
@@ -224,6 +224,16 @@ function getEntId(): string {
   } catch {
     return raw
   }
+}
+
+// Заголовки для авторизованных запросов
+function getReqHeaders() {
+  const entId = getEntId()
+  const headers = buildAuthHeaders(appStore.currentUser?._id)
+  if (entId) {
+    headers['x-enterprise-id'] = entId
+  }
+  return headers
 }
 
 function transliterate(value: string): string {
@@ -313,6 +323,11 @@ function getItemImage(item: DirectoryItem | null | undefined): string | null {
   return null
 }
 
+function formatUrl(url: any): string {
+  if (!url || typeof url !== 'string') return ''
+  return url.startsWith('http://') || url.startsWith('https://') ? url : `https://${url}`
+}
+
 function displayValue(value: any, field?: FieldSchema): string {
   if (value === null || value === undefined || value === '') return '—'
   if (field?.type === 'boolean') return value ? 'Да' : 'Нет'
@@ -321,6 +336,9 @@ function displayValue(value: any, field?: FieldSchema): string {
     if (typeof value === 'string' && value.startsWith('data:')) {
       return 'Прикреплённый файл'
     }
+    return String(value)
+  }
+  if (field?.type === 'link') {
     return String(value)
   }
 
@@ -355,7 +373,7 @@ function removeFile(key: string) {
 }
 
 /* -------------------------------------------------------------------------- */
-/* COMPUTED & OPTIONS                                                         */
+/* COMPUTED & CONFIG RESOLUTION                                               */
 /* -------------------------------------------------------------------------- */
 
 const departmentOptions = computed(() =>
@@ -365,28 +383,56 @@ const departmentOptions = computed(() =>
     }))
 )
 
-const staticConfigs = computed<Record<string, DirectoryMeta>>(() => ({
-  ...BASE_CONFIG,
-  departments: {
-    ...BASE_CONFIG.departments,
-    fields: BASE_CONFIG.departments.fields.map(field =>
-        field.key === 'department'
-            ? { ...field, options: departmentOptions.value }
-            : field
-    )
-  }
-}))
-
+// Собираем полную конфигурацию всех справочников (базовые + кастомные)
+// При этом данные из БД ПЕРЕКРЫВАЮТ дефолтные поля BASE_CONFIG
 const allConfigs = computed<Record<string, DirectoryMeta>>(() => {
-  const result = { ...staticConfigs.value }
-  for (const config of customDirectories.value) {
-    result[config.value] = config
+  const result: Record<string, DirectoryMeta> = {}
+
+  // 1. Сначала кладем базовые
+  for (const [slug, baseMeta] of Object.entries(BASE_CONFIG)) {
+    result[slug] = {
+      ...baseMeta,
+      fields: baseMeta.fields.map(f => f.key === 'department' ? { ...f, options: departmentOptions.value } : { ...f })
+    }
   }
+
+  // 2. Накладываем всё, что сохранено в БД (включая обновленные базовые справочники!)
+  for (const def of loadedDefinitions.value) {
+    const slug = def.slug
+    const base = BASE_CONFIG[slug]
+
+    const fields = (def.fields || []).map((f: any) => {
+      const fieldObj: FieldSchema = {
+        key: f.key,
+        label: f.label,
+        type: f.type || 'text',
+        required: Boolean(f.required),
+        placeholder: f.placeholder || '',
+        span: Number(f.span) === 2 ? 2 : 1,
+        options: f.key === 'department' ? departmentOptions.value : (f.options || [])
+      }
+      return fieldObj
+    })
+
+    result[slug] = {
+      label: def.title || base?.label || slug,
+      value: slug,
+      sticker: base?.sticker || def.icon || 'folder',
+      codeLabel: def.codeLabel || base?.codeLabel || 'Код / ID',
+      codePlaceholder: base?.codePlaceholder || '001',
+      titleLabel: def.titleLabel || base?.titleLabel || 'Наименование',
+      titlePlaceholder: base?.titlePlaceholder || 'Введите значение',
+      groupByKey: def.groupByKey ?? base?.groupByKey,
+      fields,
+      isCustom: !base
+    }
+  }
+
   return result
 })
 
 const currentMeta = computed(() =>
-    allConfigs.value[currentType.value] || staticConfigs.value.departments
+    allConfigs.value[currentType.value] || allConfigs.value.departments
 )
 
 const directoryTypes = computed(() => Object.values(allConfigs.value))
@@ -450,7 +496,9 @@ const totalEmployees = computed(() => allEmployeesList.value.length)
 const selectedDepartmentCount = computed(() =>
     viewingDept.value ? getDepartmentHeadcount(viewingDept.value) : 0
 )
-const customDirectoryCount = computed(() => customDirectories.value.length)
+const customDirectoryCount = computed(() =>
+    Object.values(allConfigs.value).filter(d => d.isCustom).length
+)
 const directoryCounts = computed(() => ({
   total: items.value.length,
   filtered: filteredItems.value.length
@@ -467,6 +515,7 @@ async function loadDepartments() {
   departmentsLoading.value = true
   try {
     const result = await $fetch<DepartmentItem[]>('/api/directory/departments', {
+      headers: getReqHeaders(),
       query: { enterpriseId }
     })
     departments.value = Array.isArray(result)
@@ -486,6 +535,7 @@ async function loadAllEmployees() {
 
   try {
     const result = await $fetch<DirectoryItem[]>('/api/directory/items', {
+      headers: getReqHeaders(),
       query: { enterpriseId, directorySlug: 'departments' }
     })
     allEmployeesList.value = Array.isArray(result) ? result : []
@@ -556,6 +606,7 @@ async function saveNewDepartment() {
   try {
     const saved = await $fetch<DepartmentItem>('/api/directory/departments', {
       method: 'POST',
+      headers: getReqHeaders(),
       body: {
         enterpriseId,
         key,
@@ -592,6 +643,7 @@ async function confirmDeleteDepartment() {
   try {
     await $fetch(`/api/directory/departments/${encodeURIComponent(dept.key)}`, {
       method: 'DELETE',
+      headers: getReqHeaders(),
       query: { enterpriseId }
     })
 
@@ -620,32 +672,20 @@ async function confirmDeleteDepartment() {
 }
 
 async function loadDefinitions() {
-  try {
-    const result = await interpolator.fetchDefinitions()
+  const enterpriseId = getEntId()
+  if (!enterpriseId) return
 
-    // Оставляем ТОЛЬКО пользовательские справочники (которых нет в BASE_CONFIG)
-    customDirectories.value = (Array.isArray(result) ? result : [])
-        .filter(definition => definition?.slug && !BASE_CONFIG[definition.slug])
-        .map(definition => ({
-          label: definition.title || definition.slug,
-          value: definition.slug,
-          sticker: 'folder',
-          codeLabel: definition.codeLabel || 'Код / ID',
-          codePlaceholder: (definition as any).codePlaceholder || '001',
-          titleLabel: definition.titleLabel || 'Наименование',
-          titlePlaceholder: (definition as any).titlePlaceholder || 'Введите значение',
-          groupByKey: definition.groupByKey,
-          fields: (definition.fields || []).map((field: FieldSchema) => ({
-            ...field,
-            type: field.type || 'text'
-          })),
-          isCustom: true
-        }))
+  try {
+    const res = await $fetch<any[]>('/api/directory/definitions', {
+      headers: getReqHeaders(),
+      query: { enterpriseId }
+    })
+    loadedDefinitions.value = Array.isArray(res) ? res : []
   } catch (error: any) {
     addLog('error', `Ошибка загрузки определений: ${errorMessage(error, 'Ошибка')}`)
-    addNotification('error', 'Не удалось загрузить пользовательские справочники')
   }
 }
+
 function openCreateDirectoryModal() {
   editingDefinitionSlug.value = null
   newDirForm.value = {
@@ -656,6 +696,7 @@ function openCreateDirectoryModal() {
     titleLabel: 'Наименование',
     fields: [
       { key: 'phone', label: 'Телефон', type: 'text', span: 1 },
+      { key: 'website', label: 'Ссылка на ресурс', type: 'link', span: 1 },
       { key: 'photo', label: 'Фотография', type: 'file', span: 1 }
     ]
   }
@@ -663,17 +704,26 @@ function openCreateDirectoryModal() {
 }
 
 function openEditDefinition() {
+  const currentSlug = currentType.value
   const config = currentMeta.value
-  if (!config.isCustom) return
+  const def = loadedDefinitions.value.find(d => d.slug === currentSlug)
 
-  editingDefinitionSlug.value = config.value
+  editingDefinitionSlug.value = currentSlug
   newDirForm.value = {
     title: config.label,
-    slug: config.value,
-    aliases: '',
+    slug: currentSlug,
+    aliases: (def?.aliases || []).join(', '),
     codeLabel: config.codeLabel,
     titleLabel: config.titleLabel,
-    fields: config.fields.map(field => ({ ...field }))
+    fields: config.fields.map(field => ({
+      key: field.key,
+      label: field.label,
+      type: field.type || 'text',
+      required: Boolean(field.required),
+      placeholder: field.placeholder || '',
+      span: field.span === 2 ? 2 : 1,
+      options: field.options ? JSON.parse(JSON.stringify(field.options)) : []
+    }))
   }
   createDirModalOpen.value = true
 }
@@ -744,12 +794,6 @@ async function saveNewDirectory() {
     return
   }
 
-  const existing = allConfigs.value[slug]
-  if (existing && slug !== editingDefinitionSlug.value) {
-    addNotification('warning', 'Справочник с таким ключом уже существует')
-    return
-  }
-
   const fields = normalizeFields()
   if (!fields) return
 
@@ -772,6 +816,8 @@ async function saveNewDirectory() {
   try {
     await $fetch('/api/directory/definitions', {
       method: 'POST',
+      headers: getReqHeaders(),
+      query: { enterpriseId },
       body: {
         enterpriseId,
         slug,
@@ -817,6 +863,7 @@ async function loadItems() {
   loading.value = true
   try {
     const result = await $fetch<DirectoryItem[]>('/api/directory/items', {
+      headers: getReqHeaders(),
       query: {
         enterpriseId,
         directorySlug: currentType.value,
@@ -946,11 +993,15 @@ async function saveItem() {
     if (isEditing.value && editingId.value) {
       await $fetch(`/api/directory/items/${encodeURIComponent(editingId.value)}`, {
         method: 'PATCH',
+        headers: getReqHeaders(),
+        query: { enterpriseId },
         body: payload
       })
     } else {
       await $fetch('/api/directory/items', {
         method: 'POST',
+        headers: getReqHeaders(),
+        query: { enterpriseId },
         body: payload
       })
     }
@@ -986,6 +1037,7 @@ async function confirmDelete() {
   try {
     await $fetch(`/api/directory/items/${encodeURIComponent(item._id)}`, {
       method: 'DELETE',
+      headers: getReqHeaders(),
       query: { enterpriseId, directorySlug: currentType.value }
     })
 
@@ -1093,7 +1145,6 @@ onBeforeUnmount(() => {
 
       <div class="btn-group">
         <UIMoloButton
-            v-if="currentMeta.isCustom"
             class="action small"
             @click="openEditDefinition"
         >
@@ -1360,7 +1411,24 @@ onBeforeUnmount(() => {
                 </td>
 
                 <td v-for="field in visibleFields.slice(0, 5)" :key="field.key">
-                  <div v-if="field.type === 'file'" class="file-table-cell">
+                  <!-- Ссылка (Link) -->
+                  <div v-if="field.type === 'link'" class="link-table-cell">
+                    <a
+                        v-if="item.attributes?.[field.key]"
+                        :href="formatUrl(item.attributes?.[field.key])"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="table-link-btn"
+                        @click.stop
+                    >
+                      <UIMoloSticker name="external-link" :size="12" />
+                      <span>{{ item.attributes?.[field.key] }}</span>
+                    </a>
+                    <span v-else class="cell-empty">—</span>
+                  </div>
+
+                  <!-- Файл / Фото -->
+                  <div v-else-if="field.type === 'file'" class="file-table-cell">
                     <template v-if="item.attributes?.[field.key]">
                       <img
                           v-if="isImageValue(item.attributes?.[field.key])"
@@ -1455,7 +1523,23 @@ onBeforeUnmount(() => {
             <div v-for="field in currentMeta.fields" :key="field.key" class="detail-field">
               <span>{{ field.label }}</span>
 
-              <div v-if="field.type === 'file'" class="detail-file-box">
+              <!-- Ссылка в карточке -->
+              <div v-if="field.type === 'link'" class="detail-link-box">
+                <a
+                    v-if="selectedItem.attributes?.[field.key]"
+                    :href="formatUrl(selectedItem.attributes?.[field.key])"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="detail-url-link"
+                >
+                  <UIMoloSticker name="link" :size="13" />
+                  <span>{{ selectedItem.attributes?.[field.key] }}</span>
+                </a>
+                <span v-else class="cell-empty">—</span>
+              </div>
+
+              <!-- Файл в карточке -->
+              <div v-else-if="field.type === 'file'" class="detail-file-box">
                 <template v-if="selectedItem.attributes?.[field.key]">
                   <img
                       v-if="isImageValue(selectedItem.attributes?.[field.key])"
@@ -1593,8 +1677,18 @@ onBeforeUnmount(() => {
                   class="editor-field"
                   :class="{ full: field.span === 2 || field.type === 'file' }"
               >
+                <!-- Ссылка (URL) -->
+                <UIMoloInput
+                    v-if="field.type === 'link'"
+                    v-model="itemForm.attributes[field.key]"
+                    compact
+                    :tLabel="field.label"
+                    :lRequired="field.required"
+                    :placeholder="field.placeholder || 'https://example.com'"
+                />
+
                 <!-- Загрузка Файла / Фото -->
-                <div v-if="field.type === 'file'" class="file-uploader-box">
+                <div v-else-if="field.type === 'file'" class="file-uploader-box">
                   <label class="field-label-text">{{ field.label }} <span v-if="field.required" class="required">*</span></label>
 
                   <div v-if="itemForm.attributes[field.key]" class="file-preview-card">
@@ -1802,7 +1896,6 @@ onBeforeUnmount(() => {
 
           <div class="editor-section">
             <div class="builder-heading">
-
               <UIMoloButton class="action small" @click="addCustomField">
                 <UIMoloSticker name="plus" :size="13" /> Добавить поле
               </UIMoloButton>
@@ -1819,13 +1912,14 @@ onBeforeUnmount(() => {
                 <UIMoloInput v-model="field.label" compact placeholder="Название поля" />
                 <UIMoloInput v-model="field.key" compact placeholder="field_key" />
 
-                <!-- Выбор типа поля включая Файл / Фото -->
+                <!-- Выбор типа поля включая Ссылку и Файл / Фото -->
                 <UIMoloSelect v-model="field.type" compact>
                   <option value="text">Текст</option>
                   <option value="number">Число</option>
                   <option value="date">Дата</option>
                   <option value="boolean">Да / Нет</option>
                   <option value="select">Список</option>
+                  <option value="link">Ссылка (URL)</option>
                   <option value="file">Файл / Фото</option>
                 </UIMoloSelect>
 
@@ -2316,16 +2410,25 @@ onBeforeUnmount(() => {
   border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
-.file-dl-link {
+.file-dl-link,
+.table-link-btn {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
   color: #38bdf8;
   text-decoration: none;
   font-size: 11px;
 }
 
-.file-dl-link:hover {
+.table-link-btn {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-dl-link:hover,
+.table-link-btn:hover {
   text-decoration: underline;
 }
 
@@ -2538,14 +2641,29 @@ onBeforeUnmount(() => {
   overflow-wrap: anywhere;
 }
 
+.detail-link-box,
 .detail-file-box {
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
 
+.detail-url-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #38bdf8;
+  text-decoration: none;
+  font-size: 11.5px;
+  overflow-wrap: anywhere;
+}
+
+.detail-url-link:hover {
+  text-decoration: underline;
+}
+
 .detail-img-preview {
-  max-width: 100%;
+  max-width: fit-content;
   max-height: 140px;
   object-fit: contain;
   border-radius: 6px;

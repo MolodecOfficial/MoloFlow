@@ -71,7 +71,7 @@ const directoryDefinitionSchema = new Schema({
     fields: [{
         key: { type: String, required: true },
         label: { type: String, required: true },
-        type: { type: String, enum: ['text', 'number', 'date', 'select', 'boolean', 'file'], default: 'text' },
+        type: { type: String, enum: ['text', 'number', 'date', 'select', 'boolean', 'file', 'link'], default: 'text' },
         required: { type: Boolean, default: false },
         options: [{ label: String, value: Schema.Types.Mixed }],
         placeholder: { type: String, default: '' },
@@ -100,18 +100,44 @@ const moloEndpointSchema = new Schema({
     methods: { type: [String], default: ['POST'] },
     moduleId: { type: String, required: true },
     file: { type: String, default: '' },
-    access: { type: String, enum: ['public', 'key', 'members'], default: 'members' },
+
+    // Авторизация основного MoloFlow API — оставляем без изменений.
+    access: {
+        type: String,
+        enum: ['public', 'key', 'members'],
+        default: 'members'
+    },
     secret: { type: String, default: '' },
+
     enabled: { type: Boolean, default: true },
-    createdBy: { _id: { type: String }, name: { type: String } },
+
+    // MoloFlow Connect.
+    connectPublished: { type: Boolean, default: false },
+    connectUrl: { type: String, default: '' },
+    connectPublishedAt: { type: Date, default: null },
+    connectLastError: { type: String, default: '' },
+
+    // Авторизация опубликованного snapshot.
+    connectAuthEnabled: { type: Boolean, default: true },
+    connectKeyHash: { type: String, default: '' },
+    connectKeyCreatedAt: { type: Date, default: null },
+    connectKeyLastUsedAt: { type: Date, default: null },
+
+    createdBy: {
+        _id: { type: String },
+        name: { type: String }
+    },
+
     stats: {
         calls: { type: Number, default: 0 },
         lastCallAt: { type: Date, default: null },
         lastStatus: { type: Number, default: null }
     },
+
     createdAt: { type: Date, default: Date.now },
     updatedAt: { type: Date, default: Date.now }
 })
+
 moloEndpointSchema.index({ slug: 1 }, { unique: true })
 
 const dynamicModuleSchema = new Schema({

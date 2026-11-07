@@ -21,7 +21,6 @@ import {
 } from 'h3'
 import { getModuleSandbox } from '~~/app/utils/moduleSandbox'
 import { tenantModels } from '~~/server/utils/tenantDb'
-import { tenantModels } from '~~/server/utils/tenantDb'
 import { checkEnterpriseAccess } from '~~/server/utils/enterpriseAuth'
 
 const TIMEOUT_MS = 15_000

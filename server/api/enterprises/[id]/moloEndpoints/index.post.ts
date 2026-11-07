@@ -1,66 +1,246 @@
-// Создание / изменение эндпоинта в MoloDB предприятия.
-import { randomBytes } from 'node:crypto'
+import { randomBytes, createHash } from 'node:crypto'
 import { defineEventHandler, getRouterParam, readBody, createError } from 'h3'
 import mongoose from 'mongoose'
+
 import { tenantModels } from '~~/server/utils/tenantDb'
 import { resolveActor, toHttpError } from '~~/server/utils/moloDb/access'
+import {
+    unpublishMoloFlowSnapshot,
+    updateMoloFlowSnapshotAuth
+} from '~~/server/utils/moloFlowConnect'
 
-const SLUG_RE = /^[a-z0-9][a-z0-9_\-/]{0,63}$/
+const SLUG_RE = /^[a-z0-9][a-z0-9_/-]{0,63}$/
 const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']
 const MAX_ENDPOINTS = 100
-const bad = (message: string, statusCode = 400) => createError({ statusCode, message })
+
+const bad = (message: string, statusCode = 400) =>
+    createError({ statusCode, message })
+
+function generateConnectKey() {
+    return randomBytes(32).toString('base64url')
+}
+
+function hashConnectKey(key: string) {
+    return createHash('sha256').update(key, 'utf8').digest('hex')
+}
 
 export default defineEventHandler(async (event) => {
     try {
         const enterpriseId = getRouterParam(event, 'id')
-        if (!enterpriseId) throw bad('Не указано предприятие')
+
+        if (!enterpriseId || !mongoose.Types.ObjectId.isValid(enterpriseId)) {
+            throw bad('Некорректный идентификатор предприятия')
+        }
+
         const actor = await resolveActor(event, enterpriseId, 'schema')
-        const Endpoint = tenantModels(enterpriseId).MoloEndpoint
-        const DynamicModule = tenantModels(enterpriseId).DynamicModule
+
+        const models = tenantModels(enterpriseId)
+        const Endpoint = models.MoloEndpoint
+        const DynamicModule = models.DynamicModule
+
         const body = (await readBody(event)) || {}
 
-        const slug = String(body.slug || '').trim().replace(/^\/+|\/+$/g, '')
-        if (!SLUG_RE.test(slug) || slug.includes('//')) throw bad('Адрес: строчные латинские буквы, цифры, «-», «_» и «/», до 64 символов')
+        const slug = String(body.slug || '')
+            .trim()
+            .replace(/^\/+|\/+$/g, '')
 
-        const methods = [...new Set<string>((Array.isArray(body.methods) ? body.methods : ['POST']).map((m: any) => String(m).toUpperCase()))]
-        if (!methods.length || methods.some((m) => !METHODS.includes(m))) throw bad(`Методы: ${METHODS.join(', ')}`)
-        const access = ['public', 'key', 'members'].includes(body.access) ? body.access : 'members'
+        if (!SLUG_RE.test(slug) || slug.includes('//')) {
+            throw bad('Адрес: строчные латинские буквы, цифры, «-», «_» и «/», до 64 символов')
+        }
+
+        const methods = [
+            ...new Set<string>(
+                (Array.isArray(body.methods) ? body.methods : ['POST'])
+                    .map((m: any) => String(m).toUpperCase())
+            )
+        ]
+
+        if (!methods.length || methods.some(m => !METHODS.includes(m))) {
+            throw bad(`Методы: ${METHODS.join(', ')}`)
+        }
+
+        const access = ['public', 'key', 'members'].includes(body.access)
+            ? body.access
+            : 'members'
 
         const moduleId = String(body.moduleId || '')
-        if (!mongoose.Types.ObjectId.isValid(moduleId)) throw bad('Выберите модуль')
+
+        if (!mongoose.Types.ObjectId.isValid(moduleId)) {
+            throw bad('Выберите модуль')
+        }
+
         const mod: any = await DynamicModule.findById(moduleId).lean()
+
         if (!mod) throw bad('Модуль не найден', 404)
-        if (mod.format !== 'js' && mod.format !== 'ts') throw bad('Эндпоинт можно привязать только к js/ts-модулю')
+
+        if (mod.format !== 'js' && mod.format !== 'ts') {
+            throw bad('Эндпоинт можно привязать только к js/ts-модулю')
+        }
 
         const file = String(body.file || '').trim()
+
         if (file) {
-            const known = (mod.files || []).some((f: any) => f.isServerFile && (f.path === file || f.name === file))
+            const known = (mod.files || []).some(
+                (f: any) => f.isServerFile && (f.path === file || f.name === file)
+            )
+
             if (!known) throw bad('Серверный файл не найден в модуле')
         }
 
-        const existing: any = body._id && mongoose.Types.ObjectId.isValid(body._id)
-            ? await Endpoint.findOne({ _id: body._id, enterpriseId }).lean() : null
+        const existing: any =
+            body._id && mongoose.Types.ObjectId.isValid(body._id)
+                ? await Endpoint.findOne({ _id: body._id, enterpriseId }).lean()
+                : null
+
+        if (body._id && !existing) {
+            throw bad('Эндпоинт не найден', 404)
+        }
+
+        // Основная авторизация MoloFlow API — старое поведение.
         const secret = access === 'key'
-            ? (existing?.secret && body.regenerateKey !== true ? existing.secret : randomBytes(24).toString('base64url'))
+            ? (
+                existing?.secret && body.regenerateKey !== true
+                    ? existing.secret
+                    : randomBytes(24).toString('base64url')
+            )
             : ''
-        const fields = {
-            enterpriseId, slug, description: String(body.description || '').slice(0, 200),
-            methods, moduleId, file, access, secret, enabled: body.enabled !== false,
+
+        // Connect авторизация независима от access.
+        const connectAuthEnabled =
+            typeof body.connectAuthEnabled === 'boolean'
+                ? body.connectAuthEnabled
+                : existing
+                    ? existing.connectAuthEnabled !== false
+                    : true
+
+        const regenerateConnectKey = body.regenerateConnectKey === true
+
+        let connectKey = ''
+        let connectKeyHash = existing?.connectKeyHash || ''
+        let connectKeyCreatedAt = existing?.connectKeyCreatedAt || null
+
+        if (connectAuthEnabled) {
+            if (!connectKeyHash || regenerateConnectKey) {
+                connectKey = generateConnectKey()
+                connectKeyHash = hashConnectKey(connectKey)
+                connectKeyCreatedAt = new Date()
+            }
+        } else {
+            connectKeyHash = ''
+            connectKeyCreatedAt = null
+        }
+
+        const fields: Record<string, any> = {
+            enterpriseId,
+            slug,
+            description: String(body.description || '').slice(0, 200),
+            methods,
+            moduleId,
+            file,
+            access,
+            secret,
+            enabled: body.enabled !== false,
+
+            connectAuthEnabled,
+            connectKeyHash,
+            connectKeyCreatedAt,
+
             updatedAt: new Date()
         }
 
-        try {
-            if (body._id && !existing) throw bad('Эндпоинт не найден', 404)
-            if (existing) {
-                await Endpoint.updateOne({ _id: existing._id, enterpriseId }, { $set: fields })
-                return { success: true, endpoint: { _id: String(existing._id), ...fields } }
+        if (existing) {
+            const routeChanged = existing.slug !== slug
+            const endpointDisabled = fields.enabled === false
+
+            if (existing.connectPublished && (routeChanged || endpointDisabled)) {
+                await unpublishMoloFlowSnapshot(enterpriseId, existing.slug)
+
+                fields.connectPublished = false
+                fields.connectUrl = ''
+                fields.connectPublishedAt = null
+                fields.connectLastError = ''
             }
-            if (await Endpoint.countDocuments({ enterpriseId }) >= MAX_ENDPOINTS) throw bad(`Можно создать не больше ${MAX_ENDPOINTS} эндпоинтов`, 409)
-            const created = await Endpoint.create({ ...fields, createdBy: { _id: actor.id, name: actor.name || '' } })
-            return { success: true, endpoint: { _id: String(created._id), ...fields } }
-        } catch (e: any) {
-            if (e?.code === 11000) throw bad(`Эндпоинт с адресом «${slug}» уже существует`, 409)
-            throw e
+
+            // Если опубликованный адрес не меняется — обновляем авторизацию
+            // непосредственно в Worker, не перепубликуя snapshot.
+            if (
+                existing.connectPublished &&
+                !routeChanged &&
+                !endpointDisabled
+            ) {
+                await updateMoloFlowSnapshotAuth(
+                    enterpriseId,
+                    slug,
+                    {
+                        enabled: connectAuthEnabled,
+                        keyHash: connectKeyHash
+                    }
+                )
+            }
+
+            await Endpoint.updateOne(
+                { _id: existing._id, enterpriseId },
+                { $set: fields }
+            )
+
+            return {
+                success: true,
+                endpoint: {
+                    _id: String(existing._id),
+                    slug,
+                    description: fields.description,
+                    methods,
+                    moduleId,
+                    file,
+                    access,
+                    enabled: fields.enabled,
+                    connectAuthEnabled,
+                    hasConnectKey: !!connectKeyHash,
+                    connectKeyCreatedAt,
+                    connectPublished: fields.connectPublished ?? !!existing.connectPublished,
+                    connectUrl: fields.connectUrl ?? existing.connectUrl ?? '',
+                    connectPublishedAt: fields.connectPublishedAt ?? existing.connectPublishedAt ?? null,
+                    connectLastError: fields.connectLastError ?? existing.connectLastError ?? '',
+                    ...(connectKey ? { connectKey } : {})
+                },
+                ...(connectKey ? { connectKey } : {})
+            }
         }
-    } catch (e) { throw toHttpError(e) }
+
+        if (await Endpoint.countDocuments({ enterpriseId }) >= MAX_ENDPOINTS) {
+            throw bad(`Можно создать не больше ${MAX_ENDPOINTS} эндпоинтов`, 409)
+        }
+
+        const created = await Endpoint.create({
+            ...fields,
+            createdBy: {
+                _id: actor.id,
+                name: actor.name || ''
+            }
+        })
+
+        return {
+            success: true,
+            endpoint: {
+                _id: String(created._id),
+                slug,
+                description: fields.description,
+                methods,
+                moduleId,
+                file,
+                access,
+                enabled: fields.enabled,
+                connectAuthEnabled,
+                hasConnectKey: !!connectKeyHash,
+                connectKeyCreatedAt,
+                connectPublished: false,
+                connectUrl: '',
+                connectPublishedAt: null,
+                connectLastError: ''
+            },
+            ...(connectKey ? { connectKey } : {})
+        }
+    } catch (e) {
+        throw toHttpError(e)
+    }
 })
