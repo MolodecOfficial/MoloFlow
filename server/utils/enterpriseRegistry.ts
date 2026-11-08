@@ -1,11 +1,10 @@
-
 import bcrypt from 'bcrypt'
 import { createError } from 'h3'
 import { Enterprise } from '~~/server/models/enterprise.model'
 import { User } from '~~/server/models/user.model'
 import { ModuleCatalog } from '~~/server/models/moduleCatalog.model'
 import { dropTenantDb } from './tenantDb'
-import { writeSelfProfile, getSelfProfile, ensureCompanyDb } from './enterpriseDb'
+import { writeSelfProfile, getSelfProfile } from './enterpriseDb'
 import { ensureTenantStructure } from './tenantSetup'
 import { allDirectoryModels, directoryModel, ensureAllDirectoryCollections } from './directoryCollections'
 
@@ -86,7 +85,6 @@ export const rebuildSystemDirectories = async (enterpriseId: string) => {
         const uid = String(m.userId?._id ?? m.userId)
         const u = byId.get(uid)
 
-        // Ищем существующую запись сотрудника, чтобы сохранить его персональные правки
         const existing: any = await departments.findOne({
             $or: [
                 { 'attributes.userId': uid },
@@ -95,8 +93,6 @@ export const rebuildSystemDirectories = async (enterpriseId: string) => {
             ]
         }).lean()
 
-        // Табельный номер: если уже был задан вручную (например LDR_1), сохраняем его!
-        // Роль подставляется ТОЛЬКО если код был вообще пуст.
         const currentCode = existing?.code && existing.code !== existing?.attributes?.role
             ? existing.code
             : (existing?.code || `EMP-${uid.slice(-4).toUpperCase()}`)
@@ -111,7 +107,7 @@ export const rebuildSystemDirectories = async (enterpriseId: string) => {
                     directorySlug: 'departments',
                     title: existing?.title || u?.name || 'Без имени',
                     code: currentCode,
-                    description: existing?.description || `Телефон: ${u?.phone || 'не указан'}`,
+                    description: existing?.description || '',
                     attributes: {
                         ...existingAttrs,
                         system: true,
@@ -126,7 +122,6 @@ export const rebuildSystemDirectories = async (enterpriseId: string) => {
         )
     }
 
-    // Удаляем только тех системных сотрудников, которых реально исключили из штата предприятия
     await departments.deleteMany({ 'attributes.system': true, 'attributes.userId': { $nin: uids } })
 
     const profile: any = await getSelfProfile(enterpriseId)

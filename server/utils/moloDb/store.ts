@@ -44,6 +44,36 @@ const READ_OPS = new Set(['find', 'findOne', 'get', 'count'])
 const WRITE_OPS = new Set(['insert', 'insertMany', 'update', 'delete'])
 const ADMIN_ROLE = 'Администратор'
 
+const DIRECTORY_ROOT_KEYS = new Set([
+    '_id',
+    'id',
+    'title',
+    'code',
+    'description',
+    'parentId',
+    'directorySlug',
+    'enterpriseId',
+    'createdAt',
+    'updatedAt',
+    'departmentKey'
+])
+
+function flattenDirectoryItem(doc: any) {
+    if (!doc) return null
+    const plain = typeof doc.toObject === 'function' ? doc.toObject() : { ...doc }
+    const attrs = plain.attributes && typeof plain.attributes === 'object' ? plain.attributes : {}
+    return {
+        ...plain,
+        ...attrs,
+        _id: String(plain._id),
+        title: plain.title || '',
+        code: plain.code || '',
+        description: plain.description || '',
+        createdAt: plain.createdAt,
+        updatedAt: plain.updatedAt
+    }
+}
+
 const recordsCache = new Map<string, Promise<RecordsCollection>>()
 
 async function defaultRecords(enterpriseId: string): Promise<RecordsCollection> {
@@ -244,7 +274,6 @@ async function runTenantCollectionOp(ctx: OpContext, body: any): Promise<any> {
         if (ctx.col === 'directory_definitions') {
             model = DirectoryDefinition
         } else {
-            // Любой справочник в Studio (departments, 123, ...) виртуально мапится в DirectoryItem
             model = DirectoryItem
             directorySlugOverride = ctx.col.replace(/^dir_/, '')
         }
@@ -263,8 +292,13 @@ async function runTenantCollectionOp(ctx: OpContext, body: any): Promise<any> {
         const out: Record<string, any> = {}
         for (const [key, value] of Object.entries(input)) {
             if (key === 'enterpriseId' || key === 'createdBy') continue
-            if (key === '_id') out._id = idFilter(value)
-            else out[key] = value
+            if (key === '_id') {
+                out._id = idFilter(value)
+            } else if (directorySlugOverride && !DIRECTORY_ROOT_KEYS.has(key) && !key.startsWith('attributes.')) {
+                out[`attributes.${key}`] = value
+            } else {
+                out[key] = value
+            }
         }
         return out
     }
@@ -276,26 +310,65 @@ async function runTenantCollectionOp(ctx: OpContext, body: any): Promise<any> {
 
     const filter = { ...scope, ...normalizeFilter(body.filter) }
 
+    if (body.search && typeof body.search === 'string' && body.search.trim()) {
+        const rx = { $regex: body.search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' }
+        const searchConditions: any[] = [
+            { title: rx },
+            { code: rx },
+            { description: rx }
+        ]
+        if (directorySlugOverride) {
+            searchConditions.push(
+                { 'attributes.phone': rx },
+                { 'attributes.role': rx },
+                { 'attributes.department': rx },
+                { 'attributes.inn': rx },
+                { 'attributes.kpp': rx },
+                { 'attributes.unit': rx }
+            )
+        }
+        filter.$or = searchConditions
+    }
+
     const cleanDoc = (input: any) => {
         if (!input || typeof input !== 'object' || Array.isArray(input)) throw new MoloDbError('doc должен быть объектом')
         const doc = { ...input }
         delete doc._id
         delete doc.enterpriseId
         delete doc.createdBy
+
         if (ctx.db === 'workspace' && ctx.col === 'workspace_documents') {
             doc.type = doc.type || 'primary'
             doc.content = doc.content ?? ''
             doc.nameLower = String(doc.nameLower ?? doc.name ?? '').toLowerCase()
             doc.size = Number(doc.size ?? (typeof doc.content === 'string' ? Buffer.byteLength(doc.content) : 0))
         }
+
         if (directorySlugOverride) {
             doc.directorySlug = directorySlugOverride
-            doc.attributes = doc.attributes && typeof doc.attributes === 'object' ? doc.attributes : {}
+            const attrs: Record<string, any> = doc.attributes && typeof doc.attributes === 'object' ? { ...doc.attributes } : {}
+            for (const [k, v] of Object.entries(doc)) {
+                if (!DIRECTORY_ROOT_KEYS.has(k) && k !== 'attributes') {
+                    attrs[k] = v
+                    delete doc[k]
+                }
+            }
+            doc.attributes = attrs
+            if (attrs.department && !doc.departmentKey) {
+                const deptKey = String(attrs.departmentKey || attrs.department).trim().toLowerCase()
+                doc.departmentKey = deptKey
+                attrs.departmentKey = deptKey
+            }
         }
         return { ...doc, enterpriseId: ctx.enterpriseId }
     }
 
-    const plain = (value: any) => value ? (typeof value.toObject === 'function' ? value.toObject() : value) : null
+    const plain = (value: any) => {
+        if (!value) return null
+        if (directorySlugOverride) return flattenDirectoryItem(value)
+        return typeof value.toObject === 'function' ? value.toObject() : value
+    }
+
     const limit = clampInt(body.limit, 50, 1, LIMITS.queryLimit)
     const skip = clampInt(body.skip, 0, 0, 100_000)
 
@@ -303,22 +376,24 @@ async function runTenantCollectionOp(ctx: OpContext, body: any): Promise<any> {
         case 'find': {
             const sortText = String(body.sort || '-updatedAt')
             const desc = sortText.startsWith('-')
-            const key = desc ? sortText.slice(1) : sortText
-            const sort: Record<string, 1 | -1> = { [key || 'updatedAt']: desc ? -1 : 1 }
+            const rawKey = desc ? sortText.slice(1) : sortText
+            const actualKey = directorySlugOverride && !DIRECTORY_ROOT_KEYS.has(rawKey) ? `attributes.${rawKey}` : rawKey
+            const sort: Record<string, 1 | -1> = { [actualKey || 'updatedAt']: desc ? -1 : 1 }
+
             const [items, total] = await Promise.all([
                 model.find(filter).sort(sort).skip(skip).limit(limit).lean(),
                 body.withTotal === false ? Promise.resolve(undefined) : model.countDocuments(filter)
             ])
-            return { items, limit, skip, ...(total === undefined ? {} : { total }) }
+            return { items: items.map(plain), limit, skip, ...(total === undefined ? {} : { total }) }
         }
         case 'findOne': {
             const item = await model.findOne(filter).sort({ updatedAt: -1, createdAt: -1 }).lean()
-            return { item: item || null }
+            return { item: plain(item) }
         }
         case 'get': {
             const id = idFilter(body.id)
             if (!id) throw new MoloDbError('Некорректный ID записи')
-            return { item: await model.findOne({ ...scope, _id: id }).lean() }
+            return { item: plain(await model.findOne({ ...scope, _id: id }).lean()) }
         }
         case 'count': return { count: await model.countDocuments(filter) }
         case 'insert': {
@@ -336,16 +411,41 @@ async function runTenantCollectionOp(ctx: OpContext, body: any): Promise<any> {
             if (!Object.keys(targetFilter).length) throw new MoloDbError('Для изменения записи укажите id или filter')
             const patch = body.patch && typeof body.patch === 'object' && !Array.isArray(body.patch) ? { ...body.patch } : {}
             for (const protectedKey of ['_id', 'enterpriseId', 'createdBy']) delete patch[protectedKey]
+
+            let updateSet: Record<string, any> = { updatedAt: new Date() }
+
+            if (directorySlugOverride) {
+                for (const [k, v] of Object.entries(patch)) {
+                    if (DIRECTORY_ROOT_KEYS.has(k)) {
+                        updateSet[k] = v
+                    } else if (k === 'attributes' && v && typeof v === 'object') {
+                        for (const [ak, av] of Object.entries(v)) {
+                            updateSet[`attributes.${ak}`] = av
+                        }
+                    } else {
+                        updateSet[`attributes.${k}`] = v
+                    }
+                }
+                if (patch.department !== undefined) {
+                    const deptKey = String(patch.departmentKey || patch.department || '').trim().toLowerCase()
+                    updateSet['departmentKey'] = deptKey
+                    updateSet['attributes.departmentKey'] = deptKey
+                }
+            } else {
+                updateSet = { ...patch, updatedAt: new Date() }
+            }
+
             if (body.many) {
-                const result = await model.updateMany({ ...scope, ...targetFilter }, { $set: { ...patch, updatedAt: new Date() } })
+                const result = await model.updateMany({ ...scope, ...targetFilter }, { $set: updateSet })
                 return { matched: result.matchedCount, modified: result.modifiedCount }
             }
+
             const item = await model.findOneAndUpdate(
                 { ...scope, ...targetFilter },
-                { $set: { ...patch, updatedAt: new Date() } },
+                { $set: updateSet },
                 { new: true, runValidators: true }
             ).lean()
-            return { matched: item ? 1 : 0, modified: item ? 1 : 0, item: item || null }
+            return { matched: item ? 1 : 0, modified: item ? 1 : 0, item: plain(item) }
         }
         case 'delete': {
             const targetFilter = body.id ? { _id: idFilter(body.id) } : normalizeFilter(body.filter)

@@ -1,4 +1,3 @@
-<!-- components/apps/molodb/MoloDBStudio.vue -->
 <script setup>
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useLogger } from '~~/app/composables/useLogger'
@@ -1743,7 +1742,6 @@ function onKey(e) {
                       )"
                     >
                       <UIMoloSticker name="copy" :size="11" />
-                      <span>Скопировать URL</span>
                     </UIMoloButton>
 
                     <UIMoloButton class="small" title="Параметры" @click="openEndpoint(e)">
@@ -1799,7 +1797,6 @@ function onKey(e) {
                         @click="publishEndpoint(e)"
                     >
                       <UIMoloSticker name="refresh" :size="11" />
-                      <span>Обновить</span>
                     </UIMoloButton>
 
                     <UIMoloButton
@@ -1809,7 +1806,6 @@ function onKey(e) {
                         @click="unpublishEndpoint(e)"
                     >
                       <UIMoloSticker name="x" :size="11" />
-                      <span>Снять</span>
                     </UIMoloButton>
 
                     <UIMoloButton
