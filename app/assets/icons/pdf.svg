@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="100%" height="100%">
+  <defs>
+    <!-- Основной красный градиент листа -->
+    <linearGradient id="pdfSheetGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ff4b4b" />
+      <stop offset="100%" stop-color="#c61b1b" />
+    </linearGradient>
+
+    <!-- Тень под загнутым уголком -->
+    <linearGradient id="pdfCornerShade" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#000000" stop-opacity="0.3" />
+      <stop offset="100%" stop-color="#000000" stop-opacity="0.0" />
+    </linearGradient>
+
+    <!-- Загнутый уголок -->
+    <linearGradient id="pdfFoldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.9" />
+      <stop offset="100%" stop-color="#ffb3b3" stop-opacity="0.6" />
+    </linearGradient>
+
+    <!-- Градиент акцентной плашки с текстом -->
+    <linearGradient id="pdfBadgeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#991111" />
+      <stop offset="100%" stop-color="#730909" />
+    </linearGradient>
+
+    <!-- Мягкая тень плашки -->
+    <filter id="badgeShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="2" stdDeviation="1.5" flood-color="#000000" flood-opacity="0.4" />
+    </filter>
+  </defs>
+
+  <!-- Тело документа со срезанным правым верхним углом -->
+  <path d="M 8 5 
+           C 8 3.34 9.34 2 11 2 
+           L 31 2 
+           L 41 12 
+           L 41 43 
+           C 41 44.66 39.66 46 38 46 
+           L 11 46 
+           C 9.34 46 8 44.66 8 43 
+           Z" 
+        fill="url(#pdfSheetGrad)" />
+
+  <!-- Декоративные полоски (строки документа) -->
+  <rect x="14" y="14" width="12" height="2.5" rx="1.25" fill="#ffffff" opacity="0.4" />
+  <rect x="14" y="20" width="20" height="2" rx="1" fill="#ffffff" opacity="0.3" />
+  <rect x="14" y="24" width="20" height="2" rx="1" fill="#ffffff" opacity="0.3" />
+
+  <!-- Тень загнутого уголка -->
+  <path d="M 31 2 L 31 12 L 41 12 Z" fill="url(#pdfCornerShade)" />
+
+  <!-- Сам загнутый уголок -->
+  <path d="M 31 2 
+           L 41 12 
+           L 33 12 
+           C 31.9 12 31 11.1 31 10 
+           Z" 
+        fill="url(#pdfFoldGrad)" />
+
+  <!-- Фирменная плашка с надписью PDF в стиле Office/Word/Excel -->
+  <rect x="5" y="28" width="28" height="13" rx="2.5" 
+        fill="url(#pdfBadgeGrad)" 
+        filter="url(#badgeShadow)" />
+
+  <!-- Надпись PDF -->
+  <text x="19" y="37.5" 
+        fill="#ffffff" 
+        font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" 
+        font-size="8.5" 
+        font-weight="900" 
+        letter-spacing="0.8" 
+        text-anchor="middle">PDF</text>
+</svg>

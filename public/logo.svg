@@ -1,0 +1,86 @@
+<svg width="220" height="220" viewBox="0 0 220 220" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <!-- Background -->
+    <rect width="220" height="220" rx="18" fill="none"/>
+
+    <!-- Container -->
+    <rect x="40" y="50" width="140" height="110" rx="4"
+          stroke="#F5F5F5" stroke-width="1" fill="none"/>
+
+    <!-- 🔹 Window 1 (самое заднее) -->
+    <g>
+        <rect x="60" y="70" width="72" height="46" rx="2" fill="#F5F5F507"/>
+        <rect x="60" y="70" width="72" height="12" rx="2" fill="#F5F5F50A"/>
+
+        <circle cx="106" cy="76" r="1.5" fill="#F5F5F5"/>
+        <circle cx="112" cy="76" r="1.5" fill="#F5F5F5"/>
+        <circle cx="118" cy="76" r="1.5" fill="#F5F5F5"/>
+        <circle cx="124" cy="76" r="1.5" fill="#F5F5F5"/>
+
+        <rect x="66" y="90" width="30" height="2" rx="2" fill="#F5F5F5"/>
+        <rect x="66" y="97" width="42" height="2" rx="2" fill="#F5F5F5"/>
+    </g>
+
+    <!-- 🔹 Window 2 -->
+    <g>
+        <rect x="74" y="84" width="72" height="46" rx="2" fill="#F5F5F507"/>
+        <rect x="74" y="84" width="72" height="12" rx="2" fill="#F5F5F50A"/>
+
+        <circle cx="120" cy="90" r="1.5" fill="#F5F5F5"/>
+        <circle cx="126" cy="90" r="1.5" fill="#F5F5F5"/>
+        <circle cx="132" cy="90" r="1.5" fill="#F5F5F5"/>
+        <circle cx="138" cy="90" r="1.5" fill="#F5F5F5"/>
+
+        <rect x="80" y="104" width="28" height="2" rx="2" fill="#F5F5F5"/>
+        <rect x="80" y="111" width="40" height="2" rx="2" fill="#F5F5F5"/>
+    </g>
+
+    <!-- 🔹 Window 3 (самое верхнее) -->
+    <g>
+        <rect x="88" y="98" width="72" height="46" rx="2" fill="#F5F5F507"/>
+        <rect x="88" y="98" width="72" height="12" rx="2" fill="#F5F5F50A"/>
+
+        <circle cx="134" cy="104" r="1.5" fill="#F5F5F5"/>
+        <circle cx="140" cy="104" r="1.5" fill="#F5F5F5"/>
+        <circle cx="146" cy="104" r="1.5" fill="#F5F5F5"/>
+        <circle cx="152" cy="104" r="1.5" fill="#F5F5F5"/>
+
+        <rect x="94" y="118" width="30" height="2" rx="2" fill="#F5F5F5"/>
+        <rect x="94" y="125" width="38" height="2" rx="2" fill="#F5F5F5"/>
+    </g>
+
+    <!-- ОБЩАЯ ОБВОДКА -->
+    <path
+            d="
+      M60 76
+      Q60 70 66 70
+      L126 70
+      Q132 70 132 76
+      L132 84
+      L140 84
+      Q146 84 146 90
+      L146 98
+      L154 98
+      Q160 98 160 104
+      L160 138
+      Q160 144 154 144
+      L94 144
+      Q88 144 88 138
+      L88 130
+      L80 130
+      Q74 130 74 124
+      L74 116
+      L66 116
+      Q60 116 60 110
+      Z
+    "
+            fill="none"
+            stroke="#F5F5F5"
+            stroke-width="1"
+            stroke-linejoin="round"
+    />
+
+    <!-- outer controls -->
+    <circle cx="152" cy="60" r="1.5" fill="#F5F5F5"/>
+    <circle cx="160" cy="60" r="1.5" fill="#F5F5F5"/>
+    <circle cx="168" cy="60" r="1.5" fill="#F5F5F5"/>
+</svg>

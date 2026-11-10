@@ -1,0 +1,206 @@
+body {
+  font-family: 'Euclid Square', sans-serif;
+  margin: 0;
+  padding: 0;
+
+  -webkit-tap-highlight-color: transparent;
+  tap-highlight-color: transparent;
+
+  hr {
+    border: 1px solid var(--half_opacity_border);
+    width: 100%;
+    padding: 0;
+    margin: 0;
+  }
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+  tap-highlight-color: transparent;
+}
+
+:root {
+  --half_opacity_border_disabled: rgba(94, 94, 94, 0.47);
+  --half_opacity_border_hover: rgba(255, 255, 255, 0.07);
+  --half_opacity_border: rgba(255, 255, 255, 0.12);
+  --half_opacity_bg: rgba(245, 245, 245, 0.03);
+  --borber-color_main: rgba(13, 142, 225, 0.8);
+  --border-color_hover: #0a4493;
+  --border-color_disabled: #0e436b;
+}
+:root {
+  --glass-bg: rgba(255, 255, 255, 0.08);
+  --glass-border: rgba(255, 255, 255, 0.2);
+  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+  --glass-blur: 12px;
+  --glass-highlight: rgba(255, 255, 255, 0.4);
+}
+
+
+
+.action-btn:disabled {
+  opacity: 0.5;
+}
+
+.action-btn.danger {
+  padding: 6px 16px;
+  background: #efd31e;
+  color: #020b18;
+  border: none;
+  border-radius: 4px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  &.action-btn:hover {
+    background: #b09b15;
+  }
+}
+
+.action-btn.close {
+  padding: 6px 16px;
+  background: #ef1e1e;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  &.action-btn:hover {
+    background: #b01515;
+  }
+}
+
+.modern-loader {
+  width: 12px;
+  height: 12px;
+  border: 3px solid rgba(0, 0, 0, 0.1);
+  border-radius: 50%;
+  border-top-color: #020b18;
+  animation: spin 0.5s linear infinite;
+  margin: 0 auto;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--borber-color_main);
+  cursor: pointer;
+}
+
+select option {
+  background: #333333;
+}
+
+.loading-overlay {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
+.loading-spinner {
+  width: 30px;
+  height: 30px;
+  border: 3px solid transparent;
+  border-top: 3px solid var(--borber-color_main);
+  border-radius: 50%;
+  animation: spin 0.5s linear infinite;
+}
+
+.hr-vert {
+  width: 2px;
+  height: auto;
+  min-height: 100%;
+  border: none;
+  border-left: 1px solid var(--half_opacity_border, #3c3c3c);
+  align-self: stretch;
+}
+
+.btn-group {
+  display: flex;
+  align-items: center;
+  position: relative;
+
+  /* Все кнопки внутри группы по умолчанию прямоугольные */
+  .molo-btn {
+    border-radius: 0;
+    margin: 0;
+  }
+
+  /* Подъём активной кнопки над соседями при наведении */
+  .molo-btn:hover,
+  .molo-btn:focus,
+  .molo-btn.active {
+    z-index: 2;
+  }
+
+  /* Единственная кнопка в группе (если осталась одна) */
+  .molo-btn:first-child:last-child {
+    border-radius: 6px;
+  }
+
+  /* ═════════ 1. ГОРИЗОНТАЛЬНЫЙ РЕЖИМ (по умолчанию) ═════════ */
+  &:not(.column) {
+    flex-direction: row;
+
+    /* Схлопывание двойного бордера слева */
+    .molo-btn:not(:first-child) {
+      margin-left: -1px;
+      border-radius: 0;
+    }
+
+    /* Левая кнопка: скругление только слева */
+    .molo-btn:first-child {
+      border-top-left-radius: 6px;
+      border-bottom-left-radius: 6px;
+      border-top-right-radius: 0;
+      border-bottom-right-radius: 0;
+    }
+
+    /* Правая кнопка: скругление только справа */
+    .molo-btn:last-child {
+      border-top-right-radius: 6px;
+      border-bottom-right-radius: 6px;
+      border-top-left-radius: 0;
+      border-bottom-left-radius: 0;
+    }
+  }
+
+  /* ═════════ 2. ВЕРТИКАЛЬНЫЙ РЕЖИМ (.btn-group.column) ═════════ */
+  &.column {
+    flex-direction: column;
+    align-items: stretch; /* Растягивает кнопки по ширине колонки */
+
+    /* Схлопывание двойного бордера сверху */
+    .molo-btn:not(:first-child) {
+      margin-top: -1px;
+      margin-left: 0;
+      border-radius: 0;
+    }
+
+    /* Верхняя кнопка: скругление только сверху */
+    .molo-btn:first-child {
+      border-top-left-radius: 6px;
+      border-top-right-radius: 6px;
+      border-bottom-left-radius: 0;
+      border-bottom-right-radius: 0;
+    }
+
+    /* Нижняя кнопка: скругление только снизу */
+    .molo-btn:last-child {
+      border-bottom-left-radius: 6px;
+      border-bottom-right-radius: 6px;
+      border-top-left-radius: 0;
+      border-top-right-radius: 0;
+    }
+  }
+}
+
+

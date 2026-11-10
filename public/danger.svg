@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<svg width="100px" height="100px" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <!-- Треугольник (масштабирован из 24x24 в 36x36) -->
+    <path d="M18 4.707L4.341 27.096a3 3 0 0 0 .081 2.952A3 3 0 0 0 6.992 31.5h22.016c1.062 0 2.024-.543 2.571-1.452a3 3 0 0 0 .081-2.952L18 4.707z"
+          stroke="orange" stroke-width="1.2" fill="none" stroke-linejoin="round"/>
+
+    <!-- Восклицательный знак -->
+    <path d="M18 15v7.5" stroke="orange" stroke-width="1.8" stroke-linecap="round"/>
+    <circle cx="18" cy="27" r="1.5" fill="orange"/>
+</svg>

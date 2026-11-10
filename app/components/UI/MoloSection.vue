@@ -1,0 +1,114 @@
+<script setup lang="ts">
+
+</script>
+
+<template>
+  <section class="form-container" v-pinnable>
+    <section class="form-section">
+      <section class="form-header">
+        <slot name="header"/>
+      </section>
+      <section class="form-main" >
+        <slot name="main"/>
+      </section>
+    </section>
+  </section>
+
+</template>
+
+<style scoped>
+.form-container {
+  display: flex;
+  flex-direction: column;
+  background: none;
+  border: none;
+}
+.form-section {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  background: var(--half_opacity_bg);
+
+  border-radius: 10px;
+
+  border: 1px solid rgba(255, 255, 255, 0.09);
+
+  backdrop-filter: blur(8px);
+
+
+  transition: all .25s ease;
+}
+
+.form-section::before {
+  content: '';
+
+  position: absolute;
+  inset: 0;
+
+  border-radius: inherit;
+
+  padding: 1px;
+
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+
+  pointer-events: none;
+}
+
+.form-section::after {
+  content: '';
+
+  position: absolute;
+
+  width: 300px;
+  height: 300px;
+
+  top: -150px;
+  left: -150px;
+  border-radius: 50%;
+  transition: all .6s ease;
+
+  pointer-events: none;
+}
+
+.form-section:hover::after {
+  left: calc(100% - 150px);
+}
+
+.form-header {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  padding: 15px;
+  border-bottom: 1px solid rgba(255,255,255,.08);
+  color: #c7c7c7;
+  & span {
+    font-size: 20px
+  }
+}
+
+
+.form-main {
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+@media (max-width: 600px) {
+  .form-header {
+    padding: 12px;
+    flex-wrap: wrap;
+  }
+
+  .form-main {
+    padding: 8px;
+  }
+}
+</style>

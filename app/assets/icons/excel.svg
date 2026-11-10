@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512" width="384" height="512">
+  <defs>
+    <filter id="fold-shadow-green" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="-4" dy="4" stdDeviation="6" flood-color="#000000" flood-opacity="0.25" />
+    </filter>
+  </defs>
+
+  <path d="M48 0 H256 L384 128 V464 C384 490.5 362.5 512 336 512 H48 C21.5 512 0 490.5 0 464 V48 C0 21.5 21.5 0 48 0 Z" fill="#0F9D58" />
+
+  <path d="M256 0 V96 C256 113.7 270.3 128 288 128 H384 Z" fill="#87CEAC" filter="url(#fold-shadow-green)" />
+
+  <!-- Табличная сетка Excel/Sheets -->
+  <rect x="76" y="206" width="232" height="156" rx="16" fill="#FFFFFF" />
+  <rect x="102" y="232" width="76" height="38" rx="3" fill="#0F9D58" />
+  <rect x="206" y="232" width="76" height="38" rx="3" fill="#0F9D58" />
+  <rect x="102" y="296" width="76" height="38" rx="3" fill="#0F9D58" />
+  <rect x="206" y="296" width="76" height="38" rx="3" fill="#0F9D58" />
+</svg>
