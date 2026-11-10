@@ -1,29 +1,62 @@
+
 const path = require('node:path')
 
 const iconPath = path.resolve(__dirname, 'public/favicon.ico')
+
+const keepFiles = new Set([
+    'package.json'
+])
+
+const keepDirectories = [
+    'electron'
+]
 
 module.exports = {
     packagerConfig: {
         asar: true,
         name: 'MoloFlow',
         icon: iconPath,
+
         ignore: (file) => {
-            if (!file) return false
-            if (file === '/node_modules') return false
-            const keep = [
-                '/package.json',
-                '/electron',
-                '/preload.cjs',
-                '/node_modules/dotenv',
-                '/node_modules/electron-squirrel-startup',
-                '/node_modules/debug',
-                '/node_modules/ms'
-            ]
-            return !keep.some(k => file === k || file.startsWith(k + '/'))
+            const raw = String(file)
+
+            const isAbsolute =
+                /^[a-zA-Z]:[\\/]/.test(raw) ||
+                raw.startsWith('\\\\')
+
+            const relative = isAbsolute
+                ? path.relative(__dirname, raw)
+                : raw.replace(/^[/\\]+/, '')
+
+            const normalized = relative
+                .replace(/\\/g, '/')
+                .replace(/^\.\//, '')
+
+            if (
+                !normalized ||
+                normalized === '..' ||
+                normalized.startsWith('../')
+            ) {
+                return false
+            }
+
+            const shouldKeep =
+                keepFiles.has(normalized) ||
+                keepDirectories.some(dir =>
+                    normalized === dir ||
+                    normalized.startsWith(dir + '/')
+                )
+
+            return !shouldKeep
         },
+
         extraResource: ['./.output', './.env']
     },
-    rebuildConfig: { onlyModules: [] },
+
+    rebuildConfig: {
+        onlyModules: []
+    },
+
     makers: [
         {
             name: '@electron-forge/maker-squirrel',
@@ -37,6 +70,7 @@ module.exports = {
             platforms: ['win32']
         }
     ],
+
     publishers: [
         {
             name: '@electron-forge/publisher-github',

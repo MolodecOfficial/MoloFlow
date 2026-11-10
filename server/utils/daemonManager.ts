@@ -1,5 +1,5 @@
 // server/utils/daemonManager.ts
-// СЕРВЕРНЫЙ КООРДИНАТОР PYTHON-МОДУЛЕЙ И СИНХРОНИЗАЦИИ С CLOUDFLARE (БЕЗ CHILD_PROCESS.SPAWN)
+// СЕРВЕРНЫЙ КООРДИНАТОР PYTHON-МОДУЛЕЙ И СИНХРОНИЗАЦИИ С CLOUDFLARE
 
 import { loadModule } from '~~/server/utils/moduleLookup'
 import { tenantModels } from '~~/server/utils/tenantDb'
@@ -20,6 +20,7 @@ export interface ManagedCloudDaemon {
     logs: string[]
     lastResult: any
     startedAt: number
+    lastHeartbeat: number
     running: boolean
 }
 
@@ -49,6 +50,7 @@ export function getDaemonStatus(moduleId: string) {
         pid: proc?.pid,
         publicUrl: proc?.publicUrl || null,
         startedAt: proc?.startedAt,
+        lastHeartbeat: proc?.lastHeartbeat,
         lastResult: proc?.lastResult ?? null,
         logs: proc?.logs || []
     }
@@ -56,6 +58,7 @@ export function getDaemonStatus(moduleId: string) {
 
 export function listAllDaemons() {
     const list = []
+    const now = Date.now()
     for (const [mId, proc] of runningDaemons.entries()) {
         if (!proc.running) continue
         list.push({
@@ -63,6 +66,7 @@ export function listAllDaemons() {
             pid: proc.pid,
             publicUrl: proc.publicUrl,
             startedAt: proc.startedAt,
+            lastHeartbeat: proc.lastHeartbeat,
             running: true,
             logs: proc.logs.slice(-20)
         })
@@ -77,12 +81,30 @@ export async function recordDaemonHeartbeat(params: {
     result?: any
     finished?: boolean
 }) {
-    const proc = runningDaemons.get(params.moduleId)
-    if (!proc) return { ok: false }
+    let proc = runningDaemons.get(params.moduleId)
+    if (!proc) {
+        // Восстанавливаем запись, если демон отправляет сигналы жизни
+        proc = {
+            pid: 2000 + Math.floor(Math.random() * 7000),
+            moduleId: params.moduleId,
+            enterpriseId: params.enterpriseId,
+            name: 'Python Daemon',
+            slug: `py/${params.moduleId}`,
+            publicUrl: `/api/x/${params.enterpriseId}/py/${params.moduleId}`,
+            logs: [],
+            lastResult: null,
+            startedAt: Date.now(),
+            lastHeartbeat: Date.now(),
+            running: true
+        }
+        runningDaemons.set(params.moduleId, proc)
+    }
+
+    proc.lastHeartbeat = Date.now()
 
     if (params.log) {
         proc.logs.push(params.log)
-        if (proc.logs.length > 300) proc.logs.shift()
+        if (proc.logs.length > 500) proc.logs.shift()
     }
 
     if (params.result !== undefined) {
@@ -184,6 +206,7 @@ export async function startOrRestartDaemon(moduleId: string, enterpriseId: strin
         logs: [`[Cloud] Ссылка активна: ${publicUrl}`],
         lastResult: initialPayload,
         startedAt: Date.now(),
+        lastHeartbeat: Date.now(),
         running: true
     }
 

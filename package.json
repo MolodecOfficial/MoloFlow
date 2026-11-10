@@ -2,7 +2,7 @@
   "name": "moloflow",
   "type": "module",
   "productName": "MoloFlow",
-  "version": "1.9.5",
+  "version": "1.10.14",
   "description": "MoloFlow desktop",
   "author": "Molodec_Official",
   "main": "electron/main.cjs",
@@ -16,7 +16,6 @@
     "postinstall": "nuxt prepare",
     "electron:dev": "nuxt build && electron .",
     "electron:build": "nuxt build && electron-forge make",
-    "dev:all": "concurrently -n nuxt,bot -c blue,green \"npm run dev\" \"npm run bot\"",
     "release": "node scripts/release.mjs"
   },
   "dependencies": {
@@ -59,7 +58,6 @@
     "docx": "^9.7.1",
     "dotenv": "^17.4.2",
     "dustjs-linkedin": "^3.0.1",
-    "electron-squirrel-startup": "^1.0.1",
     "exceljs": "^4.4.0",
     "express": "^5.2.1",
     "fake-indexeddb": "^6.2.5",
@@ -96,13 +94,13 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
-    "@electron-forge/cli": "^7.10.2",
+    "@electron-forge/cli": "7.11.2",
     "@electron-forge/maker-deb": "^7.10.2",
     "@electron-forge/maker-rpm": "^7.10.2",
-    "@electron-forge/maker-squirrel": "^7.10.2",
-    "@electron-forge/maker-zip": "^7.10.2",
+    "@electron-forge/maker-squirrel": "7.11.2",
+    "@electron-forge/maker-zip": "7.11.2",
     "@electron-forge/plugin-fuses": "^7.10.2",
-    "@electron-forge/publisher-github": "^8.0.1",
+    "@electron-forge/publisher-github": "7.11.2",
     "@electron/fuses": "^1.8.0",
     "@types/bcrypt": "^6.0.0",
     "@types/file-saver": "^2.0.7",

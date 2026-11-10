@@ -15,8 +15,10 @@ export interface ManagedScriptItem {
     fileName: string
     format: 'py' | 'js' | 'ts'
     status: ProcessStatus
+    desiredStatus?: 'idle' | 'running'
     pid?: number
     startedAt?: number
+    lastHeartbeat?: number
     lastMessage?: string
     moduleData: any
 }
@@ -25,6 +27,59 @@ const scriptProcesses = ref<Map<string, ManagedScriptItem>>(new Map())
 const activePyWorkers = new Map<string, Worker>()
 const isPolling = ref(false)
 let pollTimer: ReturnType<typeof setInterval> | null = null
+
+// --- Защита от засыпания вкладки браузера (Chrome Tab Freezing / 5 минут) ---
+let audioContext: AudioContext | null = null
+let silentOscillator: OscillatorNode | null = null
+let wakeLockSentinel: any = null
+
+function enableTabKeepAlive() {
+    if (typeof window === 'undefined') return
+
+    // 1. Неслышимый Web Audio keep-alive: Chrome никогда не усыпляет вкладки со звуком
+    try {
+        if (!audioContext || audioContext.state === 'closed') {
+            const AudioCtx = window.AudioContext || (window as any).webkitAudioContext
+            if (AudioCtx) {
+                audioContext = new AudioCtx()
+                const osc = audioContext.createOscillator()
+                const gain = audioContext.createGain()
+                gain.gain.value = 0.00001 // Неслышимый уровень
+                osc.connect(gain)
+                gain.connect(audioContext.destination)
+                osc.start()
+                silentOscillator = osc
+            }
+        }
+        if (audioContext && audioContext.state === 'suspended') {
+            audioContext.resume().catch(() => {})
+        }
+    } catch {}
+
+    // 2. Screen Wake Lock API
+    try {
+        if ('wakeLock' in navigator && !wakeLockSentinel) {
+            (navigator as any).wakeLock.request('screen').then((lock: any) => {
+                wakeLockSentinel = lock
+            }).catch(() => {})
+        }
+    } catch {}
+}
+
+function disableTabKeepAlive(activeRunningCount: number) {
+    if (activeRunningCount > 0) return
+    try {
+        if (audioContext && audioContext.state !== 'closed') {
+            audioContext.close().catch(() => {})
+            audioContext = null
+            silentOscillator = null
+        }
+        if (wakeLockSentinel) {
+            wakeLockSentinel.release().catch(() => {})
+            wakeLockSentinel = null
+        }
+    } catch {}
+}
 
 export function useProcessManager() {
     const appStore = useAppStore()
@@ -48,7 +103,7 @@ export function useProcessManager() {
 
     /**
      * Запускает реальный код Python-модуля со всеми его файлами и зависимостями из MoloDB
-     * в изолированном фоновом WebAssembly-воркере (0 файлов и процессов на ПК).
+     * в изолированном фоновом WebAssembly-воркере с вечным жизненным циклом.
      */
     async function spawnPyWorkerInMemory(proc: ManagedScriptItem) {
         if (!import.meta.client || !enterpriseId.value) return
@@ -64,6 +119,8 @@ export function useProcessManager() {
             throw new Error('Код модуля пуст или не найден в MoloDB')
         }
 
+        enableTabKeepAlive()
+
         const { entry, files } = collectPyFiles(fullMod.code, fullMod.fileName, fullMod.files || [])
         const worker = new Worker(new URL('../workers/pyodide.worker.ts', import.meta.url), { type: 'module' })
         activePyWorkers.set(proc.id, worker)
@@ -72,18 +129,34 @@ export function useProcessManager() {
         const virtualPid = 2000 + Math.floor(Math.random() * 7000)
         proc.pid = virtualPid
         proc.startedAt = Date.now()
+        proc.lastHeartbeat = Date.now()
         proc.status = 'running'
+        proc.desiredStatus = 'running'
 
         worker.onmessage = (ev: MessageEvent) => {
             const msg = ev.data || {}
+
+            if (msg.type === 'heartbeat') {
+                proc.lastHeartbeat = Date.now()
+                void $fetch('/api/py/daemon', {
+                    method: 'POST',
+                    body: {
+                        action: 'heartbeat',
+                        moduleId: proc.id,
+                        enterpriseId: enterpriseId.value
+                    }
+                }).catch(() => {})
+                return
+            }
+
             if (msg.type === 'log') {
+                proc.lastHeartbeat = Date.now()
                 proc.lastMessage = msg.text
                 if (msg.level === 'error') {
                     modLogger.addLog('error', msg.text)
                 } else if (msg.level === 'info') {
                     modLogger.addLog('info', msg.text)
                 }
-                // Отправляем лог на сервер для синхронизации со ссылкой Cloudflare
                 void $fetch('/api/py/daemon', {
                     method: 'POST',
                     body: {
@@ -95,8 +168,25 @@ export function useProcessManager() {
                 }).catch(() => {})
             } else if (msg.type === 'result') {
                 if (activePyWorkers.get(proc.id) !== worker) return
+
+                // Если бот должен работать вечно, не гасим его, а перезапускаем через 3 секунды
+                if (proc.desiredStatus === 'running') {
+                    modLogger.addLog('warning', `Бот «${proc.name}» перезапускается...`)
+                    proc.lastMessage = 'Переподключение воркера...'
+                    setTimeout(() => {
+                        if (proc.desiredStatus === 'running') {
+                            void spawnPyWorkerInMemory(proc).catch((e) => {
+                                proc.status = 'error'
+                                proc.lastMessage = e?.message || 'Ошибка перезапуска'
+                            })
+                        }
+                    }, 3000)
+                    return
+                }
+
                 activePyWorkers.delete(proc.id)
                 worker.terminate()
+                disableTabKeepAlive(runningCount.value)
 
                 if (msg.ok) {
                     proc.status = 'success'
@@ -120,9 +210,19 @@ export function useProcessManager() {
                     modLogger.addLog('error', msg.error?.traceback || errMsg)
                 }
             } else if (msg.type === 'fatal') {
-                proc.status = 'error'
-                proc.lastMessage = msg.message || 'Сбой воркера'
-                modLogger.addLog('error', proc.lastMessage!)
+                if (proc.desiredStatus === 'running') {
+                    modLogger.addLog('error', `Сбой воркера «${proc.name}»: ${msg.message}. Перезапуск...`)
+                    setTimeout(() => {
+                        if (proc.desiredStatus === 'running') {
+                            void spawnPyWorkerInMemory(proc).catch(() => {})
+                        }
+                    }, 4000)
+                } else {
+                    proc.status = 'error'
+                    proc.lastMessage = msg.message || 'Сбой воркера'
+                    modLogger.addLog('error', proc.lastMessage!)
+                    disableTabKeepAlive(runningCount.value)
+                }
             }
         }
 
@@ -158,6 +258,7 @@ export function useProcessManager() {
                     fileName: m.fileName,
                     format: m.format,
                     status: 'idle',
+                    desiredStatus: 'idle',
                     moduleData: m
                 })
             } else {
@@ -191,18 +292,17 @@ export function useProcessManager() {
                 for (const proc of scriptProcesses.value.values()) {
                     if (proc.format === 'py') {
                         const daemon = runningMap.get(proc.id)
-                        if (daemon) {
-                            // Если сервер помечает демон как активный (например, при автозапуске),
-                            // а воркер в памяти ещё не поднят — поднимаем его автоматически!
+                        if (daemon || proc.desiredStatus === 'running') {
                             if (!activePyWorkers.has(proc.id) && proc.status !== 'running') {
+                                proc.desiredStatus = 'running'
                                 void spawnPyWorkerInMemory(proc).catch((e) => {
                                     proc.status = 'error'
                                     proc.lastMessage = e?.message || 'Ошибка старта'
                                 })
                             } else {
                                 proc.status = 'running'
-                                proc.pid = proc.pid || daemon.pid
-                                proc.startedAt = proc.startedAt || daemon.startedAt
+                                proc.pid = proc.pid || daemon?.pid
+                                proc.startedAt = proc.startedAt || daemon?.startedAt
                             }
                         } else if (!activePyWorkers.has(proc.id) && proc.status === 'running') {
                             proc.status = 'idle'
@@ -217,6 +317,7 @@ export function useProcessManager() {
     async function startProcess(item: ManagedScriptItem) {
         if (!enterpriseId.value) return
         item.status = 'running'
+        item.desiredStatus = 'running'
         item.lastMessage = 'Запуск модуля в памяти...'
         addLog('info', `Запуск модуля [${item.format.toUpperCase()}]: ${item.name}`)
 
@@ -243,6 +344,7 @@ export function useProcessManager() {
                     enterpriseId: enterpriseId.value
                 })
                 item.status = 'success'
+                item.desiredStatus = 'idle'
                 item.lastMessage = 'Выполнение успешно завершено'
                 addLog('success', `Скрипт "${item.name}" отработал успешно`)
             }
@@ -254,8 +356,10 @@ export function useProcessManager() {
     }
 
     async function stopProcess(item: ManagedScriptItem) {
+        item.desiredStatus = 'idle'
         if (item.format === 'py') {
             terminatePyWorker(item.id)
+            disableTabKeepAlive(runningCount.value - 1)
             try {
                 await $fetch('/api/py/daemon', {
                     method: 'POST',
@@ -291,6 +395,7 @@ export function useProcessManager() {
         if (pollTimer) clearInterval(pollTimer)
         pollTimer = null
         isPolling.value = false
+        disableTabKeepAlive(0)
     }
 
     return {

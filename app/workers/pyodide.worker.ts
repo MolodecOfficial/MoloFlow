@@ -17,7 +17,7 @@ async function getLoadPyodide() {
     return loadPyodideFn!
 }
 
-const MAX_LOG_LINES = 5000
+const MAX_LOG_LINES = 10000
 
 let pyodide: any = null
 let runtimePromise: Promise<void> | null = null
@@ -25,8 +25,25 @@ let micropip: any = null
 const installed = new Set<string>()
 let currentRunId: string | null = null
 let logCount = 0
+let heartbeatTimer: any = null
 
 const send = (msg: any) => ctx.postMessage(msg)
+
+function startWorkerHeartbeat(id: string) {
+    if (heartbeatTimer) clearInterval(heartbeatTimer)
+    heartbeatTimer = setInterval(() => {
+        if (currentRunId === id) {
+            send({ type: 'heartbeat', id })
+        }
+    }, 20000)
+}
+
+function stopWorkerHeartbeat() {
+    if (heartbeatTimer) {
+        clearInterval(heartbeatTimer)
+        heartbeatTimer = null
+    }
+}
 
 function log(level: 'info' | 'error' | 'system', text: string) {
     if (currentRunId == null) return
@@ -50,7 +67,7 @@ function log(level: 'info' | 'error' | 'system', text: string) {
 }
 
 // ---------------------------------------------------------------------------
-// 1. Универсальный клиент MoloDB (работает с любыми базами и схемами таблиц)
+// 1. Универсальный клиент MoloDB
 // ---------------------------------------------------------------------------
 const MOLOFLOW_DB_PY = String.raw`
 import asyncio
@@ -128,7 +145,7 @@ class Collection:
         r.pop("success", None)
         return r
 
-    # Асинхронные методы (нативные через pyfetch, не блокируют event loop в Wasm!)
+    # Асинхронные методы
     async def afind(self, filter=None, sort=None, limit=50, skip=0, search=None):
         body = {"op": "find", "filter": filter or {}, "limit": limit, "skip": skip, "withTotal": False}
         if sort: body["sort"] = sort
@@ -247,8 +264,7 @@ db = MoloDB()
 `
 
 // ---------------------------------------------------------------------------
-// 2. Адаптер aiogram для WebAssembly (позволяет запускать любые aiogram-боты в памяти
-//    через серверный прокси /api/workspace/api-proxy без C-сокетов aiohttp)
+// 2. Адаптер aiogram с вечным реконнектом при сбоях сети/прокси
 // ---------------------------------------------------------------------------
 const AIOGRAM_WASM_SHIM = String.raw`
 import asyncio
@@ -329,7 +345,7 @@ class AiohttpSession:
 
 class Bot:
     def __init__(self, token, session=None, parse_mode=None):
-        self.token = str(token or "")
+        self.token = str(token or "").strip()
         self.session = session or AiohttpSession()
         self.parse_mode = parse_mode
 
@@ -351,10 +367,17 @@ class Bot:
                 "body": body_str
             })
         )
-        raw_env = json.loads(await res.string() or "{}")
+        text_out = await res.string() or "{}"
+        try:
+            raw_env = json.loads(text_out)
+        except Exception:
+            raise RuntimeError(f"Proxy parsing error: {text_out[:200]}")
+
         if res.status >= 400:
             raise RuntimeError(raw_env.get("statusMessage") or raw_env.get("message") or f"Telegram API HTTP {res.status}")
-        data = json.loads(raw_env.get("text") or "{}")
+        
+        data_text = raw_env.get("text") or "{}"
+        data = json.loads(data_text)
         if not data.get("ok"):
             raise RuntimeError(data.get("description") or f"Telegram error in {method}")
         return data.get("result")
@@ -376,7 +399,7 @@ class Bot:
     async def delete_webhook(self, drop_pending_updates=False):
         return await self._call("deleteWebhook", {"drop_pending_updates": bool(drop_pending_updates)})
 
-    async def get_updates(self, offset=None, timeout=10, allowed_updates=None):
+    async def get_updates(self, offset=None, timeout=8, allowed_updates=None):
         payload = {"timeout": timeout}
         if offset is not None:
             payload["offset"] = offset
@@ -444,9 +467,12 @@ class Dispatcher:
                         matched = False
                         break
             if matched:
-                res = handler(msg)
-                if inspect.isawaitable(res):
-                    await res
+                try:
+                    res = handler(msg)
+                    if inspect.isawaitable(res):
+                        await res
+                except Exception as handler_err:
+                    print(f"[Telegram Handler Error] {handler_err}")
                 break
 
     async def start_polling(self, bot: Bot, drop_pending_updates=False, **kwargs):
@@ -456,35 +482,41 @@ class Dispatcher:
             pass
 
         for cb in self.startup.callbacks:
-            await self._call_hook(cb, bot)
+            try:
+                await self._call_hook(cb, bot)
+            except Exception as e:
+                print(f"[Startup Hook Error] {e}")
 
         offset = None
-        try:
-            while True:
-                try:
-                    updates = await bot.get_updates(offset=offset, timeout=8)
-                    for upd in updates or []:
-                        upd_id = upd.get("update_id")
-                        if upd_id is not None:
-                            offset = upd_id + 1
-                        if "message" in upd:
-                            msg = Message(upd["message"], bot=bot)
-                            await self._dispatch_message(msg)
-                except asyncio.CancelledError:
-                    raise
-                except Exception as e:
-                    await asyncio.sleep(2)
-                await asyncio.sleep(0.4)
-        finally:
-            for cb in self.shutdown.callbacks:
-                try:
-                    await self._call_hook(cb, bot)
-                except Exception:
-                    pass
+        consecutive_errors = 0
+        print("[Telegram Bot] Демон запущен. Ожидание сообщений...")
+
+        while True:
+            try:
+                updates = await bot.get_updates(offset=offset, timeout=8)
+                consecutive_errors = 0
+                for upd in updates or []:
+                    upd_id = upd.get("update_id")
+                    if upd_id is not None:
+                        offset = upd_id + 1
+                    if "message" in upd:
+                        msg = Message(upd["message"], bot=bot)
+                        await self._dispatch_message(msg)
+            except (asyncio.CancelledError, KeyboardInterrupt):
+                # Защита от прерывания браузером при сворачивании вкладки
+                await asyncio.sleep(1)
+                continue
+            except BaseException as e:
+                consecutive_errors += 1
+                backoff = min(15, 1 + consecutive_errors * 2)
+                if consecutive_errors == 1 or consecutive_errors % 5 == 0:
+                    print(f"[Telegram Polling] Ошибка сети или соединения: {e}. Переподключение через {backoff}с...")
+                await asyncio.sleep(backoff)
+            await asyncio.sleep(0.3)
 `
 
 // ---------------------------------------------------------------------------
-// 3. Основной загрузчик Python-окружения в памяти
+// 3. Основной загрузчик Python-окружения
 // ---------------------------------------------------------------------------
 const PY_BOOTSTRAP = String.raw`
 import ast, base64, builtins, datetime, importlib, inspect, json, linecache, logging, math, os, shutil, sys, time, traceback
@@ -531,7 +563,6 @@ def molo_prepare(files_json, db_code, aiogram_code, enterprise_id, auth_headers_
         if f and str(f).startswith(MOLO_DIR):
             del sys.modules[name]
 
-    # Сбрасываем старые хендлеры logging, чтобы basicConfig работал при каждом перезапуске
     for h in list(logging.root.handlers):
         logging.root.removeHandler(h)
 
@@ -630,9 +661,6 @@ async def molo_run(entry, context_json):
         tree = compile(source, path, 'exec', flags=flags | ast.PyCF_ONLY_AST)
         code = compile(tree, path, 'exec', flags=flags)
 
-        # Запускаем модуль с __name__ = '__molo_entry__', чтобы конструкция
-        # if __name__ == '__main__': asyncio.run(main()) не вызывала конфликт вложенного event loop,
-        # а точка входа main / handler / run вызывалась напрямую через await ниже.
         ns = {'__name__': '__molo_entry__', '__file__': path, 'context': ctx, 'db': moloflow_db.db}
         res = eval(code, ns)
         if inspect.isawaitable(res):
@@ -662,7 +690,7 @@ async def molo_run(entry, context_json):
         return json.dumps({'ok': True, 'result': _sanitize(result), 'hasResult': result is not None})
     except SystemExit:
         return json.dumps({'ok': True, 'result': None, 'hasResult': False})
-    except Exception as e:
+    except (Exception, BaseException) as e:
         return json.dumps({'ok': False, 'error': _format_error(e)})
 
 def molo_check(source):
@@ -738,6 +766,8 @@ async function handleRun(msg: any) {
     logCount = 0
     const started = Date.now()
 
+    startWorkerHeartbeat(id)
+
     try {
         await ensureRuntime(id)
 
@@ -773,6 +803,7 @@ async function handleRun(msg: any) {
         const envelope = JSON.parse(raw)
         send(Object.assign({ type: 'result', id, durationMs: Date.now() - started }, envelope))
     } finally {
+        stopWorkerHeartbeat()
         currentRunId = null
     }
 }

@@ -1,20 +1,17 @@
 // server/api/workspace/api-proxy.post.ts
-// Прокси для импорта данных из внешнего API в MoloTable.
-// Зачем: браузер упирается в CORS, а токены удобнее не светить в сетевой вкладке чужих доменов.
-// Защита от SSRF: резолвим DNS сами, блокируем приватные адреса и «пинним» проверенный IP на сокет.
+// Прокси для импорта данных и Telegram-запросов из Python-песочницы
 import http from 'node:http'
 import https from 'node:https'
 import dns from 'node:dns/promises'
 import net from 'node:net'
 import { createError, defineEventHandler, readBody } from 'h3'
 
-const MAX_BYTES = 5 * 1024 * 1024 // 5 МБ на ответ
-const TIMEOUT_MS = 30_000
+const MAX_BYTES = 10 * 1024 * 1024 // 10 МБ на ответ
+const TIMEOUT_MS = 60_000 // 60 секунд (для Telegram long-polling)
 const MAX_REDIRECTS = 3
 const ALLOWED_METHODS = ['GET', 'POST']
 const FORBIDDEN_HEADERS = new Set(['host', 'content-length', 'connection', 'transfer-encoding', 'cookie'])
 
-// Для внутренних API компании: MOLO_API_PROXY_ALLOW_PRIVATE=true в .env
 const allowPrivate = () => process.env.MOLO_API_PROXY_ALLOW_PRIVATE === 'true'
 
 function isPrivateIp(ip: string): boolean {
@@ -22,8 +19,8 @@ function isPrivateIp(ip: string): boolean {
         const [a, b] = ip.split('.').map(Number) as [number, number]
         return (
             a === 0 || a === 10 || a === 127 ||
-            (a === 100 && b >= 64 && b <= 127) || // CGNAT
-            (a === 169 && b === 254) ||           // link-local, облачные metadata
+            (a === 100 && b >= 64 && b <= 127) ||
+            (a === 169 && b === 254) ||
             (a === 172 && b >= 16 && b <= 31) ||
             (a === 192 && b === 168) ||
             a >= 224
@@ -63,7 +60,6 @@ function requestPinned(
                 method,
                 headers,
                 timeout: TIMEOUT_MS,
-                // подменяем резолв: соединяемся именно с проверенным IP (защита от DNS-rebinding)
                 lookup: (_h: string, opts: any, cb: any) =>
                     opts?.all ? cb(null, [{ address: pinned.address, family: pinned.family }]) : cb(null, pinned.address, pinned.family),
             } as any,
@@ -90,7 +86,6 @@ function requestPinned(
 }
 
 export default defineEventHandler(async (event) => {
-
     const input = await readBody<{
         url?: string
         method?: string
@@ -164,9 +159,9 @@ export default defineEventHandler(async (event) => {
     } catch (e: any) {
         if (e?.statusCode) throw e
         const msg = e?.message === 'too_large'
-            ? 'Ответ больше 5 МБ'
+            ? 'Ответ больше 10 МБ'
             : e?.message === 'timeout'
-                ? 'API не ответил за 30 секунд'
+                ? 'API не ответил за 60 секунд'
                 : `Не удалось выполнить запрос: ${e?.code || e?.message || 'ошибка сети'}`
         throw createError({ statusCode: 502, statusMessage: msg })
     }
