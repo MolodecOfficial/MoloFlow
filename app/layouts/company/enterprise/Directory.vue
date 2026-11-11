@@ -1561,12 +1561,15 @@ onBeforeUnmount(() => {
                 <span v-else class="cell-empty">Файл не прикреплён</span>
               </div>
 
-              <strong
-                  v-else-if="field.type === 'boolean'"
-                  class="detail-boolean"
-                  :class="{ positive: selectedItem.attributes?.[field.key] }"
-              >
-                {{ displayValue(selectedItem.attributes?.[field.key], field) }}
+              <strong v-else-if="field.key === 'link'">
+                <a
+                    :href="selectedItem.attributes?.[field.key]"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style="color: var(--accent);"
+                >
+                  {{ displayValue(selectedItem.attributes?.[field.key], field) }}
+                </a>
               </strong>
 
               <strong v-else>

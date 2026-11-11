@@ -1,3 +1,4 @@
+<!-- app/layouts/company/enterprise/Workspace.vue -->
 <script lang="ts" setup>
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
@@ -22,9 +23,8 @@ const props = defineProps<{
 
 const emit = defineEmits(['close'])
 
-// The window manager does not always pass enterpriseId as a component prop.
-// Resolve it from the canonical app store and persisted enterprise session as fallback.
 const appStore = useAppStore()
+
 function getWorkspaceEnterpriseId(): string {
   const fromProps = typeof props.enterpriseId === 'string' ? props.enterpriseId.trim() : ''
   if (/^[a-f\d]{24}$/i.test(fromProps)) return fromProps
@@ -51,6 +51,14 @@ const DOC_ICONS: Record<DocType, string> = {
   pdf: pdfIcon,
   primary: primaryIcon,
   image: imageIcon
+}
+
+const DOC_TYPE_LABELS: Record<DocType, string> = {
+  excel: 'Таблица (Excel)',
+  word: 'Документ (Word)',
+  primary: 'Первичный документ (ТОРГ)',
+  pdf: 'Документ PDF',
+  image: 'Изображение / Скан'
 }
 
 const workspaceStore = useWorkspaceStore()
@@ -95,14 +103,33 @@ const folderRenameValue = ref('')
 const pendingDelete = ref<{ kind: 'doc' | 'folder'; id: string } | null>(null)
 const isModalOpen = ref(false)
 
-/* ── Состояние панели версий ── */
+/* ── Модалка создания папки ── */
+const createFolderModalOpen = ref(false)
+const newFolderName = ref('')
+const newFolderParentId = ref<string | null>(null)
+const isFolderCreating = ref(false)
+
+/* ── Модалка создания документа ── */
+const createDocModalOpen = ref(false)
+const newDocType = ref<DocType>('excel')
+const newDocName = ref('')
+const newDocFolderId = ref<string | null>(null)
+const selectedExternalFile = ref<File | null>(null)
+const isDocCreating = ref(false)
+
+/* ── Модалка создания контрольной точки ── */
+const createSnapshotModalOpen = ref(false)
+const snapshotComment = ref('')
+const isSnapshotCreating = ref(false)
+
+/* ── Панель версий ── */
 const isVersionPanelOpen = ref(false)
 const versions = ref<DocVersionMeta[]>([])
 const versionsLoading = ref(false)
 const pendingRestore = ref<DocVersionMeta | null>(null)
 const isRestoreModalOpen = ref(false)
 
-/* ── Drag and Drop состояние ── */
+/* ── Drag & Drop ── */
 const dragOverFolderId = ref<string | null>(null)
 const isRootDragOver = ref(false)
 const draggedDocId = ref<string | null>(null)
@@ -120,12 +147,17 @@ const deleteModalText = computed(() =>
 
 const saveStatusText = computed(() => {
   if (saveState.value === 'saving') return 'Сохранение…'
-  if (saveState.value === 'error') return 'Не удалось сохранить'
+  if (saveState.value === 'error') return 'Ошибка сохранения'
   if (saveState.value === 'saved' && lastSavedAt.value) {
     return 'Сохранено в ' + new Date(lastSavedAt.value).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
   }
-  return ''
+  return 'Актуально'
 })
+
+const folderOptions = computed(() => [
+  { label: 'Корень пространства (без папки)', value: '' },
+  ...folders.value.map(f => ({ label: f.name, value: f.id }))
+])
 
 const vFocus = {
   mounted: (el: HTMLInputElement) => {
@@ -160,7 +192,7 @@ function handleCandidateSelect(item: DirectoryLookupItem) {
   }
 }
 
-/* ───────────────────────── Дерево папок ───────────────────────── */
+/* ── Дерево проводника ── */
 
 const folderChildrenMap = computed(() => {
   const map = new Map<string | null, SpaceFolder[]>()
@@ -238,7 +270,7 @@ function handleFolderClick(folderId: string | null) {
   }
 }
 
-/* ───────────────────────── Drag-and-Drop ───────────────────────── */
+/* ── Drag & Drop ── */
 
 function onDocDragStart(e: DragEvent, docId: string) {
   draggedDocId.value = docId
@@ -363,7 +395,7 @@ async function handleExternalFilesDrop(fileList: FileList, folderId: string | nu
   }
 }
 
-/* ───────────────────────── Фильтрация и поиск ───────────────────────── */
+/* ── Поиск и фильтрация ── */
 
 const filteredBottomDocuments = computed(() => {
   let list = documents.value
@@ -385,7 +417,11 @@ const currentFolderName = computed(() => {
   return folders.value.find(f => f.id === activeFolderId.value)?.name || 'Выбранная папка'
 })
 
-/* ───────────────────────── Версионирование ───────────────────────── */
+const totalBytesCount = computed(() => {
+  return documents.value.reduce((acc, doc) => acc + (doc.size || 0), 0)
+})
+
+/* ── Версионирование ── */
 
 async function loadVersions(docId: string) {
   versionsLoading.value = true
@@ -408,11 +444,21 @@ async function toggleVersionPanel() {
   }
 }
 
-async function createManualSnapshot() {
+function openCreateSnapshotModal() {
   if (!activeId.value) return
-  const comment = prompt('Укажите комментарий к снимку:', 'Контрольная точка')?.trim()
-  if (!comment) return
+  snapshotComment.value = `Контрольная точка (${new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })})`
+  createSnapshotModalOpen.value = true
+}
 
+async function confirmCreateManualSnapshot() {
+  if (!activeId.value) return
+  const comment = snapshotComment.value.trim()
+  if (!comment) {
+    addNotification('warning', 'Укажите комментарий к снимку')
+    return
+  }
+
+  isSnapshotCreating.value = true
   await workspaceStore.flushAll()
   try {
     const version = await $fetch<DocVersionMeta>(`/api/workspace/documents/${activeId.value}/versions`, {
@@ -421,9 +467,12 @@ async function createManualSnapshot() {
       body: { comment }
     })
     versions.value = [version, ...versions.value]
-    addNotification('success', 'Снимок успешно сохранён')
+    createSnapshotModalOpen.value = false
+    addNotification('success', 'Контрольная точка сохранена')
   } catch {
     addNotification('error', 'Не удалось сохранить версию')
+  } finally {
+    isSnapshotCreating.value = false
   }
 }
 
@@ -459,24 +508,40 @@ async function confirmRestoreVersion() {
   }
 }
 
-/* ───────────────────────── Управление папками ───────────────────────── */
+/* ── Управление папками в UIMoloModal ── */
 
-async function createFolder() {
-  const name = prompt('Введите название папки:')?.trim()
-  if (!name) return
+function openCreateFolderModal() {
+  newFolderName.value = ''
+  newFolderParentId.value = activeFolderId.value || ''
+  createFolderModalOpen.value = true
+}
+
+async function confirmCreateFolder() {
+  const name = newFolderName.value.trim()
+  if (!name) {
+    addNotification('warning', 'Введите название папки')
+    return
+  }
+
+  isFolderCreating.value = true
+  const parentId = newFolderParentId.value ? newFolderParentId.value : null
+
   try {
     const folder = await $fetch<SpaceFolder>('/api/workspace/folders', {
       method: 'POST',
       query: { enterpriseId: getWorkspaceEnterpriseId() },
-      body: { name, parentId: activeFolderId.value }
+      body: { name, parentId }
     })
     folders.value.push(folder)
-    if (activeFolderId.value) {
-      expandedFolderIds.value.add(activeFolderId.value)
+    if (parentId) {
+      expandedFolderIds.value.add(parentId)
     }
-    addNotification('success', 'Папка создана')
+    createFolderModalOpen.value = false
+    addNotification('success', `Папка «${name}» создана`)
   } catch {
     addNotification('error', 'Не удалось создать папку')
+  } finally {
+    isFolderCreating.value = false
   }
 }
 
@@ -539,7 +604,7 @@ async function removeFolder(id: string) {
   addNotification('success', 'Папка удалена')
 }
 
-/* ───────────────────────── Управление документами ───────────────────────── */
+/* ── Управление документами в UIMoloModal ── */
 
 function toggleFullscreen() {
   if (!workspaceRoot.value) return
@@ -556,34 +621,66 @@ function toggleFullscreen() {
   }
 }
 
-async function createDocument(type: DocType) {
+function openCreateDocModal(type: DocType) {
   createMenuOpen.value = false
+  newDocType.value = type
+  newDocFolderId.value = activeFolderId.value || ''
+  selectedExternalFile.value = null
+
+  if (type === 'excel') newDocName.value = 'Новая таблица'
+  else if (type === 'primary') newDocName.value = 'Новая товарная накладная'
+  else if (type === 'pdf') newDocName.value = 'Новый скан / PDF'
+  else if (type === 'image') newDocName.value = 'Новое изображение'
+  else newDocName.value = 'Новый документ'
+
+  createDocModalOpen.value = true
+}
+
+function onModalFileSelect(e: Event) {
+  const input = e.target as HTMLInputElement
+  if (input.files && input.files[0]) {
+    selectedExternalFile.value = input.files[0]
+    newDocName.value = input.files[0].name.replace(/\.[^/.]+$/, '')
+  }
+}
+
+async function confirmCreateDocument() {
   const enterpriseId = getWorkspaceEnterpriseId()
   if (!enterpriseId) {
-    addNotification('error', 'Не выбрано предприятие. Переключитесь на предприятие и повторите попытку.')
+    addNotification('error', 'Не выбрано предприятие')
     return
   }
 
-  if (type === 'pdf' || type === 'image') {
-    const input = document.createElement('input')
-    input.type = 'file'
-    input.accept = type === 'pdf' ? 'application/pdf' : 'image/*'
-    input.onchange = async () => {
-      const file = input.files?.[0]
-      if (file) await handleExternalFilesDrop([file] as unknown as FileList, activeFolderId.value)
+  const name = newDocName.value.trim()
+  if (!name) {
+    addNotification('warning', 'Укажите название документа')
+    return
+  }
+
+  const type = newDocType.value
+  const targetFolderId = newDocFolderId.value ? newDocFolderId.value : null
+
+  // Если это файл с диска (PDF / Изображение)
+  if ((type === 'pdf' || type === 'image') && selectedExternalFile.value) {
+    isDocCreating.value = true
+    try {
+      await handleExternalFilesDrop([selectedExternalFile.value] as unknown as FileList, targetFolderId)
+      createDocModalOpen.value = false
+    } finally {
+      isDocCreating.value = false
     }
-    input.click()
     return
   }
 
+  isDocCreating.value = true
   try {
     const meta = await $fetch<any>('/api/workspace/documents', {
       method: 'POST',
       query: { enterpriseId },
       body: {
         type,
-        name: type === 'excel' ? 'Новая таблица' : (type === 'primary' ? 'Новая накладная' : 'Новый документ'),
-        folderId: activeFolderId.value,
+        name,
+        folderId: targetFolderId,
         data: type === 'word' ? '' : {}
       }
     })
@@ -595,13 +692,17 @@ async function createDocument(type: DocType) {
     }
 
     documents.value = [doc, ...documents.value]
-    if (activeFolderId.value) {
-      expandedFolderIds.value.add(activeFolderId.value)
+    if (targetFolderId) {
+      expandedFolderIds.value.add(targetFolderId)
     }
     workspaceStore.openDoc(doc.id)
-    addLog('info', 'Создан новый документ')
+    createDocModalOpen.value = false
+    addLog('info', `Создан документ «${name}»`)
+    addNotification('success', `Документ «${name}» создан`)
   } catch {
-    addNotification('error', 'Документ не создан: база не ответила. Проверь подключение и попробуй снова')
+    addNotification('error', 'Документ не создан: проверьте подключение')
+  } finally {
+    isDocCreating.value = false
   }
 }
 
@@ -724,7 +825,7 @@ function onDocumentVariableTrigger(payload: { rawExpression: string; apply: (rep
   })
 }
 
-function handleBeforeUnload(e: BeforeUnloadEvent) {
+function handleBeforeUnload() {
   workspaceStore.flushKeepalive()
 }
 
@@ -759,85 +860,105 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div ref="workspaceRoot" class="workspace" :class="{ 'is-fullscreen': isFullscreen }">
-    <!-- Header -->
-    <div class="workspace-header">
-      <div class="workspace-title">
-        <UIMoloInput
-            v-model="searchQuery"
-            placeholder="Поиск по названию документов..."
-        />
+  <div ref="workspaceRoot" class="workspace-app" :class="{ 'is-fullscreen': isFullscreen }">
+    <!-- HEADER -->
+    <header class="workspace-header">
+      <div class="header-main">
+        <div class="header-icon">
+          <UIMoloSticker name="folder-open" :size="19" glow />
+        </div>
+
+        <div class="header-heading">
+          <div class="header-title">Пространство документов</div>
+          <div class="header-subtitle">Таблицы, документы, бланки и история версий</div>
+        </div>
       </div>
 
-      <div class="workspace-header-actions">
-        <span
-            v-if="saveStatusText"
-            class="save-status"
-            :class="{ error: saveState === 'error' }"
-        >{{ saveStatusText }}</span>
+      <div class="btn-group">
+        <UIMoloButton class="save-status-badge small" :class="{ error: saveState === 'error', saving: saveState === 'saving' }">
+          <span class="save-dot"></span>
+          {{ saveStatusText }}
+        </UIMoloButton>
 
         <UIMoloButton
             v-if="activeId"
-            class="small icon-action-btn"
+            class="action small"
             :class="{ confirm: isVersionPanelOpen }"
             title="История версий и точек отката"
             @click="toggleVersionPanel"
         >
-          <UIMoloSticker name="history" :size="18" />
+          <UIMoloSticker name="history" :size="14" />
+          Версии
         </UIMoloButton>
 
-        <section class="btn-group">
-          <UIMoloButton class="small icon-action-btn" title="Создать папку" @click="createFolder">
-            <UIMoloSticker name="folder" :size="18" />
-          </UIMoloButton>
-          <UIMoloButton class="small icon-action-btn" title="На весь экран" @click="toggleFullscreen">
-            <UIMoloSticker :name="isFullscreen ? 'fullscreen-exit' : 'fullscreen'" :size="18" />
-          </UIMoloButton>
-        </section>
+        <UIMoloButton class="action small" title="Создать папку" @click="openCreateFolderModal">
+          <UIMoloSticker name="plus" :size="14" />
+          Папка
+        </UIMoloButton>
+
+        <UIMoloButton class="action small" :title="isFullscreen ? 'Обычный режим' : 'На весь экран'" @click="toggleFullscreen">
+          <UIMoloSticker :name="isFullscreen ? 'fullscreen-exit' : 'fullscreen'" :size="14" />
+        </UIMoloButton>
 
         <div class="create-menu-wrap">
-          <UIMoloButton class="confirm" @click.stop="createMenuOpen = !createMenuOpen">
-            Новый документ
+          <UIMoloButton class="confirm small" @click.stop="createMenuOpen = !createMenuOpen">
+            <UIMoloSticker name="file-plus" :size="14" />
+            Создать документ
           </UIMoloButton>
+
           <div v-if="createMenuOpen" class="create-menu">
-            <button class="create-menu-item" @click="createDocument('excel')">
-              <img class="create-menu-icon" :src="docIcon('excel')" alt="" aria-hidden="true" draggable="false">
+            <button class="create-menu-item" @click="openCreateDocModal('excel')">
+              <img class="create-menu-icon" :src="docIcon('excel')" alt="" />
               <span>Таблица (Excel)</span>
             </button>
-            <button class="create-menu-item" @click="createDocument('word')">
-              <img class="create-menu-icon" :src="docIcon('word')" alt="" aria-hidden="true" draggable="false">
+            <button class="create-menu-item" @click="openCreateDocModal('word')">
+              <img class="create-menu-icon" :src="docIcon('word')" alt="" />
               <span>Документ (Word)</span>
             </button>
-            <button class="create-menu-item" @click="createDocument('primary')">
-              <img class="create-menu-icon" :src="docIcon('primary')" alt="" aria-hidden="true" draggable="false">
-              <span>Накладные (ТОРГ)</span>
+            <button class="create-menu-item" @click="openCreateDocModal('primary')">
+              <img class="create-menu-icon" :src="docIcon('primary')" alt="" />
+              <span>Первичка (ТОРГ)</span>
             </button>
-            <button class="create-menu-item" @click="createDocument('pdf')">
-              <img class="create-menu-icon" :src="docIcon('pdf')" alt="" aria-hidden="true" draggable="false">
-              <span>Документ PDF</span>
+            <button class="create-menu-item" @click="openCreateDocModal('pdf')">
+              <img class="create-menu-icon" :src="docIcon('pdf')" alt="" />
+              <span>PDF Документ</span>
             </button>
-            <button class="create-menu-item" @click="createDocument('image')">
-              <img class="create-menu-icon" :src="docIcon('image')" alt="" aria-hidden="true" draggable="false">
+            <button class="create-menu-item" @click="openCreateDocModal('image')">
+              <img class="create-menu-icon" :src="docIcon('image')" alt="" />
               <span>Изображение</span>
             </button>
           </div>
         </div>
       </div>
-    </div>
+    </header>
 
-    <!-- Body -->
-    <div class="workspace-body">
-      <!-- Сайдбар Проводника -->
+    <!-- ОСНОВНОЙ ЛЕЙАУТ -->
+    <div class="workspace-layout">
+      <!-- САЙДБАР: ДЕРЕВО И ФАЙЛЫ -->
       <aside class="workspace-sidebar">
-        <!-- Блок дерева Windows Explorer -->
-        <div class="tree-container">
-          <div class="explorer-heading">
+        <!-- Поиск -->
+        <div class="sidebar-search-box">
+          <UIMoloInput
+              v-model="searchQuery"
+              compact
+              placeholder="Поиск по документам..."
+          />
+        </div>
+
+        <!-- Дерево папок -->
+        <div class="folders-tree-panel">
+          <div class="sidebar-section-heading">
             <span>Проводник</span>
-            <span class="counter">({{ folders.length }} папок)</span>
+            <div class="tree-heading-actions">
+              <button class="add-folder-mini-btn" title="Новая папка" @click="openCreateFolderModal">
+                <UIMoloSticker name="plus" :size="11" />
+              </button>
+              <span class="badge-pill">{{ folders.length }}</span>
+            </div>
           </div>
 
           <div class="folders-tree">
-            <!-- Корневой узел "Все документы" -->
+            <!-- Корневой узел -->
             <div
                 class="tree-node root-node"
                 :class="{
@@ -849,14 +970,14 @@ onUnmounted(() => {
                 @dragleave="onFolderDragLeave"
                 @drop="onFolderDrop($event, null)"
             >
-              <span class="tree-chevron invisible"><UIMoloSticker name="down" :size="11" /></span>
-              <UIMoloSticker name="folder-open" :size="16" class="tree-icon" />
+              <UIMoloSticker name="folder-open" :size="15" class="node-icon" />
               <span class="node-title">Все документы</span>
+              <span class="badge-pill">{{ documents.length }}</span>
             </div>
 
-            <!-- Иерархические узлы папок и вложенных файлов -->
+            <!-- Иерархия -->
             <template v-for="(item, idx) in explorerTree" :key="idx">
-              <!-- Узел: Папка -->
+              <!-- Папка -->
               <div
                   v-if="item.kind === 'folder'"
                   class="tree-node folder-node"
@@ -864,7 +985,7 @@ onUnmounted(() => {
                   active: activeFolderId === item.folder.id,
                   'drag-over': dragOverFolderId === item.folder.id
                 }"
-                  :style="{ paddingLeft: `${item.depth * 14 + 6}px` }"
+                  :style="{ paddingLeft: `${item.depth * 12 + 8}px` }"
                   @click="handleFolderClick(item.folder.id)"
                   @dblclick.stop="startFolderRename(item.folder)"
                   @dragover="onFolderDragOver($event, item.folder.id)"
@@ -877,13 +998,13 @@ onUnmounted(() => {
                     :class="{ invisible: !item.hasChildren, expanded: item.isExpanded }"
                     @click.stop="toggleFolderExpand(item.folder.id)"
                 >
-                  <UIMoloSticker name="right" :size="11" />
+                  <UIMoloSticker name="right" :size="10" />
                 </button>
 
                 <UIMoloSticker
                     :name="item.isExpanded ? 'folder-open' : 'folder'"
-                    :size="16"
-                    class="tree-icon"
+                    :size="15"
+                    class="node-icon"
                 />
 
                 <input
@@ -899,37 +1020,29 @@ onUnmounted(() => {
 
                 <template v-else>
                   <span class="node-title">{{ item.folder.name }}</span>
-                  <div class="item-actions" @click.stop>
-                    <UIMoloButton
-                        class="icon-btn"
-                        title="Переименовать"
-                        @click.stop="startFolderRename(item.folder)"
-                    >
-                      <UIMoloSticker name="edit" :size="12" />
-                    </UIMoloButton>
-                    <UIMoloButton
-                        class="icon-btn"
-                        title="Удалить папку"
-                        @click.stop="requestRemoveFolder(item.folder.id)"
-                    >
+                  <div class="node-actions" @click.stop>
+                    <button class="node-action-btn" title="Переименовать" @click.stop="startFolderRename(item.folder)">
+                      <UIMoloSticker name="pen" :size="12" />
+                    </button>
+                    <button class="node-action-btn delete" title="Удалить" @click.stop="requestRemoveFolder(item.folder.id)">
                       <UIMoloSticker name="trash" :size="12" />
-                    </UIMoloButton>
+                    </button>
                   </div>
                 </template>
               </div>
 
-              <!-- Узел: Документ прямо в дереве -->
+              <!-- Файл прямо в ветке дерева -->
               <div
                   v-else-if="item.kind === 'file'"
                   class="tree-node file-node"
                   :class="{ active: activeId === item.doc.id }"
-                  :style="{ paddingLeft: `${item.depth * 14 + 22}px` }"
+                  :style="{ paddingLeft: `${item.depth * 12 + 22}px` }"
                   draggable="true"
                   @dragstart="onDocDragStart($event, item.doc.id)"
                   @click="workspaceStore.openDoc(item.doc.id)"
                   @dblclick.stop="startRename(item.doc)"
               >
-                <img class="tree-file-icon" :src="docIcon(item.doc.type)" alt="" draggable="false" />
+                <img class="tree-type-icon" :src="docIcon(item.doc.type)" alt="" draggable="false" />
 
                 <input
                     v-if="renamingId === item.doc.id"
@@ -944,19 +1057,11 @@ onUnmounted(() => {
 
                 <template v-else>
                   <span class="node-title">{{ item.doc.name }}</span>
-                  <div class="item-actions" @click.stop>
-                    <UIMoloButton
-                        class="icon-btn"
-                        title="Переименовать"
-                        @click.stop="startRename(item.doc)"
-                    >
-                      <UIMoloSticker name="edit" :size="12" />
+                  <div class="node-actions" @click.stop>
+                    <UIMoloButton class="small transparent" title="Переименовать" @click.stop="startRename(item.doc)">
+                      <UIMoloSticker name="pen" :size="12" />
                     </UIMoloButton>
-                    <UIMoloButton
-                        class="icon-btn"
-                        title="Удалить"
-                        @click.stop="requestRemove(item.doc.id)"
-                    >
+                    <UIMoloButton class="small transparent close" title="Удалить" @click.stop="requestRemove(item.doc.id)">
                       <UIMoloSticker name="trash" :size="12" />
                     </UIMoloButton>
                   </div>
@@ -966,57 +1071,54 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <!-- Нижняя панель файлов -->
+        <!-- Нижний список файлов текущего контекста -->
         <div
-            class="bottom-files-section"
+            class="files-list-panel"
             @dragover="onFolderDragOver($event, activeFolderId)"
             @dragleave="onFolderDragLeave"
             @drop="onFolderDrop($event, activeFolderId)"
         >
-          <div class="sidebar-heading">
-            <div class="heading-controls">
-              <span class="heading-title" :title="currentFolderName">
+          <div class="sidebar-section-heading">
+            <div class="heading-text-group">
+              <span class="current-folder-title" :title="currentFolderName">
                 {{ sidebarListMode === 'folder' ? currentFolderName : 'Все файлы' }}
               </span>
-              <span class="counter">({{ filteredBottomDocuments.length }})</span>
+              <span class="badge-pill">{{ filteredBottomDocuments.length }}</span>
             </div>
 
             <button
                 type="button"
-                class="mode-toggle-btn"
+                class="list-mode-toggle"
                 :title="sidebarListMode === 'folder' ? 'Показать все файлы' : 'Показать файлы папки'"
                 @click="sidebarListMode = sidebarListMode === 'folder' ? 'all' : 'folder'"
             >
-              {{ sidebarListMode === 'folder' ? 'Все' : 'В папке' }}
+              {{ sidebarListMode === 'folder' ? 'Все' : 'Папка' }}
             </button>
           </div>
 
-          <div v-if="isLoading" class="sidebar-empty">
-            <span>Загрузка…</span>
+          <div v-if="isLoading" class="files-empty-state">
+            <UIMoloLoaders btnLoader />
+            <span>Загрузка...</span>
           </div>
 
-          <div v-else-if="loadError" class="sidebar-empty">
-            <span>{{ loadError }}</span>
-            <UIMoloButton class="small" @click="workspaceStore.loadWorkspace(true)">Повторить</UIMoloButton>
+          <div v-else-if="filteredBottomDocuments.length === 0" class="files-empty-state">
+            <UIMoloSticker name="inbox" :size="20" />
+            <span>Нет файлов в этом разделе</span>
           </div>
 
-          <div v-else-if="filteredBottomDocuments.length === 0" class="sidebar-empty">
-            <span>Нет файлов (перетащите сюда)</span>
-          </div>
-
-          <div v-else class="sidebar-list">
+          <div v-else class="files-stack">
             <div
                 v-for="doc in filteredBottomDocuments"
                 :key="doc.id"
-                class="sidebar-item"
+                class="file-card-item"
                 :class="{ active: doc.id === activeId }"
                 draggable="true"
                 @dragstart="onDocDragStart($event, doc.id)"
                 @click="workspaceStore.openDoc(doc.id)"
             >
-              <img class="sidebar-item-icon" :src="docIcon(doc.type)" alt="" draggable="false" />
+              <img class="file-card-icon" :src="docIcon(doc.type)" alt="" draggable="false" />
 
-              <div class="sidebar-item-info">
+              <div class="file-card-info">
                 <input
                     v-if="renamingId === doc.id"
                     v-model="renameValue"
@@ -1028,138 +1130,194 @@ onUnmounted(() => {
                     @blur="handleInputBlur"
                 />
                 <template v-else>
-                  <span
-                      class="sidebar-item-name"
-                      @dblclick.stop="startRename(doc)"
-                  >{{ doc.name }}</span>
-                  <span class="sidebar-item-meta">{{ formatDate(doc.updatedAt) }}</span>
+                  <span class="file-card-name" @dblclick.stop="startRename(doc)">{{ doc.name }}</span>
+                  <div class="file-card-meta">
+                    <span>{{ formatDate(doc.updatedAt) }}</span>
+                    <span>•</span>
+                    <span>{{ formatSize(doc.size) }}</span>
+                  </div>
                 </template>
               </div>
 
-              <div class="item-actions" @click.stop>
-                <UIMoloButton
+              <div class="node-actions" @click.stop>
+                <button
                     v-if="renamingId !== doc.id"
-                    class="icon-btn"
+                    class="node-action-btn"
                     title="Переименовать"
                     @click.stop="startRename(doc)"
                 >
-                  <UIMoloSticker name="edit" :size="12" />
-                </UIMoloButton>
-                <UIMoloButton
+                  <UIMoloSticker name="pen" :size="12" />
+                </button>
+                <button
                     v-if="renamingId !== doc.id"
-                    class="icon-btn"
+                    class="node-action-btn delete"
                     title="Удалить"
                     @click.stop="requestRemove(doc.id)"
                 >
                   <UIMoloSticker name="trash" :size="12" />
-                </UIMoloButton>
+                </button>
               </div>
             </div>
           </div>
+        </div>
+
+        <div class="sidebar-bottom-info">
+          <span>Общий объём документов:</span>
+          <b>{{ formatSize(totalBytesCount) }}</b>
         </div>
       </aside>
 
-      <!-- Основная область редактирования -->
-      <section class="workspace-main">
-        <div v-if="openDocuments.length === 0" class="empty-state">
-          <div class="empty-icon-wrap">
-            <UIMoloSticker name="folder-open" :size="36" glow />
-          </div>
-
-          <h3>Рабочая область свободна</h3>
-          <p class="empty-subtitle">
-            Выберите нужный файл в проводнике слева или перетащите его прямо сюда с компьютера
-          </p>
-
-          <div class="supported-formats">
-            <span class="formats-title">Поддерживаемые форматы и документы:</span>
-
-            <div class="formats-grid">
-              <div class="format-card" @click="createDocument('excel')">
-                <img class="format-icon" :src="docIcon('excel')" alt="Excel" draggable="false" />
-                <div class="format-info">
-                  <strong>Таблицы</strong>
-                  <span class="format-ext">.xlsx, .xls, .csv</span>
-                </div>
+      <!-- ОСНОВНАЯ ОБЛАСТЬ -->
+      <main class="workspace-viewport">
+        <!-- ПУСТОЙ ЭКРАН (СВОДКА И БЫСТРЫЕ ДЕЙСТВИЯ) -->
+        <div v-if="openDocuments.length === 0" class="workspace-empty-container">
+          <!-- СТАТИСТИКА -->
+          <section class="stats-row">
+            <div class="stat-card">
+              <div class="stat-icon"><UIMoloSticker name="database" :size="17" /></div>
+              <div class="stat-content">
+                <span>Всего файлов</span>
+                <strong>{{ documents.length }}</strong>
               </div>
+            </div>
 
-              <div class="format-card" @click="createDocument('word')">
-                <img class="format-icon" :src="docIcon('word')" alt="Word" draggable="false" />
-                <div class="format-info">
-                  <strong>Документы</strong>
-                  <span class="format-ext">.docx, .txt, .html</span>
-                </div>
+            <div class="stat-card">
+              <div class="stat-icon"><UIMoloSticker name="folder" :size="17" /></div>
+              <div class="stat-content">
+                <span>Папок создано</span>
+                <strong>{{ folders.length }}</strong>
               </div>
+            </div>
 
-              <div class="format-card" @click="createDocument('pdf')">
-                <img class="format-icon" :src="docIcon('pdf')" alt="PDF" draggable="false" />
-                <div class="format-info">
-                  <strong>PDF-файлы</strong>
-                  <span class="format-ext">.pdf (с печатью и штампом)</span>
-                </div>
+            <div class="stat-card">
+              <div class="stat-icon"><UIMoloSticker name="save" :size="17" /></div>
+              <div class="stat-content">
+                <span>Общий вес</span>
+                <strong>{{ formatSize(totalBytesCount) }}</strong>
               </div>
+            </div>
 
-              <div class="format-card" @click="createDocument('primary')">
-                <img class="format-icon" :src="docIcon('primary')" alt="Бланки" draggable="false" />
-                <div class="format-info">
-                  <strong>Бланки</strong>
-                  <span class="format-ext">ТОРГ-12, Акты, Счета</span>
-                </div>
+            <div class="stat-card">
+              <div class="stat-icon"><UIMoloSticker name="check-circle" :size="17" /></div>
+              <div class="stat-content">
+                <span>Автосохранение</span>
+                <strong>{{ saveStatusText }}</strong>
               </div>
+            </div>
+          </section>
 
-              <div class="format-card" @click="createDocument('image')">
-                <img class="format-icon" :src="docIcon('image')" alt="image" draggable="false" />
-                <div class="format-info">
-                  <strong>Просмотр изображений</strong>
-                  <span class="format-ext">.png, .jpeg, .webp</span>
+          <!-- ПРИГЛАШЕНИЕ К РАБОТЕ -->
+          <div class="empty-glass-hero">
+            <div class="empty-hero-icon">
+              <UIMoloSticker name="folder-open" :size="38" glow />
+            </div>
+
+            <h3 class="hero-title">Рабочее пространство документов</h3>
+            <p class="hero-subtitle">
+              Выберите файл в проводнике слева, перетащите существующий с вашего компьютера или создайте новый нужного формата
+            </p>
+
+            <div class="supported-formats-box">
+              <span class="formats-header-label">БЫСТРОЕ СОЗДАНИЕ:</span>
+
+              <div class="formats-grid">
+                <div class="format-card" @click="openCreateDocModal('excel')">
+                  <img class="format-icon" :src="docIcon('excel')" alt="Таблицы" />
+                  <div class="format-info">
+                    <strong>Таблицы</strong>
+                    <span class="format-ext">.xlsx, .xls, .csv</span>
+                  </div>
+                </div>
+
+                <div class="format-card" @click="openCreateDocModal('word')">
+                  <img class="format-icon" :src="docIcon('word')" alt="Документы" />
+                  <div class="format-info">
+                    <strong>Документы</strong>
+                    <span class="format-ext">.docx, текст, A4</span>
+                  </div>
+                </div>
+
+                <div class="format-card" @click="openCreateDocModal('primary')">
+                  <img class="format-icon" :src="docIcon('primary')" alt="Бланки" />
+                  <div class="format-info">
+                    <strong>Первичка</strong>
+                    <span class="format-ext">ТОРГ-12, Акты, Счета</span>
+                  </div>
+                </div>
+
+                <div class="format-card" @click="openCreateDocModal('pdf')">
+                  <img class="format-icon" :src="docIcon('pdf')" alt="PDF" />
+                  <div class="format-info">
+                    <strong>PDF Документы</strong>
+                    <span class="format-ext">Печать, штампы, подпись</span>
+                  </div>
+                </div>
+
+                <div class="format-card" @click="openCreateDocModal('image')">
+                  <img class="format-icon" :src="docIcon('image')" alt="Изображения" />
+                  <div class="format-info">
+                    <strong>Изображения</strong>
+                    <span class="format-ext">.png, .jpeg, сканы</span>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
         </div>
 
+        <!-- РЕДАКТОР С ВКЛАДКАМИ -->
         <template v-else>
-          <div class="tabs-bar">
-            <div
-                v-for="doc in openDocuments"
-                :key="doc.id"
-                class="tab-item"
-                :class="{ active: doc.id === activeId }"
-                @click="activeId = doc.id"
-                @mousedown.middle.prevent="closeTab(doc.id)"
-                @dblclick="startRename(doc)"
-            >
-              <img class="tab-icon" :src="docIcon(doc.type)" alt="" draggable="false">
+          <!-- ВКЛАДКИ -->
+          <div class="tabs-toolbar">
+            <div class="tabs-scroll-container">
+              <div
+                  v-for="doc in openDocuments"
+                  :key="doc.id"
+                  class="workspace-tab"
+                  :class="{ active: doc.id === activeId }"
+                  @click="activeId = doc.id"
+                  @mousedown.middle.prevent="closeTab(doc.id)"
+                  @dblclick="startRename(doc)"
+              >
+                <img class="tab-type-icon" :src="docIcon(doc.type)" alt="" draggable="false" />
 
-              <input
-                  v-if="renamingId === doc.id"
-                  v-model="renameValue"
-                  v-focus
-                  class="rename-input tab-rename"
-                  @blur="handleInputBlur"
-                  @keydown.enter="confirmRename"
-                  @click.stop
-              />
-              <span v-else class="tab-name">{{ doc.name }}</span>
+                <input
+                    v-if="renamingId === doc.id"
+                    v-model="renameValue"
+                    v-focus
+                    class="rename-input tab-rename"
+                    @blur="handleInputBlur"
+                    @keydown.enter="confirmRename"
+                    @click.stop
+                />
+                <span v-else class="tab-label" :title="doc.name">{{ doc.name }}</span>
 
-              <button class="tab-close" title="Закрыть вкладку" @click.stop="closeTab(doc.id)"><UIMoloSticker name="x" :size="14" /></button>
+                <button class="tab-close-btn" title="Закрыть вкладку" @click.stop="closeTab(doc.id)">
+                  <UIMoloSticker name="x" :size="12" />
+                </button>
+              </div>
             </div>
           </div>
 
-          <div class="tab-content">
+          <!-- СОДЕРЖИМОЕ ВЫБРАННОГО ДОКУМЕНТА -->
+          <div class="editor-viewport-container">
             <div
                 v-for="doc in openDocuments"
                 v-show="doc.id === activeId"
                 :key="doc.id"
-                class="tab-panel"
+                class="editor-tab-canvas"
             >
-              <div v-if="doc.loadState === 'error'" class="doc-status error">
-                <span>Не удалось загрузить документ</span>
-                <UIMoloButton class="small" @click="workspaceStore.loadDocumentContent(doc.id)">Повторить</UIMoloButton>
+              <div v-if="doc.loadState === 'error'" class="canvas-state-error">
+                <UIMoloSticker name="alert" :size="24" />
+                <span>Не удалось загрузить содержимое документа</span>
+                <UIMoloButton class="small confirm" @click="workspaceStore.loadDocumentContent(doc.id)">Повторить</UIMoloButton>
               </div>
-              <div v-else-if="doc.loadState !== 'loaded'" class="doc-status">
-                <span>Загрузка…</span>
+
+              <div v-else-if="doc.loadState !== 'loaded'" class="canvas-state-loading">
+                <UIMoloLoaders wndLoader />
+                <span>Загрузка данных документа...</span>
               </div>
+
               <template v-else>
                 <AppsMoloTable
                     v-if="doc.type === 'excel'"
@@ -1194,103 +1352,260 @@ onUnmounted(() => {
             </div>
           </div>
         </template>
-      </section>
+      </main>
 
-      <!-- Правая панель истории версий -->
-      <transition name="slide-panel">
-        <aside v-if="isVersionPanelOpen && activeDocument" class="version-sidebar">
-          <div class="version-header">
-            <div class="version-header-title">
-              <strong>История версий</strong>
-              <small>{{ activeDocument.name }}</small>
-            </div>
-            <UIMoloButton class="small fit" title="Закрыть панель" @click="isVersionPanelOpen = false"><UIMoloSticker name="x" :size="14" /></UIMoloButton>
+      <!-- ПАНЕЛЬ ИСТОРИИ ВЕРСИЙ -->
+      <aside v-if="isVersionPanelOpen && activeDocument" class="version-drawer">
+        <div class="drawer-header">
+          <div>
+            <span class="drawer-eyebrow">ИСТОРИЯ ИЗМЕНЕНИЙ</span>
+            <strong>Точки отката</strong>
           </div>
 
-          <div class="version-actions-bar">
-            <UIMoloButton class="confirm small full" @click="createManualSnapshot">
-              Создать контрольную точку
+          <UIMoloButton class="transparent small" title="Закрыть панель" @click="isVersionPanelOpen = false">
+            <UIMoloSticker name="x" :size="15" />
+          </UIMoloButton>
+        </div>
+
+        <div class="drawer-info-card">
+          <img class="drawer-doc-icon" :src="docIcon(activeDocument.type)" alt="" />
+          <strong>{{ activeDocument.name }}</strong>
+          <span>Текущий размер: {{ formatSize(activeDocument.size) }}</span>
+        </div>
+
+        <div class="drawer-action-block">
+          <UIMoloButton class="confirm small full" @click="openCreateSnapshotModal">
+            <UIMoloSticker name="save" :size="13" />
+            Создать контрольную точку
+          </UIMoloButton>
+        </div>
+
+        <hr />
+
+        <div v-if="versionsLoading" class="drawer-loading">
+          <UIMoloLoaders btnLoader />
+          <span>Загрузка ревизий…</span>
+        </div>
+
+        <div v-else-if="versions.length === 0" class="drawer-empty">
+          <div class="empty-icon-mini">
+            <UIMoloSticker name="history" :size="24" />
+          </div>
+          <strong>История пуста</strong>
+          <span>Создавайте контрольные точки перед важными правками документа</span>
+        </div>
+
+        <div v-else class="versions-scroll-stack">
+          <div
+              v-for="ver in versions"
+              :key="ver.id"
+              class="version-entry-card"
+          >
+            <div class="version-entry-meta">
+              <span class="version-time">{{ formatDate(ver.createdAt) }}</span>
+              <strong class="version-label">{{ ver.comment || 'Автоматический снимок' }}</strong>
+              <small class="version-bytes">{{ formatSize(ver.size) }}</small>
+            </div>
+
+            <UIMoloButton
+                class="action small"
+                title="Откатить документ к этой точке"
+                @click="requestRestoreVersion(ver)"
+            >
+              Откатить
             </UIMoloButton>
           </div>
+        </div>
+      </aside>
+    </div>
 
-          <div v-if="versionsLoading" class="version-loading">
-            <span>Загрузка ревизий…</span>
+    <!-- МОДАЛКА: СОЗДАНИЕ ПАПКИ -->
+    <UIMoloModal
+        v-model="createFolderModalOpen"
+        title="Новая папка"
+        width="460px"
+        confirm-text="Создать папку"
+        cancel-text="Отмена"
+        :loading="isFolderCreating"
+        close-on-overlay
+        @confirm="confirmCreateFolder"
+    >
+      <template #body>
+        <div class="modal-form-vertical">
+          <UIMoloInput
+              v-model="newFolderName"
+              compact
+              l-required
+              t-label="Название папки"
+              placeholder="Например: Договоры 2026 или Проекты"
+              @keydown.enter="confirmCreateFolder"
+          />
+
+          <UIMoloSelect
+              v-model="newFolderParentId"
+              compact
+              t-label="Расположение (родительская папка)"
+              :parent="folderOptions"
+              children="label"
+              value-key="value"
+          />
+        </div>
+      </template>
+    </UIMoloModal>
+
+    <!-- МОДАЛКА: СОЗДАНИЕ / ИМПОРТ ДОКУМЕНТА -->
+    <UIMoloModal
+        v-model="createDocModalOpen"
+        :title="`Новый ${DOC_TYPE_LABELS[newDocType]}`"
+        width="520px"
+        confirm-text="Создать"
+        cancel-text="Отмена"
+        :loading="isDocCreating"
+        close-on-overlay
+        @confirm="confirmCreateDocument"
+    >
+      <template #body>
+        <div class="modal-form-vertical">
+          <div class="type-preview-banner">
+            <img class="type-banner-icon" :src="docIcon(newDocType)" alt="" />
+            <div class="type-banner-text">
+              <strong>{{ DOC_TYPE_LABELS[newDocType] }}</strong>
+              <span>
+                {{ newDocType === 'excel' ? 'Электронная таблица со сложными формулами, стилями и сводными данными' :
+                  newDocType === 'word' ? 'Текстовый документ А4 с типографикой, колонтитулами и экспортом в .docx' :
+                      newDocType === 'primary' ? 'Первичная учётная документация государственного стандарта (ТОРГ-12, Акты)' :
+                          newDocType === 'pdf' ? 'Просмотр, наложение подписей, факсимиле и синих штампов организации' :
+                              'Изображения, сканы актов, паспорта и приложенные фотографии' }}
+              </span>
+            </div>
           </div>
 
-          <div v-else-if="versions.length === 0" class="version-empty">
-            <span>История пока пуста. При сохранении снимков они появятся здесь.</span>
-          </div>
+          <UIMoloInput
+              v-model="newDocName"
+              compact
+              l-required
+              t-label="Название документа"
+              placeholder="Введите название файла..."
+              @keydown.enter="confirmCreateDocument"
+          />
 
-          <div v-else class="version-list">
-            <div
-                v-for="ver in versions"
-                :key="ver.id"
-                class="version-card"
-            >
-              <div class="version-card-main">
-                <div class="version-date">{{ formatDate(ver.createdAt) }}</div>
-                <div class="version-comment">{{ ver.comment || 'Контрольная точка' }}</div>
-                <div class="version-size">{{ formatSize(ver.size) }}</div>
-              </div>
+          <UIMoloSelect
+              v-model="newDocFolderId"
+              compact
+              t-label="Поместить в папку"
+              :parent="folderOptions"
+              children="label"
+              value-key="value"
+          />
 
-              <div class="version-card-actions">
-                <UIMoloButton
-                    class="small"
-                    title="Откатить документ к этой версии"
-                    @click="requestRestoreVersion(ver)"
-                >
-                  Восстановить
-                </UIMoloButton>
+          <!-- Загрузка файла при создании PDF / Image -->
+          <div v-if="newDocType === 'pdf' || newDocType === 'image'" class="file-uploader-box">
+            <label class="field-label-text">
+              Выберите файл с устройства
+              <span class="required">*</span>
+            </label>
+
+            <div class="file-drop-trigger">
+              <input
+                  type="file"
+                  :accept="newDocType === 'pdf' ? 'application/pdf' : 'image/*'"
+                  @change="onModalFileSelect"
+              />
+              <div class="upload-dummy">
+                <UIMoloSticker name="upload" :size="16" />
+                <span v-if="selectedExternalFile">{{ selectedExternalFile.name }} ({{ formatSize(selectedExternalFile.size) }})</span>
+                <span v-else>Нажмите или перетащите файл сюда</span>
               </div>
             </div>
           </div>
-        </aside>
-      </transition>
-    </div>
+        </div>
+      </template>
+    </UIMoloModal>
+
+    <!-- МОДАЛКА: СОЗДАНИЕ СНИМКА ВЕРСИИ -->
+    <UIMoloModal
+        v-model="createSnapshotModalOpen"
+        title="Создать контрольную точку"
+        width="460px"
+        confirm-text="Зафиксировать версию"
+        cancel-text="Отмена"
+        :loading="isSnapshotCreating"
+        close-on-overlay
+        @confirm="confirmCreateManualSnapshot"
+    >
+      <template #body>
+        <div class="modal-form-vertical">
+          <UIMoloInput
+              v-model="snapshotComment"
+              compact
+              l-required
+              t-label="Комментарий к точке отката"
+              placeholder="Например: Перед согласованием с заказчиком"
+              @keydown.enter="confirmCreateManualSnapshot"
+          />
+          <small class="modal-hint-text">
+            Снимок сохранит полное текущее состояние документа и позволит вернуться к нему в любой момент.
+          </small>
+        </div>
+      </template>
+    </UIMoloModal>
+
+    <!-- МОДАЛКИ ПОДТВЕРЖДЕНИЙ -->
+    <UIMoloModal
+        v-model="isModalOpen"
+        :title="deleteModalTitle"
+        :modal-text="deleteModalText"
+        cancel-text="Отмена"
+        confirm-text="Удалить"
+        @confirm="confirmRemove"
+        @cancel="cancelRemove"
+    />
+
+    <UIMoloModal
+        v-model="isRestoreModalOpen"
+        title="Восстановить версию?"
+        modal-text="Текущее состояние будет сохранено в историю, а документ вернется к выбранной контрольной точке."
+        cancel-text="Отмена"
+        confirm-text="Восстановить"
+        @confirm="confirmRestoreVersion"
+        @cancel="pendingRestore = null"
+    />
+
+    <DirectoryResolutionModal
+        v-model="resolutionModalOpen"
+        :candidates="candidateList || []"
+        title="Выберите запись для вставки"
+        @select="handleCandidateSelect"
+    />
   </div>
-
-  <UIMoloModal
-      v-model="isModalOpen"
-      :title="deleteModalTitle"
-      :modal-text="deleteModalText"
-      cancel-text="Отмена"
-      confirm-text="Удалить"
-      @confirm="confirmRemove"
-      @cancel="cancelRemove"
-  />
-
-  <UIMoloModal
-      v-model="isRestoreModalOpen"
-      title="Восстановить версию?"
-      modal-text="Текущее состояние будет сохранено как снимок, а документ откатится к выбранной версии."
-      cancel-text="Отмена"
-      confirm-text="Восстановить"
-      @confirm="confirmRestoreVersion"
-      @cancel="pendingRestore = null"
-  />
-
-  <DirectoryResolutionModal
-      v-model="resolutionModalOpen"
-      :candidates="candidateList || []"
-      title="Выберите сотрудника для вставки"
-      @select="handleCandidateSelect"
-  />
 </template>
 
 <style scoped>
-.workspace {
-  display: flex;
-  flex-direction: column;
+.workspace-app {
+  --ws-panel: rgba(255, 255, 255, 0.025);
+  --ws-border: var(--half_opacity_border, rgba(255, 255, 255, 0.12));
+  --ws-text: #e6edf7;
+  --ws-muted: #8491a5;
+  --ws-blue: #38bdf8;
+
   width: 100%;
   height: 100%;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
-  color: #e0e0e0;
-  box-sizing: border-box;
+  color: var(--ws-text);
+  background: var(--half_opacity_bg, #07101e);
+  font-size: 13px;
   user-select: none;
 }
 
-.workspace.is-fullscreen {
+.workspace-app,
+.workspace-app * {
+  box-sizing: border-box;
+}
+
+.workspace-app.is-fullscreen {
   position: fixed;
   inset: 0;
   z-index: 9999;
@@ -1298,54 +1613,93 @@ onUnmounted(() => {
   width: 100vw !important;
 }
 
+/* ШАПКА В СТИЛЕ DIRECTORY */
 .workspace-header {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 14px;
-  border-bottom: 1px solid var(--half_opacity_border);
+  gap: 16px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--ws-border);
+  background: rgba(0, 0, 0, 0.13);
+}
+
+.header-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.header-icon {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  border-radius: 11px;
+  background: rgba(56, 189, 248, 0.08);
+  color: #38bdf8;
   flex-shrink: 0;
 }
 
-.workspace-title {
+.header-heading {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 18px;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.header-title {
+  font-size: 16px;
   font-weight: 700;
+  letter-spacing: -0.3px;
 }
 
-.workspace-header-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  position: relative;
+.header-subtitle {
+  font-size: 11px;
+  color: var(--ws-muted);
 }
 
-.icon-action-btn {
+.save-status-badge {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  padding: 4px 8px;
-}
-
-.screen-glyph {
-  width: 14px;
-  height: 14px;
-  color: #b0b0c0;
-}
-
-.save-status {
+  gap: 6px;
   font-size: 11px;
-  color: #8e8e9e;
-  white-space: nowrap;
+  color: var(--ws-muted);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--ws-border);
+  padding: 4px 8px;
+  border-radius: 6px;
 }
 
-.save-status.error {
-  color: #ef4444;
-  font-weight: 600;
+.save-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #34d399;
 }
 
+.save-status-badge.saving .save-dot {
+  background: #fbbf24;
+  animation: pulse 1s infinite;
+}
+
+.save-status-badge.error {
+  color: #f87171;
+  border-color: rgba(248, 113, 113, 0.3);
+}
+
+.save-status-badge.error .save-dot {
+  background: #f87171;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+/* ВЫПАДАЮЩЕЕ МЕНЮ СОЗДАНИЯ */
 .create-menu-wrap {
   position: relative;
 }
@@ -1354,15 +1708,15 @@ onUnmounted(() => {
   position: absolute;
   top: calc(100% + 6px);
   right: 0;
-  background: #1e1e1e;
-  border: 1px solid var(--half_opacity_border);
+  background: #181920;
+  border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 10px;
   padding: 6px;
   display: flex;
   flex-direction: column;
-  min-width: 180px;
-  z-index: 20;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  min-width: 200px;
+  z-index: 100;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6);
 }
 
 .create-menu-item {
@@ -1371,16 +1725,18 @@ onUnmounted(() => {
   gap: 10px;
   background: none;
   border: none;
-  color: #e0e0e0;
+  color: #e2e8f0;
   padding: 8px 10px;
   border-radius: 6px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 12.5px;
   text-align: left;
+  transition: background 0.12s;
 }
 
 .create-menu-item:hover {
-  background: rgba(100, 150, 255, 0.12);
+  background: rgba(56, 189, 248, 0.12);
+  color: #fff;
 }
 
 .create-menu-icon {
@@ -1389,96 +1745,167 @@ onUnmounted(() => {
   object-fit: contain;
 }
 
-.workspace-body {
-  flex: 1 1 auto;
-  display: flex;
+/* ОСНОВНОЙ ЛЕЙАУТ */
+.workspace-layout {
+  flex: 1;
   min-height: 0;
+  display: flex;
   overflow: hidden;
   position: relative;
 }
 
+/* САЙДБАР */
 .workspace-sidebar {
-  width: 280px;
+  width: 270px;
+  min-width: 240px;
+  max-width: 340px;
   flex-shrink: 0;
-  border-right: 1px solid var(--half_opacity_border);
+  border-right: 1px solid var(--ws-border);
+  background: rgba(0, 0, 0, 0.12);
   display: flex;
   flex-direction: column;
   min-height: 0;
-  background: rgba(0, 0, 0, 0.15);
 }
 
-.tree-container {
-  flex: 1 1 30%;
+.sidebar-search-box {
+  padding: 10px;
+  border-bottom: 1px solid var(--ws-border);
+  flex-shrink: 0;
+}
+
+.sidebar-section-heading {
   display: flex;
-  flex-direction: column;
-  overflow-y: auto;
-  padding: 10px 8px;
-  min-height: 120px;
-  border-bottom: 1px solid var(--half_opacity_border);
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--ws-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
-.explorer-heading {
+.tree-heading-actions {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 11px;
-  font-weight: 700;
-  color: #7b7b8f;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  padding: 0 6px 8px 6px;
+}
+
+.add-folder-mini-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--ws-border);
+  border-radius: 4px;
+  color: var(--ws-muted);
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+
+.add-folder-mini-btn:hover {
+  background: rgba(56, 189, 248, 0.18);
+  border-color: #38bdf8;
+  color: #fff;
+}
+
+.heading-text-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.current-folder-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 140px;
+}
+
+.list-mode-toggle {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--ws-border);
+  border-radius: 4px;
+  color: #cbd5e1;
+  font-size: 10px;
+  padding: 2px 6px;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+
+.list-mode-toggle:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.badge-pill {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--ws-muted);
+  font-family: monospace;
+}
+
+.folders-tree-panel {
+  flex: 1 1 45%;
+  min-height: 120px;
+  overflow-y: auto;
+  border-bottom: 1px solid var(--ws-border);
+  padding: 4px;
 }
 
 .folders-tree {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 2px;
 }
 
 .tree-node {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 6px;
-  border-radius: 4px;
+  gap: 7px;
+  padding: 6px 8px;
+  border-radius: 6px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 12px;
   position: relative;
-  transition: background 0.1s ease, outline 0.1s ease;
+  transition: background 0.12s ease;
+  color: #cbd5e1;
 }
 
 .tree-node:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.04);
+  color: #fff;
 }
 
 .tree-node.active {
-  background: rgba(100, 150, 255, 0.18);
+  background: rgba(56, 189, 248, 0.14);
   color: #fff;
   font-weight: 500;
 }
 
 .tree-node.drag-over {
-  background: rgba(59, 130, 246, 0.25) !important;
-  outline: 1px dashed #3b82f6;
+  background: rgba(56, 189, 248, 0.25) !important;
+  outline: 1px dashed #38bdf8;
 }
 
 .tree-chevron {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 16px;
-  height: 16px;
-  font-size: 11px;
+  width: 14px;
+  height: 14px;
   background: none;
   border: none;
-  color: #8b8b9b;
+  color: #64748b;
   cursor: pointer;
   padding: 0;
   transition: transform 0.15s ease, color 0.15s;
-}
-
-.tree-chevron:hover {
-  color: #ffffff;
 }
 
 .tree-chevron.expanded {
@@ -1490,11 +1917,12 @@ onUnmounted(() => {
   pointer-events: none;
 }
 
-.tree-icon {
+.node-icon {
   flex-shrink: 0;
+  color: #38bdf8;
 }
 
-.tree-file-icon {
+.tree-type-icon {
   width: 14px;
   height: 14px;
   object-fit: contain;
@@ -1509,128 +1937,7 @@ onUnmounted(() => {
   white-space: nowrap;
 }
 
-.file-node {
-  color: #c4c4d4;
-}
-
-.file-node:hover {
-  color: #ffffff;
-}
-
-.bottom-files-section {
-  flex: 1 1 60%;
-  display: flex;
-  flex-direction: column;
-  overflow-y: auto;
-  padding: 10px 8px;
-  min-height: 120px;
-}
-
-.sidebar-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-  font-size: 11px;
-  color: #8e8e9e;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 6px;
-  padding: 0 4px;
-}
-
-.heading-controls {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-
-.heading-title {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 140px;
-  font-weight: 700;
-}
-
-.mode-toggle-btn {
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid var(--half_opacity_border);
-  border-radius: 4px;
-  color: #b0b0c0;
-  font-size: 10px;
-  padding: 2px 6px;
-  cursor: pointer;
-}
-
-.mode-toggle-btn:hover {
-  background: rgba(255, 255, 255, 0.15);
-  color: #fff;
-}
-
-.sidebar-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  text-align: center;
-  padding: 20px 8px;
-  color: #6e6e7e;
-  font-size: 12px;
-}
-
-.sidebar-list {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.sidebar-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: background 0.12s ease;
-}
-
-.sidebar-item:hover {
-  background: rgba(255, 255, 255, 0.05);
-}
-
-.sidebar-item.active {
-  background: rgba(100, 150, 255, 0.16);
-}
-
-.sidebar-item-icon {
-  width: 16px;
-  height: 16px;
-  object-fit: contain;
-  flex-shrink: 0;
-}
-
-.sidebar-item-info {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.sidebar-item-name {
-  font-size: 12.5px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.sidebar-item-meta {
-  font-size: 10px;
-  color: #6e6e7e;
-}
-
-.item-actions {
+.node-actions {
   display: flex;
   align-items: center;
   gap: 2px;
@@ -1638,113 +1945,266 @@ onUnmounted(() => {
   transition: opacity 0.15s;
 }
 
-.tree-node:hover .item-actions,
-.file-node:hover .item-actions,
-.sidebar-item:hover .item-actions {
+.tree-node:hover .node-actions,
+.file-card-item:hover .node-actions {
   opacity: 1;
 }
 
-.icon-btn {
+.node-action-btn {
   background: none;
   border: none;
   cursor: pointer;
   padding: 2px 4px;
   border-radius: 4px;
+  color: var(--ws-muted);
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  transition: all 0.1s;
 }
 
-.icon-btn:hover {
-  background: rgba(255, 255, 255, 0.15);
+.node-action-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.node-action-btn.delete:hover {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
 }
 
 .rename-input {
-  background: #0f0f14;
-  border: 1px solid #6496ff;
+  background: #0f1118;
+  border: 1px solid #38bdf8;
   border-radius: 4px;
   color: #fff;
-  font-size: 12px;
-  padding: 2px 4px;
+  font-size: 11px;
+  padding: 2px 6px;
   width: 100%;
 }
 
-.workspace-main {
-  flex: 1 1 0%;
-  min-width: 0;
-  min-height: 0;
+.files-list-panel {
+  flex: 1 1 50%;
+  min-height: 120px;
+  overflow-y: auto;
+  padding: 4px;
   display: flex;
   flex-direction: column;
-  padding: 10px;
-  box-sizing: border-box;
-  overflow: hidden;
 }
 
-.empty-state {
-  flex: 1;
+.files-empty-state {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 32px 16px;
+  gap: 6px;
+  padding: 24px 10px;
+  color: var(--ws-muted);
+  font-size: 11.5px;
   text-align: center;
-  user-select: none;
-  animation: fadeIn 0.25s ease-out;
 }
 
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
+.files-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
-.empty-icon-wrap {
-  width: 72px;
-  height: 72px;
-  border-radius: 20px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid var(--half_opacity_border);
+.file-card-item {
   display: flex;
   align-items: center;
-  justify-content: center;
-  margin-bottom: 16px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.12s ease;
+  background: rgba(255, 255, 255, 0.015);
 }
 
-.empty-state h3 {
-  margin: 0 0 6px;
-  font-size: 19px;
-  font-weight: 600;
-  color: #f3f3f6;
+.file-card-item:hover {
+  background: rgba(255, 255, 255, 0.045);
 }
 
-.empty-subtitle {
-  max-width: 480px;
-  margin: 0 0 28px;
+.file-card-item.active {
+  background: rgba(56, 189, 248, 0.14);
+}
+
+.file-card-icon {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.file-card-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.file-card-name {
+  font-size: 12px;
+  color: #e2e8f0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 9.5px;
+  color: var(--ws-muted);
+}
+
+.sidebar-bottom-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-top: 1px solid var(--ws-border);
+  font-size: 10px;
+  color: var(--ws-muted);
+  flex-shrink: 0;
+}
+
+.sidebar-bottom-info b {
+  color: var(--ws-text);
+  font-family: monospace;
+}
+
+/* ОСНОВНАЯ ЗОНА */
+.workspace-viewport {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.08);
+}
+
+/* ПУСТОЙ ЭКРАН */
+.workspace-empty-container {
+  flex: 1;
+  overflow-y: auto;
+  padding: 18px 24px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* СТАТИСТИКА */
+.stats-row {
+  display: flex;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.stat-card {
+  flex: 1;
+  min-width: 0;
+  min-height: 60px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--ws-border);
+  border-radius: 9px;
+  background: var(--ws-panel);
+}
+
+.stat-icon {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  border-radius: 8px;
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.08);
+}
+
+.stat-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.stat-content span {
+  color: var(--ws-muted);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.stat-content strong {
+  font-size: 17px;
+  font-weight: 700;
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+}
+
+.empty-glass-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 40px 24px;
+  border-radius: 14px;
+  background: var(--ws-panel);
+  border: 1px solid var(--ws-border);
+  gap: 12px;
+}
+
+.empty-hero-icon {
+  width: 68px;
+  height: 68px;
+  display: grid;
+  place-items: center;
+  border-radius: 18px;
+  background: rgba(56, 189, 248, 0.08);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  margin-bottom: 4px;
+}
+
+.hero-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.hero-subtitle {
+  max-width: 520px;
+  margin: 0;
+  color: var(--ws-muted);
   font-size: 13px;
-  color: #8e8e9e;
   line-height: 1.5;
 }
 
-.supported-formats {
+.supported-formats-box {
+  margin-top: 14px;
+  width: 100%;
+  max-width: 820px;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  max-width: 680px;
-  width: 100%;
+  gap: 10px;
 }
 
-.formats-title {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.6px;
-  color: #6e6e80;
+.formats-header-label {
+  font-size: 10.5px;
   font-weight: 700;
+  color: var(--ws-muted);
+  letter-spacing: 0.6px;
 }
 
 .formats-grid {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 10px;
 }
 
@@ -1752,24 +2212,24 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 12px;
-  background: rgba(255, 255, 255, 0.025);
-  border: 1px solid var(--half_opacity_border);
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--ws-border);
   border-radius: 10px;
   cursor: pointer;
-  text-align: left;
   transition: all 0.15s ease;
+  text-align: left;
 }
 
 .format-card:hover {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(100, 150, 255, 0.4);
+  background: rgba(56, 189, 248, 0.08);
+  border-color: #38bdf8;
   transform: translateY(-2px);
 }
 
 .format-icon {
-  width: 26px;
-  height: 26px;
+  width: 28px;
+  height: 28px;
   object-fit: contain;
   flex-shrink: 0;
 }
@@ -1782,268 +2242,381 @@ onUnmounted(() => {
 
 .format-info strong {
   font-size: 12.5px;
-  color: #e2e2ec;
+  color: #f1f5f9;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .format-ext {
-  font-size: 10px;
-  color: #7b7b8f;
+  font-size: 9.5px;
+  color: var(--ws-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-@media (max-width: 900px) {
-  .formats-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-
-@media (max-width: 500px) {
-  .formats-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-.doc-status {
+/* ВКЛАДКИ ДОКУМЕНТОВ */
+.tabs-toolbar {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 10px;
-  color: #8e8e9e;
-  font-size: 13px;
-}
-
-.doc-status.error {
-  color: #ef4444;
-}
-
-.tabs-bar {
-  display: flex;
-  overflow-x: auto;
+  border-bottom: 1px solid var(--ws-border);
+  background: rgba(0, 0, 0, 0.18);
   flex-shrink: 0;
-  gap: 4px;
-  padding-bottom: 6px;
 }
 
-.tab-item {
+.tabs-scroll-container {
+  display: flex;
+  gap: 2px;
+  padding: 4px 6px 0 6px;
+  overflow-x: auto;
+  flex: 1;
+}
+
+.workspace-tab {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 6px 12px;
-  border-radius: 8px 8px 0 0;
-  background: rgba(255, 255, 255, 0.03);
+  border-radius: 6px 6px 0 0;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid transparent;
+  border-bottom: none;
   cursor: pointer;
   font-size: 12px;
-  white-space: nowrap;
-  border: 1px solid transparent;
-  max-width: 200px;
+  color: var(--ws-muted);
+  max-width: 220px;
+  transition: all 0.12s;
 }
 
-.tab-item.active {
-  background: var(--half_opacity_bg);
-  border-color: var(--half_opacity_border);
-  border-bottom-color: transparent;
+.workspace-tab:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: #f8fafc;
+}
+
+.workspace-tab.active {
+  background: var(--ws-panel);
+  border-color: var(--ws-border);
+  color: #38bdf8;
   font-weight: 600;
+  box-shadow: inset 0 -2px 0 #38bdf8;
 }
 
-.tab-icon {
+.tab-type-icon {
   width: 14px;
   height: 14px;
   object-fit: contain;
   flex-shrink: 0;
 }
 
-.tab-name {
+.tab-label {
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+}
+
+.tab-close-btn {
+  background: none;
+  border: none;
+  color: var(--ws-muted);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 3px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tab-close-btn:hover {
+  background: rgba(239, 68, 68, 0.2);
+  color: #f87171;
 }
 
 .tab-rename {
-  max-width: 120px;
+  max-width: 130px;
 }
 
-.tab-close {
-  background: none;
-  border: none;
-  color: #8e8e9e;
-  cursor: pointer;
-  font-size: 10px;
-  padding: 2px;
-  border-radius: 3px;
-}
-
-.tab-close:hover {
-  color: #ef4444;
-  background: rgba(255, 255, 255, 0.1);
-}
-
-.tab-content {
-  flex: 1 1 0%;
+/* ОБЛАСТЬ РЕДАКТОРА */
+.editor-viewport-container {
+  flex: 1;
   min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
   position: relative;
-}
-
-.tab-panel {
-  flex: 1 1 0%;
-  min-height: 0;
-  width: 100%;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
   overflow: hidden;
 }
 
-.tab-panel > * {
-  flex: 1 1 0%;
-  min-height: 0;
+.editor-tab-canvas {
   width: 100%;
   height: 100%;
-}
-
-.version-sidebar {
-  width: 320px;
-  flex-shrink: 0;
-  border-left: 1px solid var(--half_opacity_border);
-  background: var(--half_opacity_bg);
   display: flex;
   flex-direction: column;
-  min-height: 0;
-  z-index: 10;
 }
 
-.version-header {
+.canvas-state-error,
+.canvas-state-loading {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--ws-muted);
+  font-size: 13px;
+}
+
+.canvas-state-error {
+  color: #f87171;
+}
+
+/* ПАНЕЛЬ ВЕРСИЙ (DRAWER) */
+.version-drawer {
+  width: 300px;
+  flex-shrink: 0;
+  border-left: 1px solid var(--ws-border);
+  background: rgba(0, 0, 0, 0.18);
+  display: flex;
+  flex-direction: column;
+  padding: 14px 12px;
+  gap: 12px;
+  overflow-y: auto;
+}
+
+.drawer-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--half_opacity_border);
 }
 
-.version-header-title {
+.drawer-header > div {
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
 
-.version-header-title strong {
+.drawer-eyebrow {
+  color: #728198;
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+}
+
+.drawer-header strong {
   font-size: 14px;
-  color: #fff;
 }
 
-.version-header-title small {
-  color: #8e8e9e;
-  font-size: 11px;
-  max-width: 220px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.version-actions-bar {
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--half_opacity_border);
-}
-
-.version-loading,
-.version-empty {
-  padding: 24px 16px;
-  text-align: center;
-  color: #7b7b8f;
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.version-list {
-  padding: 12px;
+.drawer-info-card {
   display: flex;
-  height: 650px;
-  overflow-y: auto;
   flex-direction: column;
-  gap: 10px;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+  padding: 12px;
+  border-radius: 8px;
+  background: var(--ws-panel);
+  border: 1px solid var(--ws-border);
 }
 
-.version-card {
-  padding: 10px 12px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid var(--half_opacity_border);
-  border-radius: 8px;
+.drawer-doc-icon {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+}
+
+.drawer-info-card strong {
+  font-size: 13px;
+  color: #fff;
+  word-break: break-all;
+}
+
+.drawer-info-card span {
+  font-size: 10.5px;
+  color: var(--ws-muted);
+  font-family: monospace;
+}
+
+.drawer-action-block {
+  display: flex;
+  flex-direction: column;
+}
+
+.drawer-loading,
+.drawer-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-align: center;
+  padding: 30px 10px;
+  color: var(--ws-muted);
+  font-size: 11.5px;
+}
+
+.empty-icon-mini {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: var(--ws-panel);
+  border: 1px solid var(--ws-border);
+  color: #64748b;
+}
+
+.versions-scroll-stack {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  transition: background 0.15s ease;
 }
 
-.version-card:hover {
-  background: rgba(255, 255, 255, 0.06);
+.version-entry-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px;
+  border-radius: 8px;
+  background: var(--ws-panel);
+  border: 1px solid var(--ws-border);
+  transition: all 0.12s;
 }
 
-.version-card-main {
+.version-entry-card:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.version-entry-meta {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
+  min-width: 0;
 }
 
-.version-date {
-  font-size: 12px;
+.version-time {
+  font-size: 9.5px;
+  color: var(--ws-blue);
   font-weight: 600;
+}
+
+.version-label {
+  font-size: 12px;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 140px;
+}
+
+.version-bytes {
+  font-size: 9.5px;
+  color: var(--ws-muted);
+  font-family: monospace;
+}
+
+/* МОДАЛЬНЫЕ ФОРМЫ */
+.modal-form-vertical {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 4px 1px;
+}
+
+.modal-hint-text {
+  font-size: 11px;
+  color: var(--ws-muted);
+  line-height: 1.4;
+}
+
+.type-preview-banner {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: rgba(56, 189, 248, 0.07);
+  border: 1px solid rgba(56, 189, 248, 0.2);
+}
+
+.type-banner-icon {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.type-banner-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.type-banner-text strong {
+  font-size: 13.5px;
   color: #fff;
 }
 
-.version-comment {
-  font-size: 12px;
-  color: #9fa2b4;
+.type-banner-text span {
+  font-size: 11px;
+  color: #cbd5e1;
+  line-height: 1.35;
 }
 
-.version-size {
-  font-size: 10px;
-  color: #636575;
-}
-
-.version-card-actions {
+.file-uploader-box {
   display: flex;
-  justify-content: flex-end;
+  flex-direction: column;
+  gap: 6px;
 }
 
-.slide-panel-enter-active,
-.slide-panel-leave-active {
-  transition: transform 0.25s ease, opacity 0.2s ease;
+.field-label-text {
+  font-size: 11.5px;
+  color: var(--ws-muted);
+  font-weight: 500;
 }
 
-.slide-panel-enter-from,
-.slide-panel-leave-to {
-  transform: translateX(100%);
+.required {
+  color: #f87171;
+}
+
+.file-drop-trigger {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px 12px;
+  border: 1px dashed var(--ws-border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.02);
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.file-drop-trigger:hover {
+  background: rgba(56, 189, 248, 0.06);
+  border-color: #38bdf8;
+}
+
+.file-drop-trigger input[type='file'] {
+  position: absolute;
+  inset: 0;
   opacity: 0;
+  cursor: pointer;
 }
 
-@media (max-width: 768px) {
-  .workspace-body {
-    flex-direction: column;
-  }
+.upload-dummy {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #cbd5e1;
+  pointer-events: none;
+}
 
+@media (max-width: 900px) {
   .workspace-sidebar {
-    width: 100%;
-    max-height: 240px;
-    border-right: none;
-    border-bottom: 1px solid var(--half_opacity_border);
+    width: 220px;
   }
-
-  .version-sidebar {
-    position: absolute;
-    top: 0;
-    right: 0;
-    bottom: 0;
-    width: 100%;
-    max-width: 320px;
-    box-shadow: -4px 0 16px rgba(0,0,0,0.5);
+  .stats-row {
+    flex-wrap: wrap;
   }
 }
 </style>

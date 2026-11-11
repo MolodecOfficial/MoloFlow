@@ -1,4 +1,4 @@
-<!-- components/apps/molo/MoloDocument.vue -->
+<!-- app/components/apps/MoloDocument.vue -->
 <script lang="ts" setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { EditorContent, useEditor } from '@tiptap/vue-3'
@@ -8,7 +8,7 @@ import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import StarterKit from '@tiptap/starter-kit'
 import TextAlign from '@tiptap/extension-text-align'
 import Image from '@tiptap/extension-image'
-import { TableKit } from '@tiptap/extension-table'
+import { TableKit, TableCell, TableHeader } from '@tiptap/extension-table'
 import { FontFamily, TextStyle } from '@tiptap/extension-text-style'
 import Color from '@tiptap/extension-color'
 import Highlight from '@tiptap/extension-highlight'
@@ -21,7 +21,7 @@ import {
   TextRun,
   Table,
   TableRow,
-  TableCell,
+  TableCell as DocxTableCell,
   WidthType,
   BorderStyle,
   AlignmentType,
@@ -56,6 +56,24 @@ const pageCount = ref(1)
 const wordCount = ref(0)
 const charCount = ref(0)
 
+/* ── Вкладки ленты (Ribbon) ── */
+const activeRibbonTab = ref<'home' | 'insert' | 'table'>('home')
+
+/* ── Состояние интерактивного селектора таблиц Word (Grid Picker) ── */
+const tablePickerOpen = ref(false)
+const hoverRows = ref(1)
+const hoverCols = ref(1)
+const customTableRows = ref(4)
+const customTableCols = ref(4)
+
+const GRID_MAX_ROWS = 8
+const GRID_MAX_COLS = 10
+
+/* ── Поиск по документу ── */
+const isSearchOpen = ref(false)
+const searchQuery = ref('')
+const searchMatchCount = ref(0)
+
 /* ── Состояние плавающего окна саджеста ── */
 const suggestDropdownRef = ref<InstanceType<typeof DirectorySuggestDropdown> | null>(null)
 const suggestVisible = ref(false)
@@ -67,6 +85,83 @@ let mentionActiveRange: { from: number; to: number } | null = null
 onMounted(async () => {
   await interpolator.fetchDefinitions()
   allDirectoryItems.value = await interpolator.fetchAllDirectories()
+  document.addEventListener('click', handleGlobalClick)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('click', handleGlobalClick)
+})
+
+function handleGlobalClick(e: MouseEvent) {
+  const target = e.target as HTMLElement
+  if (!target.closest('.table-picker-container')) {
+    tablePickerOpen.value = false
+  }
+}
+
+/* ───────────────────────── Расширение: цвет ячеек таблицы ───────────────────────── */
+const CustomTableCell = TableCell.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      backgroundColor: {
+        default: null,
+        parseHTML: (el: HTMLElement) => el.style.backgroundColor || null,
+        renderHTML: (attrs: Record<string, any>) => {
+          if (!attrs.backgroundColor) return {}
+          return { style: `background-color: ${attrs.backgroundColor}` }
+        },
+      },
+    }
+  },
+})
+
+const CustomTableHeader = TableHeader.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      backgroundColor: {
+        default: null,
+        parseHTML: (el: HTMLElement) => el.style.backgroundColor || null,
+        renderHTML: (attrs: Record<string, any>) => {
+          if (!attrs.backgroundColor) return {}
+          return { style: `background-color: ${attrs.backgroundColor}` }
+        },
+      },
+    }
+  },
+})
+
+/* ───────────────────────── Расширение: межстрочный интервал (Line Height) ───────────────────────── */
+const LineHeight = Extension.create({
+  name: 'lineHeight',
+  addOptions() { return { types: ['paragraph', 'heading'] } },
+  addGlobalAttributes() {
+    return [{
+      types: this.options.types,
+      attributes: {
+        lineHeight: {
+          default: null,
+          parseHTML: (el: HTMLElement) => el.style.lineHeight || null,
+          renderHTML: (attrs: Record<string, any>) => attrs.lineHeight ? { style: `line-height: ${attrs.lineHeight}` } : {},
+        },
+      },
+    }]
+  },
+  addCommands() {
+    return {
+      setLineHeight: (lineHeight: string) => ({ commands }: any) => {
+        return this.options.types.every((type: string) =>
+            commands.updateAttributes(type, { lineHeight })
+        )
+      },
+      unsetLineHeight: () => ({ commands }: any) => {
+        return this.options.types.every((type: string) =>
+            commands.resetAttributes(type, 'lineHeight')
+        )
+      },
+    } as any
+  },
 })
 
 /* ───────────────────────── Плагин перехвата {@...} в тексте ───────────────────────── */
@@ -158,7 +253,6 @@ function handleSuggestSelect(item: DirectoryLookupItem, fieldValue?: string) {
 
   const { from, to } = mentionActiveRange
   const view = editor.value.view
-
   const textToInsert = fieldValue || item.title
 
   const tr = view.state.tr.replaceWith(
@@ -456,6 +550,8 @@ interface InlineStyleState {
   italics?: boolean
   underline?: boolean
   strike?: boolean
+  subscript?: boolean
+  superscript?: boolean
   color?: string
 }
 
@@ -472,6 +568,8 @@ function parseInlineRuns(element: Node, defaultOverrides?: { size?: number; colo
           italics: state.italics,
           underline: state.underline ? {} : undefined,
           strike: state.strike,
+          subScript: state.subscript,
+          superScript: state.superscript,
           font: 'Arial',
           size: defaultOverrides?.size ?? 21,
           color: defaultOverrides?.color ?? state.color ?? '111111'
@@ -494,8 +592,14 @@ function parseInlineRuns(element: Node, defaultOverrides?: { size?: number; colo
       if (tag === 'u' || el.style.textDecoration?.includes('underline')) {
         nextState.underline = true
       }
-      if (tag === 's' || tag === 'strike' || el.style.textDecoration?.includes('line-through')) {
+      if (tag === 's' || tag === 'strike' || tag === 'del' || el.style.textDecoration?.includes('line-through')) {
         nextState.strike = true
+      }
+      if (tag === 'sub') {
+        nextState.subscript = true
+      }
+      if (tag === 'sup') {
+        nextState.superscript = true
       }
       if (el.style.color) {
         const hex = el.style.color.replace('#', '')
@@ -581,17 +685,19 @@ function htmlToDocxElements(bodyEl: HTMLElement): (Paragraph | Table)[] {
       const trList = el.querySelectorAll('tr')
 
       trList.forEach(tr => {
-        const cells: TableCell[] = []
+        const cells: DocxTableCell[] = []
         Array.from(tr.children).forEach((cellEl, cellIdx) => {
           const cell = cellEl as HTMLTableCellElement
           const colSpan = parseInt(cell.getAttribute('colspan') || '1', 10)
           const rowSpan = parseInt(cell.getAttribute('rowspan') || '1', 10)
 
+          const cellBg = (cell.style.backgroundColor || '').replace('#', '').replace(/\s+/g, '')
+
           let widthPct = 25
           if (colSpan >= 3) widthPct = 100
           else if (cellIdx === 1) widthPct = 50
 
-          cells.push(new TableCell({
+          cells.push(new DocxTableCell({
             children: [
               new Paragraph({
                 children: parseInlineRuns(cell),
@@ -602,6 +708,7 @@ function htmlToDocxElements(bodyEl: HTMLElement): (Paragraph | Table)[] {
             rowSpan: rowSpan > 1 ? rowSpan : undefined,
             width: { size: widthPct, type: WidthType.PERCENTAGE },
             verticalAlign: VerticalAlign.TOP,
+            shading: cellBg ? { fill: cellBg } : undefined,
             borders: {
               top: { style: BorderStyle.SINGLE, size: 1, color: '777777' },
               bottom: { style: BorderStyle.SINGLE, size: 1, color: '777777' },
@@ -690,6 +797,64 @@ function triggerWordImport() {
   input.click()
 }
 
+function printDocument() {
+  const pageDom = document.querySelector('.molo-page')
+  if (!pageDom) return
+
+  const iframe = document.createElement('iframe')
+  iframe.style.position = 'fixed'
+  iframe.style.right = '0'
+  iframe.style.bottom = '0'
+  iframe.style.width = '0'
+  iframe.style.height = '0'
+  iframe.style.border = '0'
+  document.body.appendChild(iframe)
+
+  const docFrame = iframe.contentWindow?.document
+  if (!docFrame) return
+
+  const clone = pageDom.cloneNode(true) as HTMLElement
+  clone.querySelectorAll('.molo-pb, .molo-pb-band, .molo-pb-end').forEach(el => el.remove())
+
+  docFrame.open()
+  docFrame.write(`
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="utf-8">
+        <title>${props.fileName || 'Печать документа'}</title>
+        <style>
+          @page { size: A4 portrait; margin: 20mm 15mm; }
+          body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            font-size: 11pt;
+            line-height: 1.25;
+            color: #000;
+          }
+          table { border-collapse: collapse; width: 100%; margin: 8px 0; table-layout: fixed; }
+          td, th { border: 1px solid #333; padding: 4px 8px; vertical-align: top; }
+          th { background: #f0f0f0; font-weight: bold; }
+          blockquote { border-left: 3px solid #2b7de9; padding-left: 12px; margin: 8px 0; color: #555; font-style: italic; }
+          h1 { font-size: 20pt; margin: 12px 0 6px; }
+          h2 { font-size: 15pt; margin: 10px 0 4px; }
+          h3 { font-size: 12.5pt; margin: 8px 0 3px; }
+          p { margin: 0 0 4px; }
+        </style>
+      </head>
+      <body>${clone.innerHTML}</body>
+    </html>
+  `)
+  docFrame.close()
+
+  setTimeout(() => {
+    iframe.contentWindow?.focus()
+    iframe.contentWindow?.print()
+    setTimeout(() => document.body.removeChild(iframe), 1000)
+  }, 250)
+}
+
 const toHtml = (v: unknown) => (typeof v === 'string' && v.trim() ? v : '<p></p>')
 
 let saveTimeout: ReturnType<typeof setTimeout> | null = null
@@ -711,6 +876,13 @@ function updateStats() {
   const text = editor.value.getText()
   charCount.value = text.length
   wordCount.value = text.trim() ? text.trim().split(/\s+/).length : 0
+
+  if (searchQuery.value.trim()) {
+    const rx = new RegExp(searchQuery.value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi')
+    searchMatchCount.value = (text.match(rx) || []).length
+  } else {
+    searchMatchCount.value = 0
+  }
 }
 
 const editor = useEditor({
@@ -719,7 +891,13 @@ const editor = useEditor({
     StarterKit,
     TextAlign.configure({ types: ['heading', 'paragraph'] }),
     Image,
-    TableKit.configure({ table: { resizable: true } }),
+    TableKit.configure({
+      table: { resizable: true },
+      tableCell: false,
+      tableHeader: false,
+    }),
+    CustomTableCell,
+    CustomTableHeader,
     TextStyle,
     FontFamily,
     Color,
@@ -727,6 +905,7 @@ const editor = useEditor({
     Subscript,
     Superscript,
     FontSize,
+    LineHeight,
     Indent,
     Pagination.configure({ onPages: (n: number) => { pageCount.value = n } }),
     DirectoryMention,
@@ -762,6 +941,37 @@ function isActive(name: string, attrs?: Record<string, any>) {
   return editor.value?.isActive(name, attrs) ?? false
 }
 
+const isInsideTable = computed(() => isActive('table'))
+
+// Автоматически переключаем ленту на вкладку «Таблица», если курсор попал в таблицу
+watch(isInsideTable, (inTable) => {
+  if (inTable && activeRibbonTab.value !== 'table') {
+    activeRibbonTab.value = 'table'
+  } else if (!inTable && activeRibbonTab.value === 'table') {
+    activeRibbonTab.value = 'home'
+  }
+})
+
+/* ───────────── Функции управления таблицами Word ───────────── */
+function insertGridTable(rows: number, cols: number) {
+  chain()?.insertTable({ rows, cols, withHeaderRow: true }).run()
+  tablePickerOpen.value = false
+}
+
+function insertCustomTable() {
+  const r = Math.max(1, Math.min(40, customTableRows.value || 3))
+  const c = Math.max(1, Math.min(20, customTableCols.value || 3))
+  insertGridTable(r, c)
+}
+
+function setCellBg(color: string) {
+  chain()?.setCellAttribute('backgroundColor', color).run()
+}
+
+const canMergeCells = computed(() => editor.value?.can().mergeCells() ?? false)
+const canSplitCell = computed(() => editor.value?.can().splitCell() ?? false)
+
+/* ───────────── Управление типографикой ───────────── */
 const currentFontFamily = computed({
   get: () => editor.value?.getAttributes('textStyle').fontFamily || '',
   set: (val: string) => { if (!val) exec('unsetFontFamily'); else exec('setFontFamily', val) },
@@ -785,11 +995,27 @@ const currentBlockType = computed({
   },
 })
 
+const currentLineHeight = computed({
+  get: () => editor.value?.getAttributes('paragraph').lineHeight || '1.15',
+  set: (val: string) => { exec('setLineHeight', val) }
+})
+
 function setTextColor(e: Event) { exec('setColor', (e.target as HTMLInputElement).value) }
 function setHighlight(e: Event) { exec('toggleHighlight', { color: (e.target as HTMLInputElement).value }) }
 function setAlign(align: string) { chain()?.setTextAlign(align).run() }
-function insertTable() { chain()?.insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run() }
 function clearFormatting() { chain()?.clearNodes().unsetAllMarks().run() }
+
+function insertDate() {
+  const now = new Date().toLocaleDateString('ru-RU')
+  chain()?.insertContent(now).run()
+}
+
+function insertImagePrompt() {
+  const url = prompt('Введите URL изображения (или data:image/...)')
+  if (url) {
+    chain()?.setImage({ src: url }).run()
+  }
+}
 
 onBeforeUnmount(() => {
   if (saveTimeout) emitNow()
@@ -813,85 +1039,311 @@ onBeforeUnmount(() => {
         @close="suggestVisible = false"
     />
 
+    <!-- Верхний тулбар документа -->
     <div class="sheet-toolbar">
       <div class="btn-group">
         <UIMoloButton class="small" title="Экспорт в Word (.docx)" @click="exportToDocx">
-          <img :src="wordIcon" alt="" style="width: 12px">
+          <img :src="wordIcon" alt="" style="width: 13px" />
         </UIMoloButton>
         <UIMoloButton class="small" title="Импорт из Word (.docx)" @click="triggerWordImport">
-          <UIMoloSticker name="folder"/>
+          <UIMoloSticker name="folder" :size="14" />
+        </UIMoloButton>
+        <UIMoloButton class="small" title="Печать документа" @click="printDocument">
+          <UIMoloSticker name="print" :size="14" />
         </UIMoloButton>
       </div>
-      <div class="toolbar-sep"/>
+
+      <div class="toolbar-sep" />
+
+      <!-- Переключатель вкладок ленты Word -->
+      <div class="btn-group">
+        <UIMoloButton
+            class="small"
+            :class="{ confirm: activeRibbonTab === 'home' }"
+            @click="activeRibbonTab = 'home'"
+        >
+          Главная
+        </UIMoloButton>
+        <UIMoloButton
+            class="small"
+            :class="{ confirm: activeRibbonTab === 'insert' }"
+            @click="activeRibbonTab = 'insert'"
+        >
+          Вставка
+        </UIMoloButton>
+        <UIMoloButton
+            v-if="isInsideTable"
+            class="small"
+            :class="{ confirm: activeRibbonTab === 'table' }"
+            @click="activeRibbonTab = 'table'"
+        >
+          <UIMoloSticker name="table" :size="12" />
+          Конструктор таблицы
+        </UIMoloButton>
+      </div>
+
+      <div class="toolbar-sep" />
+
       <div class="toolbar-group">
+        <UIMoloButton
+            class="small transparent"
+            :class="{ active: isSearchOpen }"
+            title="Поиск по документу"
+            @click="isSearchOpen = !isSearchOpen"
+        >
+          <UIMoloSticker name="search" :size="14" />
+        </UIMoloButton>
+
         <span class="toolbar-hint">
-          Страниц: <b>{{ pageCount }}</b> · Слов: <b>{{ wordCount }}</b> · Символов: <b>{{ charCount }}</b>
+          Стр: <b>{{ pageCount }}</b> · Слов: <b>{{ wordCount }}</b> · Символов: <b>{{ charCount }}</b>
         </span>
       </div>
     </div>
 
-    <div class="molo-ribbon" v-if="editor">
-      <div class="ribbon-group">
-        <button title="Отменить" @click="exec('undo')"><UIMoloSticker name="undo" :size="14" /></button>
-        <button title="Повторить" @click="exec('redo')"><UIMoloSticker name="redo" :size="14" /></button>
-      </div>
-      <div class="ribbon-sep"/>
-      <div class="ribbon-group">
-        <select class="ribbon-select wide" v-model="currentBlockType">
-          <option value="p">Обычный текст</option>
-          <option value="h1">Заголовок 1</option>
-          <option value="h2">Заголовок 2</option>
-          <option value="h3">Заголовок 3</option>
-          <option value="quote">Цитата</option>
-        </select>
-        <select class="ribbon-select wide" v-model="currentFontFamily">
-          <option value="">Шрифт по умолчанию</option>
-          <option value="Arial">Arial</option>
-          <option value="'Times New Roman', serif">Times New Roman</option>
-          <option value="Georgia, serif">Georgia</option>
-        </select>
-        <select class="ribbon-select" v-model="currentFontSize">
-          <option value="">—</option>
-          <option v-for="s in [10,11,12,14,16,18,20,24,28,32]" :key="s" :value="`${s}pt`">{{ s }}</option>
-        </select>
-      </div>
-      <div class="ribbon-sep"/>
-      <div class="ribbon-group">
-        <button :class="{ active: isActive('bold') }" @click="exec('toggleBold')"><b>Ж</b></button>
-        <button :class="{ active: isActive('italic') }" @click="exec('toggleItalic')"><i>К</i></button>
-        <button :class="{ active: isActive('underline') }" @click="exec('toggleUnderline')"><u>Ч</u></button>
-        <label class="color-swatch">A<input type="color" @input="setTextColor"/></label>
-        <label class="color-swatch"><UIMoloSticker name="highlighter" :size="14" /><input type="color" @input="setHighlight"/></label>
-        <button @click="clearFormatting">Очистить</button>
-      </div>
-      <div class="ribbon-sep"/>
-      <div class="ribbon-group">
-        <button :class="{ active: isActive('paragraph', { textAlign: 'left' }) }" @click="setAlign('left')"><UIMoloSticker name="align-left" :size="16" /></button>
-        <button :class="{ active: isActive('paragraph', { textAlign: 'center' }) }" @click="setAlign('center')"><UIMoloSticker name="align-center" :size="16" /></button>
-        <button :class="{ active: isActive('paragraph', { textAlign: 'right' }) }" @click="setAlign('right')"><UIMoloSticker name="align-right" :size="16" /></button>
-      </div>
-      <div class="ribbon-sep"/>
-      <div class="ribbon-group">
-        <button :class="{ active: isActive('bulletList') }" @click="exec('toggleBulletList')">• Список</button>
-        <button :class="{ active: isActive('orderedList') }" @click="exec('toggleOrderedList')">1. Список</button>
-        <button @click="insertTable">Таблица</button>
-      </div>
+    <!-- Строка поиска -->
+    <div v-if="isSearchOpen" class="doc-search-bar">
+      <UIMoloSticker name="search" :size="14" />
+      <input
+          v-model="searchQuery"
+          type="text"
+          placeholder="Найти в тексте..."
+          @input="updateStats"
+          @keydown.esc="isSearchOpen = false"
+      />
+      <span v-if="searchQuery" class="search-count">{{ searchMatchCount }} найдено</span>
+      <button class="search-close-btn" @click="isSearchOpen = false"><UIMoloSticker name="x" :size="12" /></button>
     </div>
 
+    <!-- Лента инструментов (Word Ribbon) -->
+    <div v-if="editor" class="molo-ribbon">
+      <!-- ВКЛАДКА 1: ГЛАВНАЯ -->
+      <template v-if="activeRibbonTab === 'home'">
+        <div class="btn-group">
+          <UIMoloButton class="small transparent" title="Отменить (Ctrl+Z)" @click="exec('undo')"><UIMoloSticker name="undo" :size="14" /></UIMoloButton>
+          <UIMoloButton class="small transparent" title="Повторить (Ctrl+Y)" @click="exec('redo')"><UIMoloSticker name="redo" :size="14" /></UIMoloButton>
+        </div>
+
+        <div class="ribbon-sep" />
+
+        <div class="ribbon-group">
+          <select v-model="currentBlockType" class="ribbon-select wide">
+            <option value="p">Обычный текст</option>
+            <option value="h1">Заголовок 1</option>
+            <option value="h2">Заголовок 2</option>
+            <option value="h3">Заголовок 3</option>
+            <option value="quote">Цитата</option>
+          </select>
+
+          <select v-model="currentFontFamily" class="ribbon-select wide">
+            <option value="">Шрифт по умолчанию</option>
+            <option value="Arial">Arial</option>
+            <option value="'Times New Roman', serif">Times New Roman</option>
+            <option value="Georgia, serif">Georgia</option>
+            <option value="'Courier New', monospace">Courier New</option>
+            <option value="Tahoma, sans-serif">Tahoma</option>
+          </select>
+
+          <select v-model="currentFontSize" class="ribbon-select">
+            <option value="">—</option>
+            <option v-for="s in [8,9,10,11,12,14,16,18,20,24,28,32,36,48]" :key="s" :value="`${s}pt`">{{ s }}</option>
+          </select>
+        </div>
+
+        <div class="ribbon-sep" />
+
+        <div class="btn-group">
+          <UIMoloButton class="small transparent" :class="{ active: isActive('bold') }" title="Жирный (Ctrl+B)" @click="exec('toggleBold')"><b>Ж</b></UIMoloButton>
+          <UIMoloButton class="small transparent" :class="{ active: isActive('italic') }" title="Курсив (Ctrl+I)" @click="exec('toggleItalic')"><i>К</i></UIMoloButton>
+          <UIMoloButton class="small transparent" :class="{ active: isActive('underline') }" title="Подчёркнутый (Ctrl+U)" @click="exec('toggleUnderline')"><u>Ч</u></UIMoloButton>
+          <UIMoloButton class="small transparent" :class="{ active: isActive('strike') }" title="Зачёркнутый" @click="exec('toggleStrike')"><s>S</s></UIMoloButton>
+          <UIMoloButton class="small transparent" :class="{ active: isActive('subscript') }" title="Нижний индекс" @click="exec('toggleSubscript')">x₂</UIMoloButton>
+          <UIMoloButton class="small transparent" :class="{ active: isActive('superscript') }" title="Верхний индекс" @click="exec('toggleSuperscript')">x²</UIMoloButton>
+
+          <label class="color-swatch" title="Цвет шрифта">A<input type="color" @input="setTextColor" /></label>
+          <label class="color-swatch" title="Цвет маркера (выделение)">
+            <UIMoloSticker name="highlighter" :size="14" />
+            <input type="color" @input="setHighlight" />
+          </label>
+          <button title="Очистить всё форматирование" @click="clearFormatting">Очистить</button>
+        </div>
+
+        <div class="ribbon-sep" />
+
+        <div class="btn-group">
+          <UIMoloButton class="small transparent" :class="{ active: isActive('paragraph', { textAlign: 'left' }) }" title="По левому краю" @click="setAlign('left')">
+            <UIMoloSticker name="align-left" :size="15" />
+          </UIMoloButton>
+          <UIMoloButton class="small transparent" :class="{ active: isActive('paragraph', { textAlign: 'center' }) }" title="По центру" @click="setAlign('center')">
+            <UIMoloSticker name="align-center" :size="15" />
+          </UIMoloButton>
+          <UIMoloButton class="small transparent" :class="{ active: isActive('paragraph', { textAlign: 'right' }) }" title="По правому краю" @click="setAlign('right')">
+            <UIMoloSticker name="align-right" :size="15" />
+          </UIMoloButton>
+          <UIMoloButton class="small transparent" :class="{ active: isActive('paragraph', { textAlign: 'justify' }) }" title="По ширине" @click="setAlign('justify')">
+            <span style="letter-spacing: 2px; font-weight: bold;">≡</span>
+          </UIMoloButton>
+
+          <!-- Межстрочный интервал -->
+          <select v-model="currentLineHeight" class="ribbon-select" title="Межстрочный интервал">
+            <option value="1.0">1.0</option>
+            <option value="1.15">1.15</option>
+            <option value="1.5">1.5</option>
+            <option value="2.0">2.0</option>
+          </select>
+        </div>
+
+        <div class="ribbon-sep" />
+
+        <div class="btn-group">
+          <UIMoloButton class="small transparent" :class="{ active: isActive('bulletList') }" title="Маркированный список" @click="exec('toggleBulletList')">• Список</UIMoloButton>
+          <UIMoloButton class="small transparent" :class="{ active: isActive('orderedList') }" title="Нумерованный список" @click="exec('toggleOrderedList')">1. Список</UIMoloButton>
+          <UIMoloButton class="small transparent" title="Уменьшить отступ" @click="exec('outdent')">⇤</UIMoloButton>
+          <UIMoloButton class="small transparent" title="Увеличить отступ" @click="exec('indent')">⇥</UIMoloButton>
+        </div>
+      </template>
+
+      <!-- ВКЛАДКА 2: ВСТАВКА -->
+      <template v-else-if="activeRibbonTab === 'insert'">
+        <!-- СЕЛЕКТОР ТАБЛИЦ WORD (GRID PICKER) -->
+        <div class="ribbon-group table-picker-container">
+          <button
+              class="ribbon-main-btn"
+              :class="{ active: tablePickerOpen }"
+              @click.stop="tablePickerOpen = !tablePickerOpen"
+          >
+            <UIMoloSticker name="table" :size="15" />
+            <span>Таблица ▼</span>
+          </button>
+
+          <!-- Всплывающая интерактивная сетка выбора строк и столбцов -->
+          <div v-if="tablePickerOpen" class="word-table-picker-dropdown" @click.stop>
+            <div class="picker-header">
+              <span class="picker-size-label">
+                {{ hoverRows > 0 && hoverCols > 0 ? `Таблица ${hoverCols} × ${hoverRows}` : 'Выделите размер таблицы' }}
+              </span>
+            </div>
+
+            <!-- Интерактивная матрица квадратиков 10x8 -->
+            <div
+                class="picker-grid-matrix"
+                @mouseleave="hoverRows = 0; hoverCols = 0"
+            >
+              <div
+                  v-for="r in GRID_MAX_ROWS"
+                  :key="r"
+                  class="picker-matrix-row"
+              >
+                <div
+                    v-for="c in GRID_MAX_COLS"
+                    :key="c"
+                    class="picker-cell-box"
+                    :class="{ selected: r <= hoverRows && c <= hoverCols }"
+                    @mouseenter="hoverRows = r; hoverCols = c"
+                    @click="insertGridTable(r, c)"
+                />
+              </div>
+            </div>
+
+            <!-- Ручной ввод размера -->
+            <div class="picker-custom-inputs">
+              <span>Свой размер:</span>
+              <div class="custom-row">
+                <input v-model.number="customTableCols" type="number" min="1" max="25" placeholder="Кол-во столбцов" />
+                <span>×</span>
+                <input v-model.number="customTableRows" type="number" min="1" max="50" placeholder="Кол-во строк" />
+                <button class="picker-insert-btn" @click="insertCustomTable">Вставить</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="ribbon-sep" />
+
+        <div class="ribbon-group">
+          <button title="Вставить изображение" @click="insertImagePrompt">
+            <UIMoloSticker name="image" :size="14" /> Картинка
+          </button>
+          <button title="Горизонтальная линия-разделитель" @click="exec('setHorizontalRule')">
+            Линия (HR)
+          </button>
+          <button :class="{ active: isActive('codeBlock') }" title="Блок исходного кода" @click="exec('toggleCodeBlock')">
+            <UIMoloSticker name="code" :size="14" /> Код
+          </button>
+          <button title="Вставить сегодняшнюю дату" @click="insertDate">
+            <UIMoloSticker name="dev-calendar" :size="14" /> Дата
+          </button>
+        </div>
+      </template>
+
+      <!-- ВКЛАДКА 3: КОНСТРУКТОР ТАБЛИЦЫ (АКТИВНА ПРИ КЛИКЕ В ЯЧЕЙКУ) -->
+      <template v-else-if="activeRibbonTab === 'table' && isInsideTable">
+        <div class="ribbon-group">
+          <span class="group-label">Строки:</span>
+          <button title="Добавить строку сверху" @click="exec('addRowBefore')">+ Сверху</button>
+          <button title="Добавить строку снизу" @click="exec('addRowAfter')">+ Снизу</button>
+          <button class="danger-btn" title="Удалить строку" @click="exec('deleteRow')">✕ Строку</button>
+        </div>
+
+        <div class="ribbon-sep" />
+
+        <div class="ribbon-group">
+          <span class="group-label">Столбцы:</span>
+          <button title="Добавить столбец слева" @click="exec('addColumnBefore')">+ Слева</button>
+          <button title="Добавить столбец справа" @click="exec('addColumnAfter')">+ Справа</button>
+          <button class="danger-btn" title="Удалить столбец" @click="exec('deleteColumn')">✕ Столбец</button>
+        </div>
+
+        <div class="ribbon-sep" />
+
+        <div class="ribbon-group">
+          <span class="group-label">Ячейки:</span>
+          <button :disabled="!canMergeCells" title="Объединить выделенные ячейки" @click="exec('mergeCells')">Объединить</button>
+          <button :disabled="!canSplitCell" title="Разделить ячейку" @click="exec('splitCell')">Разделить</button>
+          <button title="Сделать строкой заголовков" @click="exec('toggleHeaderRow')">Строка шапки</button>
+          <button title="Сделать столбцом заголовков" @click="exec('toggleHeaderColumn')">Столбец шапки</button>
+
+          <!-- Заливка фона ячейки -->
+          <div class="cell-bg-picker">
+            <span>Фон ячейки:</span>
+            <div class="swatches-row">
+              <button class="color-dot" style="background:#ffffff;" title="Белый" @click="setCellBg('#ffffff')" />
+              <button class="color-dot" style="background:#f1f5f9;" title="Светло-серый" @click="setCellBg('#f1f5f9')" />
+              <button class="color-dot" style="background:#fee2e2;" title="Красный" @click="setCellBg('#fee2e2')" />
+              <button class="color-dot" style="background:#fef3c7;" title="Желтый" @click="setCellBg('#fef3c7')" />
+              <button class="color-dot" style="background:#dcfce7;" title="Зеленый" @click="setCellBg('#dcfce7')" />
+              <button class="color-dot" style="background:#e0f2fe;" title="Голубой" @click="setCellBg('#e0f2fe')" />
+              <label class="color-dot custom" title="Любой цвет">
+                +<input type="color" @input="(e) => setCellBg((e.target as HTMLInputElement).value)" />
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div class="ribbon-sep" />
+
+        <div class="ribbon-group">
+          <button class="delete-table-btn" title="Удалить всю таблицу" @click="exec('deleteTable')">
+            <UIMoloSticker name="trash" :size="13" /> Удалить таблицу
+          </button>
+        </div>
+      </template>
+    </div>
+
+    <!-- Область листа А4 и линейка -->
     <div class="molo-editor-canvas">
       <div class="molo-page-wrap" :style="{ width: PAGE_W + 'px' }">
         <div class="molo-ruler" :ref="setRulerEl">
           <div v-for="cm in rulerTicks" :key="cm" class="ruler-tick" :style="{ left: (cm * PX_PER_CM) + 'px' }">
             <span v-if="cm % 1 === 0" class="ruler-label">{{ cm }}</span>
           </div>
-          <div class="ruler-margin-shade left" :style="{ width: margins.left + 'px' }"/>
-          <div class="ruler-margin-shade right" :style="{ width: margins.right + 'px' }"/>
-          <div class="ruler-handle" :style="{ left: margins.left + 'px' }" @mousedown="startDrag('left', $event)"/>
-          <div class="ruler-handle" :style="{ left: (PAGE_W - margins.right) + 'px' }" @mousedown="startDrag('right', $event)"/>
+          <div class="ruler-margin-shade left" :style="{ width: margins.left + 'px' }" />
+          <div class="ruler-margin-shade right" :style="{ width: margins.right + 'px' }" />
+          <div class="ruler-handle" :style="{ left: margins.left + 'px' }" @mousedown="startDrag('left', $event)" />
+          <div class="ruler-handle" :style="{ left: (PAGE_W - margins.right) + 'px' }" @mousedown="startDrag('right', $event)" />
         </div>
 
         <div class="molo-page" :style="pageStyle">
-          <EditorContent :editor="editor"/>
+          <EditorContent :editor="editor" />
         </div>
       </div>
     </div>
@@ -906,73 +1358,156 @@ onBeforeUnmount(() => {
   min-height: 0;
   background: #eef0f3;
   position: relative;
+  font-family: inherit;
 }
 
 .sheet-toolbar {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 8px 12px;
-  background: #1a1a22;
-  z-index: 10;
+  gap: 6px;
+  padding: 6px 14px;
+  background: #181920;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  z-index: 20;
   flex-shrink: 0;
 }
 
 .toolbar-sep {
   width: 1px;
   align-self: stretch;
-  background: #d7dbe0;
-  margin: 2px 8px;
+  background: rgba(255, 255, 255, 0.15);
+  margin: 2px 6px;
 }
 
 .toolbar-group {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 8px;
 }
 
 .toolbar-hint {
   font-size: 11px;
-  color: #6b7280;
+  color: #8c8c9e;
+}
+
+.ribbon-tabs-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.tab-nav-btn {
+  background: transparent;
+  border: none;
+  color: #9ca3af;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 5px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  transition: all 0.15s;
+}
+
+.tab-nav-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+.tab-nav-btn.active {
+  background: rgba(56, 189, 248, 0.18);
+  color: #38bdf8;
+  font-weight: 600;
+}
+
+.table-active-badge {
+  background: rgba(37, 99, 235, 0.2);
+  color: #93c5fd;
+  border: 1px solid rgba(37, 99, 235, 0.4);
+}
+
+.doc-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  background: #242630;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  color: #fff;
+  font-size: 12px;
+}
+
+.doc-search-bar input {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #fff;
+  font-size: 12px;
+  flex: 1;
+}
+
+.search-count {
+  font-size: 11px;
+  color: #38bdf8;
+}
+
+.search-close-btn {
+  background: none;
+  border: none;
+  color: #8c8c9e;
+  cursor: pointer;
 }
 
 .molo-ribbon {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 8px 12px;
+  padding: 6px 12px;
   background: #fafbfc;
   border-bottom: 1px solid #d7dbe0;
   flex-wrap: wrap;
   flex-shrink: 0;
   color: #1f2328;
+  z-index: 15;
 }
 
 .ribbon-group {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
+  position: relative;
+}
+
+.group-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #64748b;
+  margin-right: 2px;
 }
 
 .ribbon-sep {
   width: 1px;
   align-self: stretch;
   background: #d7dbe0;
-  margin: 2px 8px;
+  margin: 2px 6px;
 }
 
 .molo-ribbon button {
   background: #f8f9fa;
-  border: 1px solid transparent;
-  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  border-radius: 5px;
   color: #1f2328;
-  min-width: 30px;
-  height: 30px;
-  padding: 0 8px;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 6px;
+  font-size: 12px;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  transition: all 0.12s;
 }
 
 .molo-ribbon button:hover {
@@ -984,21 +1519,41 @@ onBeforeUnmount(() => {
   background: #dbe9ff;
   border-color: #2b7de9;
   color: #1054c2;
+  font-weight: 600;
+}
+
+.ribbon-main-btn {
+  gap: 5px;
+  font-weight: 600;
+  padding: 0 10px !important;
+}
+
+.danger-btn:hover {
+  background: #fee2e2 !important;
+  border-color: #fca5a5 !important;
+  color: #ef4444 !important;
+}
+
+.delete-table-btn {
+  background: #fef2f2 !important;
+  border-color: #fecaca !important;
+  color: #dc2626 !important;
+  gap: 4px;
 }
 
 .ribbon-select {
-  height: 30px;
-  border: 1px solid transparent;
-  border-radius: 6px;
+  height: 28px;
+  border: 1px solid #e2e8f0;
+  border-radius: 5px;
   background: #f8f9fa;
   color: #1f2328;
-  font-size: 13px;
-  padding: 0 6px;
+  font-size: 12px;
+  padding: 0 4px;
   cursor: pointer;
 }
 
 .ribbon-select.wide {
-  min-width: 140px;
+  min-width: 120px;
 }
 
 .color-swatch {
@@ -1006,14 +1561,14 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
   background: #f8f9fa;
-  border: 1px solid transparent;
-  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  border-radius: 5px;
   cursor: pointer;
   font-weight: 700;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .color-swatch input[type='color'] {
@@ -1023,6 +1578,143 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 
+/* ───────────── Word Table Grid Picker ───────────── */
+.table-picker-container {
+  position: relative;
+}
+
+.word-table-picker-dropdown {
+  position: absolute;
+  top: calc(100% + 5px);
+  left: 0;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22);
+  padding: 10px;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 210px;
+}
+
+.picker-header {
+  border-bottom: 1px solid #f1f5f9;
+  padding-bottom: 4px;
+}
+
+.picker-size-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.picker-grid-matrix {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 4px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.picker-matrix-row {
+  display: flex;
+  gap: 3px;
+}
+
+.picker-cell-box {
+  width: 16px;
+  height: 16px;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 2px;
+  transition: background 0.08s, border-color 0.08s;
+}
+
+.picker-cell-box.selected {
+  background: #bfdbfe;
+  border-color: #2563eb;
+}
+
+.picker-custom-inputs {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: #64748b;
+  border-top: 1px solid #f1f5f9;
+  padding-top: 6px;
+}
+
+.custom-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.custom-row input {
+  width: 44px;
+  height: 24px;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  text-align: center;
+  font-size: 11px;
+}
+
+.picker-insert-btn {
+  background: #2563eb !important;
+  color: #fff !important;
+  height: 24px !important;
+  font-size: 11px !important;
+  border: none !important;
+  padding: 0 8px !important;
+}
+
+.cell-bg-picker {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: #64748b;
+  margin-left: 4px;
+}
+
+.swatches-row {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.color-dot {
+  width: 16px !important;
+  height: 16px !important;
+  min-width: 16px !important;
+  padding: 0 !important;
+  border-radius: 3px !important;
+  border: 1px solid #94a3b8 !important;
+}
+
+.color-dot.custom {
+  position: relative;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  font-size: 10px;
+  background: #e2e8f0;
+}
+
+.color-dot.custom input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+/* ───────────── Холст листа и Линейка ───────────── */
 .molo-editor-canvas {
   flex: 1;
   min-height: 0;
@@ -1168,6 +1860,7 @@ onBeforeUnmount(() => {
 
 .molo-page :deep(.tableWrapper) {
   overflow-x: auto;
+  margin: 6px 0;
 }
 
 .molo-page :deep(table) {
@@ -1178,12 +1871,39 @@ onBeforeUnmount(() => {
   table-layout: fixed;
 }
 
-.molo-page :deep(td), .molo-page :deep(th) {
-  border: 1px solid #ccc;
-  padding: 3px 6px;
+.molo-page :deep(td),
+.molo-page :deep(th) {
+  border: 1px solid #cbd5e1;
+  padding: 4px 8px;
   word-wrap: break-word;
   overflow-wrap: break-word;
   vertical-align: top;
+  position: relative;
+}
+
+.molo-page :deep(th) {
+  background-color: #f1f5f9;
+  font-weight: 600;
+}
+
+/* Подсветка выделенных ячеек таблицы как в Word */
+.molo-page :deep(.selectedCell:after) {
+  z-index: 2;
+  position: absolute;
+  content: "";
+  inset: 0;
+  background: rgba(56, 189, 248, 0.22);
+  pointer-events: none;
+}
+
+.molo-page :deep(pre) {
+  background: #1e1e26;
+  color: #f1f5f9;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-family: monospace;
+  font-size: 10pt;
+  overflow-x: auto;
 }
 
 .molo-page :deep(img) {
