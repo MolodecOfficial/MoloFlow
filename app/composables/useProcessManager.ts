@@ -105,6 +105,139 @@ export function useProcessManager() {
      * Запускает реальный код Python-модуля со всеми его файлами и зависимостями из MoloDB
      * в изолированном фоновом WebAssembly-воркере с вечным жизненным циклом.
      */
+    async function spawnPyWorkerInMemory(proc: ManagedScriptItem) {
+        if (!import.meta.client || !enterpriseId.value) return
+        terminatePyWorker(proc.id)
+
+        const authHeaders = buildAuthHeaders(appStore.currentUser?._id)
+        const fullRes: any = await $fetch(
+            `/api/enterprises/${enterpriseId.value}/dynamicModules/${proc.id}`,
+            { headers: authHeaders }
+        )
+        const fullMod = fullRes?.module || proc.moduleData
+        if (!fullMod?.code) {
+            throw new Error('Код модуля пуст или не найден в MoloDB')
+        }
+
+        enableTabKeepAlive()
+
+        const { entry, files } = collectPyFiles(fullMod.code, fullMod.fileName, fullMod.files || [])
+        const worker = new Worker(new URL('../workers/pyodide.worker.ts', import.meta.url), { type: 'module' })
+        activePyWorkers.set(proc.id, worker)
+
+        const modLogger = useLogger(proc.name || 'Python')
+        const virtualPid = 2000 + Math.floor(Math.random() * 7000)
+        proc.pid = virtualPid
+        proc.startedAt = Date.now()
+        proc.lastHeartbeat = Date.now()
+        proc.status = 'running'
+        proc.desiredStatus = 'running'
+
+        worker.onmessage = (ev: MessageEvent) => {
+            const msg = ev.data || {}
+
+            if (msg.type === 'heartbeat') {
+                proc.lastHeartbeat = Date.now()
+                void $fetch('/api/py/daemon', {
+                    method: 'POST',
+                    body: {
+                        action: 'heartbeat',
+                        moduleId: proc.id,
+                        enterpriseId: enterpriseId.value
+                    }
+                }).catch(() => {})
+                return
+            }
+
+            if (msg.type === 'log') {
+                proc.lastHeartbeat = Date.now()
+                proc.lastMessage = msg.text
+                if (msg.level === 'error') {
+                    modLogger.addLog('error', msg.text)
+                } else if (msg.level === 'info') {
+                    modLogger.addLog('info', msg.text)
+                }
+                void $fetch('/api/py/daemon', {
+                    method: 'POST',
+                    body: {
+                        action: 'heartbeat',
+                        moduleId: proc.id,
+                        enterpriseId: enterpriseId.value,
+                        log: msg.text
+                    }
+                }).catch(() => {})
+            } else if (msg.type === 'result') {
+                if (activePyWorkers.get(proc.id) !== worker) return
+
+                // Если бот должен работать вечно, не гасим его, а перезапускаем через 3 секунды
+                if (proc.desiredStatus === 'running') {
+                    modLogger.addLog('warning', `Бот «${proc.name}» перезапускается...`)
+                    proc.lastMessage = 'Переподключение воркера...'
+                    setTimeout(() => {
+                        if (proc.desiredStatus === 'running') {
+                            void spawnPyWorkerInMemory(proc).catch((e) => {
+                                proc.status = 'error'
+                                proc.lastMessage = e?.message || 'Ошибка перезапуска'
+                            })
+                        }
+                    }, 3000)
+                    return
+                }
+
+                activePyWorkers.delete(proc.id)
+                worker.terminate()
+                disableTabKeepAlive(runningCount.value)
+
+                if (msg.ok) {
+                    proc.status = 'success'
+                    proc.lastMessage = msg.hasResult
+                        ? `Результат: ${JSON.stringify(msg.result).slice(0, 120)}`
+                        : 'Выполнение завершено'
+                    void $fetch('/api/py/daemon', {
+                        method: 'POST',
+                        body: {
+                            action: 'heartbeat',
+                            moduleId: proc.id,
+                            enterpriseId: enterpriseId.value,
+                            result: msg.result,
+                            finished: true
+                        }
+                    }).catch(() => {})
+                } else {
+                    proc.status = 'error'
+                    const errMsg = msg.error?.message || 'Ошибка выполнения Python'
+                    proc.lastMessage = errMsg
+                    modLogger.addLog('error', msg.error?.traceback || errMsg)
+                }
+            } else if (msg.type === 'fatal') {
+                if (proc.desiredStatus === 'running') {
+                    modLogger.addLog('error', `Сбой воркера «${proc.name}»: ${msg.message}. Перезапуск...`)
+                    setTimeout(() => {
+                        if (proc.desiredStatus === 'running') {
+                            void spawnPyWorkerInMemory(proc).catch(() => {})
+                        }
+                    }, 4000)
+                } else {
+                    proc.status = 'error'
+                    proc.lastMessage = msg.message || 'Сбой воркера'
+                    modLogger.addLog('error', proc.lastMessage!)
+                    disableTabKeepAlive(runningCount.value)
+                }
+            }
+        }
+
+        worker.postMessage({
+            type: 'run',
+            id: `daemon-${proc.id}-${Date.now()}`,
+            entry: entry.path,
+            files,
+            dependencies: fullMod.dependencies || {},
+            context: {},
+            enterpriseId: enterpriseId.value,
+            authHeaders
+        })
+    }
+
     async function refreshScriptsList() {
         if (!enterpriseId.value) return
 
@@ -207,7 +340,7 @@ export function useProcessManager() {
 
                 // Запускаем браузерный Pyodide только если на сервере нет Python
                 if (res.mode === 'browser') {
-                    console.log('Заглушка')
+                    await spawnPyWorkerInMemory(item)
                 } else {
                     terminatePyWorker(item.id)
                 }
