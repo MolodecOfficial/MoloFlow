@@ -14,6 +14,11 @@ const FORBIDDEN_HEADERS = new Set(['host', 'content-length', 'connection', 'tran
 
 const allowPrivate = () => process.env.MOLO_API_PROXY_ALLOW_PRIVATE === 'true'
 
+const headers: Record<string, string> = {
+    Accept: 'application/json, text/csv;q=0.8, */*;q=0.5',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36'
+}
+
 function isPrivateIp(ip: string): boolean {
     if (net.isIPv4(ip)) {
         const [a, b] = ip.split('.').map(Number) as [number, number]

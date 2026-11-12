@@ -5,10 +5,7 @@ import mongoose from 'mongoose'
 
 import { tenantModels } from '~~/server/utils/tenantDb'
 import { resolveActor, toHttpError } from '~~/server/utils/moloDb/access'
-import {
-    unpublishMoloFlowSnapshot,
-    updateMoloFlowSnapshotAuth
-} from '~~/server/utils/moloFlowConnect'
+import { getMoloFlowGatewayPublicUrl, isMoloFlowGatewayConfigured } from '~~/server/utils/moloFlowGateway'
 
 const SLUG_RE = /^[a-z0-9][a-z0-9_/-]{0,63}$/
 const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']
@@ -60,9 +57,7 @@ export default defineEventHandler(async (event) => {
             throw bad(`Методы: ${METHODS.join(', ')}`)
         }
 
-        const access = ['public', 'key', 'members'].includes(body.access)
-            ? body.access
-            : 'members'
+        const access = 'key'
 
         const moduleId = String(body.moduleId || '')
 
@@ -97,20 +92,11 @@ export default defineEventHandler(async (event) => {
             throw bad('Эндпоинт не найден', 404)
         }
 
-        const secret = access === 'key'
-            ? (
-                existing?.secret && body.regenerateKey !== true
-                    ? existing.secret
-                    : randomBytes(24).toString('base64url')
-            )
-            : ''
+        // Старый query-string secret больше не используется. Доступ только через X-Molo-Key.
+        const secret = ''
 
-        const connectAuthEnabled =
-            typeof body.connectAuthEnabled === 'boolean'
-                ? body.connectAuthEnabled
-                : existing
-                    ? existing.connectAuthEnabled !== false
-                    : true
+        // MoloFlow Gateway always requires a Molo-Key. Keep the hash on this existing endpoint document.
+        const connectAuthEnabled = true
 
         const regenerateConnectKey = body.regenerateConnectKey === true
 
@@ -118,15 +104,10 @@ export default defineEventHandler(async (event) => {
         let connectKeyHash = existing?.connectKeyHash || ''
         let connectKeyCreatedAt = existing?.connectKeyCreatedAt || null
 
-        if (connectAuthEnabled) {
-            if (!connectKeyHash || regenerateConnectKey) {
-                connectKey = generateConnectKey()
-                connectKeyHash = hashConnectKey(connectKey)
-                connectKeyCreatedAt = new Date()
-            }
-        } else {
-            connectKeyHash = ''
-            connectKeyCreatedAt = null
+        if (!connectKeyHash || regenerateConnectKey) {
+            connectKey = generateConnectKey()
+            connectKeyHash = hashConnectKey(connectKey)
+            connectKeyCreatedAt = new Date()
         }
 
         const fields: Record<string, any> = {
@@ -152,33 +133,21 @@ export default defineEventHandler(async (event) => {
             const endpointDisabled = fields.enabled === false
 
             if (existing.connectPublished && (routeChanged || endpointDisabled)) {
-                await unpublishMoloFlowSnapshot(enterpriseId, existing.slug)
-
                 fields.connectPublished = false
                 fields.connectUrl = ''
                 fields.connectPublishedAt = null
                 fields.connectLastError = ''
             }
 
-            if (
-                existing.connectPublished &&
-                !routeChanged &&
-                !endpointDisabled
-            ) {
-                await updateMoloFlowSnapshotAuth(
-                    enterpriseId,
-                    slug,
-                    {
-                        enabled: connectAuthEnabled,
-                        keyHash: connectKeyHash
-                    }
-                )
-            }
-
             await Endpoint.updateOne(
                 { _id: existing._id, enterpriseId },
                 { $set: fields }
             )
+
+            const isPublished = fields.connectPublished ?? !!existing.connectPublished
+            const gatewayUrl = isPublished && isMoloFlowGatewayConfigured()
+                ? getMoloFlowGatewayPublicUrl(enterpriseId, slug)
+                : ''
 
             return {
                 success: true,
@@ -195,7 +164,7 @@ export default defineEventHandler(async (event) => {
                     hasConnectKey: !!connectKeyHash,
                     connectKeyCreatedAt,
                     connectPublished: fields.connectPublished ?? !!existing.connectPublished,
-                    connectUrl: fields.connectUrl ?? existing.connectUrl ?? '',
+                    connectUrl: gatewayUrl,
                     connectPublishedAt: fields.connectPublishedAt ?? existing.connectPublishedAt ?? null,
                     connectLastError: fields.connectLastError ?? existing.connectLastError ?? '',
                     ...(connectKey ? { connectKey } : {})

@@ -1,5 +1,5 @@
 // server/api/x/[enterpriseId]/[...slug].ts
-import { timingSafeEqual } from 'node:crypto'
+import { timingSafeEqual, createHash } from 'node:crypto'
 import {
     createError,
     defineEventHandler,
@@ -15,12 +15,11 @@ import {
 } from 'h3'
 import { getModuleSandbox } from '~~/app/utils/moduleSandbox'
 import { tenantModels } from '~~/server/utils/tenantDb'
-import { checkEnterpriseAccess } from '~~/server/utils/enterpriseAuth'
 import { executePythonInSandbox } from '~~/server/utils/pythonRunner'
 
 const TIMEOUT_MS = 25000
 const MAX_BODY = 10 * 1024 * 1024
-const HIDDEN_HEADERS = new Set(['cookie', 'authorization', 'x-api-key', 'x-molo-db-token'])
+const HIDDEN_HEADERS = new Set(['cookie', 'authorization', 'x-api-key', 'x-molo-key', 'x-molo-db-token'])
 const SAFE_RESPONSE_HEADERS = /^(content-type|cache-control|location|x-[a-z0-9-]+)$/i
 
 function sameSecret(a: string, b: string) {
@@ -53,15 +52,16 @@ export default defineEventHandler(async (event) => {
         throw createError({ statusCode: 405, message: `Метод ${method} не разрешён для этого эндпоинта` })
     }
 
-    // Проверка прав доступа
-    if (ep.access === 'key') {
-        const bearer = (getHeader(event, 'authorization') || '').replace(/^Bearer\s+/i, '')
-        const supplied = String(getHeader(event, 'x-api-key') || getHeader(event, 'x-molo-key') || bearer || getQuery(event).key || '')
-        if (!sameSecret(supplied, ep.secret || '')) {
-            throw createError({ statusCode: 401, message: 'Неверный ключ доступа' })
-        }
-    } else if (ep.access === 'members') {
-        await checkEnterpriseAccess(event, enterpriseId)
+    // Gateway и прямой API используют один Molo-Key. В БД хранится только SHA-256.
+    const bearer = (getHeader(event, 'authorization') || '').replace(/^Bearer\s+/i, '')
+    const supplied = String(getHeader(event, 'x-molo-key') || getHeader(event, 'x-api-key') || bearer || '')
+    const expectedHash = String(ep.connectKeyHash || '').toLowerCase()
+    if (!/^[a-f0-9]{64}$/.test(expectedHash)) {
+        throw createError({ statusCode: 503, message: 'Для эндпоинта не настроен Molo-Key' })
+    }
+    const suppliedHash = createHash('sha256').update(supplied, 'utf8').digest('hex')
+    if (!supplied || !sameSecret(suppliedHash, expectedHash)) {
+        throw createError({ statusCode: 401, message: 'Неверный Molo-Key' })
     }
 
     const mod: any = await tenantModels(enterpriseId).DynamicModule.findOne({ _id: ep.moduleId, isActive: true }).select('format name').lean()

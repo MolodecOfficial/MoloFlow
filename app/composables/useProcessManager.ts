@@ -105,139 +105,6 @@ export function useProcessManager() {
      * Запускает реальный код Python-модуля со всеми его файлами и зависимостями из MoloDB
      * в изолированном фоновом WebAssembly-воркере с вечным жизненным циклом.
      */
-    async function spawnPyWorkerInMemory(proc: ManagedScriptItem) {
-        if (!import.meta.client || !enterpriseId.value) return
-        terminatePyWorker(proc.id)
-
-        const authHeaders = buildAuthHeaders(appStore.currentUser?._id)
-        const fullRes: any = await $fetch(
-            `/api/enterprises/${enterpriseId.value}/dynamicModules/${proc.id}`,
-            { headers: authHeaders }
-        )
-        const fullMod = fullRes?.module || proc.moduleData
-        if (!fullMod?.code) {
-            throw new Error('Код модуля пуст или не найден в MoloDB')
-        }
-
-        enableTabKeepAlive()
-
-        const { entry, files } = collectPyFiles(fullMod.code, fullMod.fileName, fullMod.files || [])
-        const worker = new Worker(new URL('../workers/pyodide.worker.ts', import.meta.url), { type: 'module' })
-        activePyWorkers.set(proc.id, worker)
-
-        const modLogger = useLogger(proc.name || 'Python')
-        const virtualPid = 2000 + Math.floor(Math.random() * 7000)
-        proc.pid = virtualPid
-        proc.startedAt = Date.now()
-        proc.lastHeartbeat = Date.now()
-        proc.status = 'running'
-        proc.desiredStatus = 'running'
-
-        worker.onmessage = (ev: MessageEvent) => {
-            const msg = ev.data || {}
-
-            if (msg.type === 'heartbeat') {
-                proc.lastHeartbeat = Date.now()
-                void $fetch('/api/py/daemon', {
-                    method: 'POST',
-                    body: {
-                        action: 'heartbeat',
-                        moduleId: proc.id,
-                        enterpriseId: enterpriseId.value
-                    }
-                }).catch(() => {})
-                return
-            }
-
-            if (msg.type === 'log') {
-                proc.lastHeartbeat = Date.now()
-                proc.lastMessage = msg.text
-                if (msg.level === 'error') {
-                    modLogger.addLog('error', msg.text)
-                } else if (msg.level === 'info') {
-                    modLogger.addLog('info', msg.text)
-                }
-                void $fetch('/api/py/daemon', {
-                    method: 'POST',
-                    body: {
-                        action: 'heartbeat',
-                        moduleId: proc.id,
-                        enterpriseId: enterpriseId.value,
-                        log: msg.text
-                    }
-                }).catch(() => {})
-            } else if (msg.type === 'result') {
-                if (activePyWorkers.get(proc.id) !== worker) return
-
-                // Если бот должен работать вечно, не гасим его, а перезапускаем через 3 секунды
-                if (proc.desiredStatus === 'running') {
-                    modLogger.addLog('warning', `Бот «${proc.name}» перезапускается...`)
-                    proc.lastMessage = 'Переподключение воркера...'
-                    setTimeout(() => {
-                        if (proc.desiredStatus === 'running') {
-                            void spawnPyWorkerInMemory(proc).catch((e) => {
-                                proc.status = 'error'
-                                proc.lastMessage = e?.message || 'Ошибка перезапуска'
-                            })
-                        }
-                    }, 3000)
-                    return
-                }
-
-                activePyWorkers.delete(proc.id)
-                worker.terminate()
-                disableTabKeepAlive(runningCount.value)
-
-                if (msg.ok) {
-                    proc.status = 'success'
-                    proc.lastMessage = msg.hasResult
-                        ? `Результат: ${JSON.stringify(msg.result).slice(0, 120)}`
-                        : 'Выполнение завершено'
-                    void $fetch('/api/py/daemon', {
-                        method: 'POST',
-                        body: {
-                            action: 'heartbeat',
-                            moduleId: proc.id,
-                            enterpriseId: enterpriseId.value,
-                            result: msg.result,
-                            finished: true
-                        }
-                    }).catch(() => {})
-                } else {
-                    proc.status = 'error'
-                    const errMsg = msg.error?.message || 'Ошибка выполнения Python'
-                    proc.lastMessage = errMsg
-                    modLogger.addLog('error', msg.error?.traceback || errMsg)
-                }
-            } else if (msg.type === 'fatal') {
-                if (proc.desiredStatus === 'running') {
-                    modLogger.addLog('error', `Сбой воркера «${proc.name}»: ${msg.message}. Перезапуск...`)
-                    setTimeout(() => {
-                        if (proc.desiredStatus === 'running') {
-                            void spawnPyWorkerInMemory(proc).catch(() => {})
-                        }
-                    }, 4000)
-                } else {
-                    proc.status = 'error'
-                    proc.lastMessage = msg.message || 'Сбой воркера'
-                    modLogger.addLog('error', proc.lastMessage!)
-                    disableTabKeepAlive(runningCount.value)
-                }
-            }
-        }
-
-        worker.postMessage({
-            type: 'run',
-            id: `daemon-${proc.id}-${Date.now()}`,
-            entry: entry.path,
-            files,
-            dependencies: fullMod.dependencies || {},
-            context: {},
-            enterpriseId: enterpriseId.value,
-            authHeaders
-        })
-    }
-
     async function refreshScriptsList() {
         if (!enterpriseId.value) return
 
@@ -278,6 +145,9 @@ export function useProcessManager() {
         await checkDaemonsStatus()
     }
 
+    const printedLogCounts = new Map<string, number>()
+
+
     async function checkDaemonsStatus() {
         if (!enterpriseId.value) return
         try {
@@ -290,24 +160,17 @@ export function useProcessManager() {
                 const runningMap = new Map(res.daemons.map((d: any) => [d.moduleId, d]))
 
                 for (const proc of scriptProcesses.value.values()) {
-                    if (proc.format === 'py') {
-                        const daemon = runningMap.get(proc.id)
-                        if (daemon || proc.desiredStatus === 'running') {
-                            if (!activePyWorkers.has(proc.id) && proc.status !== 'running') {
-                                proc.desiredStatus = 'running'
-                                void spawnPyWorkerInMemory(proc).catch((e) => {
-                                    proc.status = 'error'
-                                    proc.lastMessage = e?.message || 'Ошибка старта'
-                                })
-                            } else {
-                                proc.status = 'running'
-                                proc.pid = proc.pid || daemon?.pid
-                                proc.startedAt = proc.startedAt || daemon?.startedAt
-                            }
-                        } else if (!activePyWorkers.has(proc.id) && proc.status === 'running') {
-                            proc.status = 'idle'
-                            proc.pid = undefined
-                        }
+                    if (proc.format !== 'py') continue
+                    // Гасим любые старые браузерные воркеры, чтобы они не мешали шлюзу
+                    terminatePyWorker(proc.id)
+                    const daemon = runningMap.get(proc.id)
+                    if (daemon) {
+                        proc.status = 'running'
+                        proc.pid = daemon.pid
+                        proc.startedAt = daemon.startedAt
+                    } else if (proc.status === 'running') {
+                        proc.status = 'idle'
+                        proc.pid = undefined
                     }
                 }
             }
@@ -318,25 +181,38 @@ export function useProcessManager() {
         if (!enterpriseId.value) return
         item.status = 'running'
         item.desiredStatus = 'running'
-        item.lastMessage = 'Запуск модуля в памяти...'
+        item.lastMessage = 'Запуск модуля...'
         addLog('info', `Запуск модуля [${item.format.toUpperCase()}]: ${item.name}`)
 
         try {
             if (item.format === 'py') {
-                const res = await $fetch<{ success: boolean; pid: number; message: string }>(
-                    '/api/py/daemon',
-                    {
-                        method: 'POST',
-                        body: {
-                            action: 'restart',
-                            moduleId: item.id,
-                            enterpriseId: enterpriseId.value
-                        }
+                printedLogCounts.set(item.id, 0)
+                const res = await $fetch<{
+                    success: boolean
+                    pid: number
+                    mode?: 'server' | 'gateway' | 'browser'
+                    message: string
+                }>('/api/py/daemon', {
+                    method: 'POST',
+                    body: {
+                        action: 'restart',
+                        moduleId: item.id,
+                        enterpriseId: enterpriseId.value
                     }
-                )
-                await spawnPyWorkerInMemory(item)
+                })
+
+                item.pid = res.pid
+                item.startedAt = Date.now()
                 item.lastMessage = res.message
-                addLog('success', `Модуль "${item.name}" запущен в облачной памяти`)
+
+                // Запускаем браузерный Pyodide только если на сервере нет Python
+                if (res.mode === 'browser') {
+                    console.log('Заглушка')
+                } else {
+                    terminatePyWorker(item.id)
+                }
+
+                addLog('success', `Модуль "${item.name}" запущен (${res.mode === 'server' ? 'Сервер' : 'Облако'})`)
             } else {
                 item.startedAt = Date.now()
                 await executeServerModule(item.id, undefined, {

@@ -2,7 +2,6 @@ import { defineEventHandler, getRouterParam, createError } from 'h3'
 import mongoose from 'mongoose'
 import { tenantModels } from '~~/server/utils/tenantDb'
 import { resolveActor, toHttpError } from '~~/server/utils/moloDb/access'
-import { unpublishMoloFlowSnapshot } from '~~/server/utils/moloFlowConnect'
 import { stopDaemon } from '~~/server/utils/daemonManager'
 
 export default defineEventHandler(async (event) => {
@@ -20,10 +19,6 @@ export default defineEventHandler(async (event) => {
         // Если это был запущенный Python-бот — гасим процесс
         if (endpoint.moduleId) {
             await stopDaemon(String(endpoint.moduleId))
-        }
-
-        if (endpoint.connectPublished) {
-            await unpublishMoloFlowSnapshot(enterpriseId, endpoint.slug)
         }
 
         await Endpoint.deleteOne({ _id: eid, enterpriseId })

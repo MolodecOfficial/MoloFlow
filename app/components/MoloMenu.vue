@@ -122,7 +122,7 @@ const orbClasses = computed(() => ({
 async function runAutoStartScripts(enterpriseId: string) {
   // Добавляем 'py' к списку автозапускаемых скриптов
   const scripts = (enterpriseModules.value || []).filter(
-      (m: any) => m && (m.format === 'js' || m.format === 'ts' || m.format === 'py') && m.isActive !== false
+      (m: any) => m && (m.format === 'js' || m.format === 'ts') && m.isActive !== false
   )
 
   for (const module of scripts) {

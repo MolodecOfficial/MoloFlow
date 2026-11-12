@@ -1,10 +1,28 @@
 // server/utils/pythonRunner.ts
-// СЕРВЕРНЫЙ ПОМОЩНИК ДЛЯ ОБЛАЧНЫХ PYTHON-МОДУЛЕЙ (БЕЗ CHILD_PROCESS.SPAWN)
-
+import { spawn } from 'node:child_process'
+import path from 'node:path'
 import { loadModule } from '~~/server/utils/moduleLookup'
 import { issueModuleToken } from '~~/server/utils/moloDb/access'
-import { getDaemonStatus, startOrRestartDaemon } from '~~/server/utils/daemonManager'
-import type { CloudModuleBundle } from '~~/server/utils/moloFlowConnect'
+import {
+    findServerPythonBin,
+    getDaemonStatus,
+    prepareServerPyWorkspace,
+    startOrRestartDaemon
+} from '~~/server/utils/daemonManager'
+
+export interface CloudModuleBundle {
+    moduleId: string
+    enterpriseId: string
+    name: string
+    fileName: string
+    format: 'py'
+    code: string
+    files: Array<{ name: string; path: string; format: string; code: string }>
+    dependencies: Record<string, string>
+    moloApiUrl?: string
+    moloDbToken?: string
+    syncedAt: string
+}
 
 export async function buildPythonBundleFromMoloDb(
     enterpriseId: string,
@@ -42,32 +60,6 @@ export async function buildPythonBundleFromMoloDb(
     }
 }
 
-export async function executePythonBundleInCloud(params: {
-    bundle: CloudModuleBundle
-    entryFile?: string
-    context?: Record<string, any>
-    timeoutMs?: number
-}) {
-    const { bundle } = params
-    const status = getDaemonStatus(bundle.moduleId)
-
-    return {
-        ok: true,
-        result: status.lastResult ?? {
-            status: status.running ? 'RUNNING' : 'READY',
-            module: bundle.name,
-            entry: `${bundle.fileName}.py`,
-            files: [`${bundle.fileName}.py`, 'moloflow_db.py', ...bundle.files.map((f) => f.path)],
-            dependencies: bundle.dependencies,
-            recentLogs: status.logs.slice(-15),
-            syncedAt: bundle.syncedAt
-        },
-        hasResult: true,
-        logs: status.logs.map((text) => ({ level: 'info' as const, text, ts: Date.now() })),
-        durationMs: 10
-    }
-}
-
 export async function executePythonInSandbox(params: {
     enterpriseId: string
     moduleId: string
@@ -75,14 +67,81 @@ export async function executePythonInSandbox(params: {
     context: Record<string, any>
     timeoutMs?: number
 }) {
-    let status = getDaemonStatus(params.moduleId)
-    if (!status.running) {
-        await startOrRestartDaemon(params.moduleId, params.enterpriseId)
-        status = getDaemonStatus(params.moduleId)
+    const mod: any = await loadModule(params.moduleId, params.enterpriseId, { lean: true })
+    if (!mod) throw new Error('Python-модуль не найден')
+
+    const allCode = [mod.code || '', ...(mod.files || []).map((f: any) => f.code || '')].join('\n')
+    const isBot = allCode.includes('start_polling') || allCode.includes('Dispatcher(') || allCode.includes('while True:')
+
+    if (isBot) {
+        let status = getDaemonStatus(params.moduleId)
+        if (!status.running) {
+            await startOrRestartDaemon(params.moduleId, params.enterpriseId, params.context)
+            status = getDaemonStatus(params.moduleId)
+        }
+        return {
+            type: 'python_bot_daemon',
+            running: status.running,
+            pid: status.pid,
+            mode: status.mode,
+            publicUrl: status.publicUrl,
+            logs: status.logs.slice(-30)
+        }
     }
-    return status.lastResult ?? {
-        status: 'RUNNING',
-        moduleId: params.moduleId,
-        logs: status.logs.slice(-15)
+
+    const pyBin = findServerPythonBin()
+    if (!pyBin) {
+        return { status: 'READY', moduleId: params.moduleId }
     }
+
+    const { workDir, entryFile } = await prepareServerPyWorkspace(mod, params.enterpriseId, params.fileName)
+    const dbToken = await issueModuleToken(String(params.enterpriseId), String(mod._id))
+    const apiBase = (process.env.MOLO_API_URL || `http://127.0.0.1:${process.env.NITRO_PORT || process.env.PORT || '3000'}`).replace(/\/+$/, '')
+
+    return new Promise((resolve) => {
+        const logs: string[] = []
+        let stdoutBuf = ''
+
+        const child = spawn(pyBin, ['-u', path.join(workDir, '_molo_runner.py')], {
+            cwd: workDir,
+            env: {
+                ...process.env,
+                PYTHONIOENCODING: 'utf-8',
+                PYTHONUNBUFFERED: '1',
+                MOLO_API_URL: apiBase,
+                MOLO_DB_TOKEN: dbToken,
+                MOLO_ENTERPRISE_ID: String(params.enterpriseId),
+                MOLO_ENTRY_FILE: entryFile,
+                MOLO_CONTEXT_JSON: JSON.stringify(params.context || {}),
+                MOLO_IS_DAEMON: '0'
+            }
+        })
+
+        const timer = setTimeout(() => {
+            try { child.kill('SIGKILL') } catch {}
+            resolve({ ok: false, error: 'Timeout', logs })
+        }, params.timeoutMs || 25000)
+
+        child.stdout.on('data', (c) => {
+            const t = String(c)
+            stdoutBuf += t
+            t.split('\n').filter(l => !l.startsWith('__MOLO_RESULT__:')).forEach(l => { if (l.trim()) logs.push(l.trimEnd()) })
+        })
+        child.stderr.on('data', (c) => {
+            String(c).split('\n').forEach(l => { if (l.trim()) logs.push(l.trimEnd()) })
+        })
+        child.on('close', () => {
+            clearTimeout(timer)
+            const idx = stdoutBuf.lastIndexOf('__MOLO_RESULT__:')
+            if (idx !== -1) {
+                try {
+                    const parsed = JSON.parse(stdoutBuf.slice(idx + '__MOLO_RESULT__:'.length).trim())
+                    resolve(parsed.result ?? parsed)
+                    return
+                } catch {}
+            }
+            resolve({ ok: true, logs })
+        })
+    })
 }
+

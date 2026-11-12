@@ -36,9 +36,7 @@ const TYPES = [
 const TYPE_TITLE = Object.fromEntries(TYPES.map((t) => [t.v, t.t]))
 const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']
 const ACCESS = [
-  { v: 'members', t: 'Участники предприятия (MoloFlow)' },
-  { v: 'key', t: 'По секретному ключу (вебхуки)' },
-  { v: 'public', t: 'Открытый (публичный доступ)' }
+  { v: 'key', t: 'Molo-Key (обязательный)' }
 ]
 
 const msg = (e) => e?.message || e?.data?.message || 'Что-то пошло не так'
@@ -157,7 +155,7 @@ function showEndpoints() {
   view.value = 'endpoints'
 }
 
-const PAGE = 25
+const PAGE = 20
 const rows = ref([])
 const total = ref(0)
 const skip = ref(0)
@@ -699,7 +697,7 @@ async function createCol() {
 }
 
 /* -------------------------------------------------------------------------- */
-/* HTTP ENDPOINTS + MOLO-KEY                                                  */
+/* HTTP ENDPOINTS + MOLOFLOW GATEWAY                                                  */
 /* -------------------------------------------------------------------------- */
 
 const ep = reactive({
@@ -741,7 +739,7 @@ function getEndpointSavePayload(source = ep) {
     methods: source.methods,
     moduleId: source.moduleId,
     file: source.file,
-    access: source.access,
+    access: 'key',
     enabled: source.enabled,
     regenerateKey: source.regenerateKey === true,
     regenerateConnectKey: source.regenerateConnectKey === true
@@ -754,22 +752,25 @@ function showConnectKey(result, fallback = {}) {
 
   connectKeyDialog.key = key
   connectKeyDialog.url =
+      result?.gatewayUrl ||
       result?.connectUrl ||
+      result?.endpoint?.connectUrl ||
       result?.data?.connectUrl ||
+      result?.data?.endpoint?.connectUrl ||
       fallback.connectUrl ||
       ''
-  connectKeyDialog.slug = result?.slug || fallback.slug || ''
+  connectKeyDialog.slug = result?.slug || result?.endpoint?.slug || fallback.slug || ''
   connectKeyDialog.open = true
 
   return true
 }
 
 function connectCurl(url, key) {
-  return `curl -X GET '${url || 'https://api.moloflow.ru/connect/...'}' \\\n  -H 'X-Molo-Key: ${key}'`
+  return `curl -X GET '${url || 'https://YOUR-GATEWAY.vercel.app/v1/ENTERPRISE_ID/endpoint'}' \\\n  -H 'X-Molo-Key: ${key}'`
 }
 
 function connectFetch(url, key) {
-  return `const response = await fetch('${url || 'https://api.moloflow.ru/connect/...'}', {
+  return `const response = await fetch('${url || 'https://YOUR-GATEWAY.vercel.app/v1/ENTERPRISE_ID/endpoint'}', {
   method: 'GET',
   headers: {
     'X-Molo-Key': '${key}'
@@ -793,7 +794,7 @@ async function copyConnectKey() {
 async function copyConnectUrl(e) {
   if (!e?.connectUrl) return
   await copy(e.connectUrl)
-  notify('Адрес MoloFlow Connect скопирован', 'success')
+  notify('Адрес MoloFlow Gateway скопирован', 'success')
 }
 
 async function copyConnectCurlForEndpoint(e) {
@@ -828,10 +829,10 @@ async function openEndpoint(e) {
     methods: e ? [...(e.methods || [])] : ['POST'],
     moduleId: e?.moduleId || '',
     file: e?.file || '',
-    access: e?.access || 'members',
+    access: 'key',
     enabled: e ? e.enabled : true,
     regenerateKey: false,
-    regenerateConnectKey: !e || !e.connectKeyConfigured,
+    regenerateConnectKey: !e || !e.hasConnectKey,
     files: [],
     error: '',
     saving: false
@@ -865,7 +866,7 @@ async function saveEndpoint() {
 
     const keyWasShown = showConnectKey(saved, {
       slug: ep.slug,
-      connectUrl: saved?.connectUrl
+      connectUrl: saved?.gatewayUrl || saved?.endpoint?.connectUrl
     })
 
     await loadEndpoints()
@@ -897,7 +898,7 @@ async function issueConnectKey(e) {
       methods: e.methods || ['GET'],
       moduleId: e.moduleId,
       file: e.file || '',
-      access: e.access || 'members',
+      access: 'key',
       enabled: e.enabled !== false,
       regenerateKey: false,
       regenerateConnectKey: true
@@ -905,7 +906,7 @@ async function issueConnectKey(e) {
 
     const shown = showConnectKey(saved, {
       slug: e.slug,
-      connectUrl: saved?.connectUrl || e.connectUrl
+      connectUrl: saved?.gatewayUrl || saved?.endpoint?.connectUrl || e.connectUrl
     })
 
     await loadEndpoints()
@@ -927,7 +928,7 @@ async function publishEndpoint(e) {
   await guard(async () => {
     const result = await admin.endpoints.publish(e._id)
     addLog('success', `Эндпоинт опубликован: ${result.publicUrl || result.connectUrl || ''}`)
-    notify('Эндпоинт опубликован в MoloFlow Connect', 'success')
+    notify('Эндпоинт опубликован в MoloFlow Gateway', 'success')
     await loadEndpoints()
   })
 }
@@ -1735,11 +1736,7 @@ function onKey(e) {
                     <UIMoloButton
                         class="small"
                         title="Скопировать готовую ссылку для вызова"
-                        @click="copy(
-                        e.access === 'key' && e.secret
-                          ? `${admin.endpointUrl(e.slug)}?key=${e.secret}`
-                          : admin.endpointUrl(e.slug)
-                      )"
+                        @click="copy(admin.endpointUrl(e.slug))"
                     >
                       <UIMoloSticker name="copy" :size="11" />
                     </UIMoloButton>
@@ -1757,12 +1754,12 @@ function onKey(e) {
 
                 <p v-if="e.description" class="endpoint-desc">{{ e.description }}</p>
 
-                <!-- MOLOFLOW CONNECT -->
+                <!-- MOLOFLOW GATEWAY -->
                 <div class="connect-publish-row">
                   <div class="connect-publish-info">
                     <span class="connect-publish-label">
                       <UIMoloSticker name="cloud" :size="12" />
-                      MoloFlow Connect
+                      MoloFlow Gateway
                     </span>
 
                     <a
@@ -1773,7 +1770,7 @@ function onKey(e) {
                       {{ e.connectUrl }}
                     </a>
 
-                    <small v-else>Snapshot-копия GET-ответа в Cloudflare KV</small>
+                    <small v-else>Gateway отдаёт актуальный ответ модуля при каждом запросе</small>
 
                     <small v-if="e.connectLastError" class="connect-publish-error">
                       {{ e.connectLastError }}
@@ -1793,7 +1790,7 @@ function onKey(e) {
                     <UIMoloButton
                         v-if="e.connectPublished"
                         class="small"
-                        title="Обновить snapshot"
+                        title="Обновить ссылку Gateway"
                         @click="publishEndpoint(e)"
                     >
                       <UIMoloSticker name="refresh" :size="11" />
@@ -1825,7 +1822,7 @@ function onKey(e) {
                 <div v-if="e.connectPublished" class="connect-key-panel">
                   <div class="connect-key-status">
                     <UIMoloSticker
-                        :name="e.connectKey ? 'check-circle' : 'alert-circle'"
+                        :name="e.hasConnectKey ? 'check-circle' : 'alert-circle'"
                         :size="15"
                     />
 
@@ -1856,14 +1853,14 @@ function onKey(e) {
 
                     <UIMoloButton
                         class="small"
-                        :class="{ confirm: !e.connectKeyConfigured }"
+                        :class="{ confirm: !e.hasConnectKey }"
                         :loading="connectKeyBusy === e._id"
                         :disabled="!!connectKeyBusy"
                         @click="issueConnectKey(e)"
                     >
                       <UIMoloSticker name="key" :size="11" />
                       <span>
-                        {{ e.connectKeyConfigured ? 'Перевыпустить Molo-Key' : 'Выпустить Molo-Key' }}
+                        {{ e.hasConnectKey ? 'Перевыпустить Molo-Key' : 'Выпустить Molo-Key' }}
                       </span>
                     </UIMoloButton>
                   </div>
@@ -2142,21 +2139,6 @@ function onKey(e) {
                 </option>
               </UIMoloSelect>
 
-              <UIMoloSelect
-                  v-model="ep.access"
-                  compact
-                  :parent="ACCESS"
-                  children="t"
-                  value-key="v"
-                  t-label="Уровень доступа"
-              />
-
-              <UIMoloToggle
-                  v-if="ep.access === 'key' && ep._id"
-                  v-model="ep.regenerateKey"
-                  compact
-                  label="Сгенерировать новый ключ API /api/x"
-              />
             </template>
           </UIMoloSection>
 
@@ -2164,7 +2146,7 @@ function onKey(e) {
             <template #header>
               <div class="sec-title-wrap">
                 <UIMoloSticker name="shield" :size="14" glow />
-                <strong>Защита MoloFlow Connect</strong>
+                <strong>Защита MoloFlow Gateway</strong>
               </div>
             </template>
             <template #main>
@@ -2228,7 +2210,7 @@ function onKey(e) {
                     :model-value="connectKeyDialog.url"
                     readonly
                     compact
-                    t-label="URL эндпоинта Connect"
+                    t-label="URL эндпоинта Gateway"
                 />
                 <UIMoloButton class="small copy-inline-btn" @click="copy(connectKeyDialog.url)">
                   <UIMoloSticker name="copy" :size="12" />

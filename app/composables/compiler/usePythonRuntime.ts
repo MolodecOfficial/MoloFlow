@@ -281,7 +281,7 @@ async function runWorker(opts: PyRunOptions): Promise<PyRunResult> {
 
 async function runServer(opts: PyRunOptions): Promise<PyRunResult> {
     // Выполняем скрипт в in-memory виртуальной среде (с доступом к MoloDB и всем pip-зависимостям)
-    // и, если это сохранённый модуль, синхронизируем его со ссылкой в облаке MoloFlow Connect!
+    // и, если это сохранённый модуль, синхронизируем его со ссылкой в облаке MoloFlow Gateway!
     const execResult = await runWorker(opts)
 
     if (opts.moduleId) {

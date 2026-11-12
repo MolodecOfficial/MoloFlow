@@ -3,6 +3,7 @@ import mongoose from 'mongoose'
 
 import { tenantModels } from '~~/server/utils/tenantDb'
 import { resolveActor, toHttpError } from '~~/server/utils/moloDb/access'
+import { getMoloFlowGatewayPublicUrl, isMoloFlowGatewayConfigured } from '~~/server/utils/moloFlowGateway'
 
 export default defineEventHandler(async (event) => {
     try {
@@ -33,13 +34,15 @@ export default defineEventHandler(async (event) => {
                 file: d.file || '',
 
                 // Существующая авторизация MoloFlow API.
-                access: d.access,
+                access: 'key',
                 enabled: d.enabled,
                 stats: d.stats || {},
 
-                // MoloFlow Connect.
-                connectPublished: !!d.connectPublished,
-                connectUrl: d.connectUrl || '',
+                // MoloFlow Gateway (совместимые имена полей в существующих документах).
+                connectPublished: !!d.connectPublished && isMoloFlowGatewayConfigured(),
+                connectUrl: d.connectPublished && isMoloFlowGatewayConfigured()
+                    ? getMoloFlowGatewayPublicUrl(enterpriseId, d.slug)
+                    : '',
                 connectPublishedAt: d.connectPublishedAt || null,
                 connectLastError: d.connectLastError || '',
 

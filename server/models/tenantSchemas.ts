@@ -101,7 +101,6 @@ const moloEndpointSchema = new Schema({
     moduleId: { type: String, required: true },
     file: { type: String, default: '' },
 
-    // Авторизация основного MoloFlow API — оставляем без изменений.
     access: {
         type: String,
         enum: ['public', 'key', 'members'],
@@ -111,13 +110,14 @@ const moloEndpointSchema = new Schema({
 
     enabled: { type: Boolean, default: true },
 
-    // MoloFlow Connect.
+    // Публикация через MoloFlow Gateway и кэш последних данных обработчика
     connectPublished: { type: Boolean, default: false },
     connectUrl: { type: String, default: '' },
     connectPublishedAt: { type: Date, default: null },
     connectLastError: { type: String, default: '' },
+    data: { type: Schema.Types.Mixed, default: null },
 
-    // Авторизация опубликованного snapshot.
+    // Авторизация опубликованного Gateway-эндпоинта.
     connectAuthEnabled: { type: Boolean, default: true },
     connectKeyHash: { type: String, default: '' },
     connectKeyCreatedAt: { type: Date, default: null },
@@ -136,7 +136,7 @@ const moloEndpointSchema = new Schema({
 
     createdAt: { type: Date, default: Date.now },
     updatedAt: { type: Date, default: Date.now }
-})
+}, { minimize: false })
 
 moloEndpointSchema.index({ slug: 1 }, { unique: true })
 
