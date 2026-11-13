@@ -119,41 +119,7 @@ const orbClasses = computed(() => ({
   empty: isLoaded.value === true && allGroups.value.length === 0
 }))
 
-async function runAutoStartScripts(enterpriseId: string) {
-  // Добавляем 'py' к списку автозапускаемых скриптов
-  const scripts = (enterpriseModules.value || []).filter(
-      (m: any) => m && (m.format === 'js' || m.format === 'ts') && m.isActive !== false
-  )
-
-  for (const module of scripts) {
-    try {
-      const typeLabel = module.format === 'py' ? 'Python-бота' : 'фонового скрипта'
-      addLog('info', `Автозапуск ${typeLabel}: ${module.name}`)
-
-      const response = await executeServerModule(module._id, undefined, {
-        moduleName: module.name,
-        enterpriseId,
-        isAutoStart: true
-      })
-
-      if (response?.logs?.length) {
-        const { addLog: addModuleLog } = useLogger('Модуль')
-        for (const log of response.logs) {
-          let type: 'info' | 'warning' | 'error' | 'success' = 'info'
-          if (log.includes('ERROR')) type = 'error'
-          else if (log.includes('WARN')) type = 'warning'
-          else if (log.includes('SUCCESS') || log.includes('Запущен')) type = 'success'
-        }
-      }
-
-      addLog('success', `Модуль "${module.name}" запущен`)
-    } catch (err: any) {
-      addLog('error', `Ошибка автозапуска "${module.name}": ${err?.data?.message || err?.message || err}`)
-    }
-  }
-}
-
-const loadAll = async (force = false, runScripts = true) => {
+const loadAll = async (force = false) => {
   loading.value = true
   const enterpriseId = appStore.getEnterpriseId()
   // Раньше при неизвестной роли подставлялась 'Администратор' — теперь минимальные права
@@ -164,11 +130,6 @@ const loadAll = async (force = false, runScripts = true) => {
       menuStore.loadMenu(role, force),
       enterpriseId ? modulesStore.loadEnterpriseModules(enterpriseId, force) : Promise.resolve()
     ])
-
-    // При смене роли скрипты повторно не запускаем — только перечитываем меню
-    if (enterpriseId && runScripts) {
-      void runAutoStartScripts(enterpriseId)
-    }
   } catch (e: any) {
     addLog('error', `Ошибка загрузки меню: ${e?.message || e}`)
   } finally {
@@ -287,24 +248,6 @@ const restartModule = async (moduleData: any) => {
       enterpriseId,
       moduleId
     })
-
-    if (moduleData.format === 'py') {
-      setTimeout(async () => {
-        try {
-          const status = await apiFetch<{ running: boolean; pid?: number }>('/api/py/daemon', {
-            method: 'POST',
-            body: { action: 'status', moduleId }
-          })
-
-          if (status.running) {
-            addLog('success', `Скрипт запущен (PID: ${status.pid})`)
-          } else {
-            addLog('error', `Процесс остановился`)
-          }
-        } catch {}
-      }, 1500)
-    }
-
   } catch (error: any) {
     addLog('error', `Ошибка выполнения: ${error.message}`)
   } finally {

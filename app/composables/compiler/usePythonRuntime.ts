@@ -111,28 +111,33 @@ function onMessage(ev: MessageEvent) {
             readyResolve?.()
             break
 
-        case 'stage':
-            if (pendingRun?.id === msg.id) {
+        case 'stage': {
+            const current = pendingRun
+            if (current && current.id === msg.id) {
                 setStage(msg.stage)
                 if (msg.stage === 'running') {
-                    const { state } = pendingRun
+                    const { state } = current
                     const limit = state.opts.timeoutMs ?? DEFAULT_TIMEOUT_MS
                     state.timer = setTimeout(() => stop('timeout'), limit)
                 }
             }
             break
+        }
 
-        case 'log':
-            if (pendingRun?.id === msg.id) {
+        case 'log': {
+            const current = pendingRun
+            if (current && current.id === msg.id) {
                 const entry: PyLog = { level: msg.level, text: msg.text, ts: Date.now() }
-                pendingRun.state.logs.push(entry)
-                pendingRun.state.opts.onLog?.(entry)
+                current.state.logs.push(entry)
+                current.state.opts.onLog?.(entry)
             }
             break
+        }
 
-        case 'result':
-            if (pendingRun?.id === msg.id) {
-                const { state } = pendingRun
+        case 'result': {
+            const current = pendingRun
+            if (current && current.id === msg.id) {
+                const { state } = current
                 if (state.timer) clearTimeout(state.timer)
                 state.resolve({
                     ok: !!msg.ok,
@@ -148,6 +153,7 @@ function onMessage(ev: MessageEvent) {
                 runtimeReady.value = true
             }
             break
+        }
 
         case 'check-result': {
             const cb = pendingChecks.get(msg.id)
@@ -280,38 +286,10 @@ async function runWorker(opts: PyRunOptions): Promise<PyRunResult> {
 }
 
 async function runServer(opts: PyRunOptions): Promise<PyRunResult> {
-    // Выполняем скрипт в in-memory виртуальной среде (с доступом к MoloDB и всем pip-зависимостям)
-    // и, если это сохранённый модуль, синхронизируем его со ссылкой в облаке MoloFlow Gateway!
-    const execResult = await runWorker(opts)
-
-    if (opts.moduleId) {
-        const appStore = useAppStore()
-        const enterpriseId = appStore.getEnterpriseId() || ''
-        if (enterpriseId) {
-            try {
-                const cloudRes: any = await $fetch('/api/py/run', {
-                    method: 'POST',
-                    body: {
-                        moduleId: opts.moduleId,
-                        enterpriseId,
-                        context: opts.context || {},
-                        lastResult: execResult.result
-                    }
-                })
-                if (cloudRes?.logs?.length && opts.onLog) {
-                    cloudRes.logs.forEach((l: PyLog) => opts.onLog?.(l))
-                }
-            } catch {}
-        }
-    }
-
-    return execResult
+    return runWorker(opts)
 }
 
 async function run(opts: PyRunOptions): Promise<PyRunResult> {
-    if (opts.engine === 'server') {
-        return runServer(opts)
-    }
     return runWorker(opts)
 }
 

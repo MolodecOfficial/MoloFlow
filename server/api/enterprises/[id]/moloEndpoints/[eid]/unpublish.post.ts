@@ -3,7 +3,6 @@ import { createError, defineEventHandler, getRouterParam } from 'h3'
 import mongoose from 'mongoose'
 import { tenantModels } from '~~/server/utils/tenantDb'
 import { resolveActor, toHttpError } from '~~/server/utils/moloDb/access'
-import { stopDaemon } from '~~/server/utils/daemonManager'
 
 export default defineEventHandler(async (event) => {
     try {
@@ -16,10 +15,6 @@ export default defineEventHandler(async (event) => {
         const Endpoint = tenantModels(enterpriseId).MoloEndpoint
         const endpoint: any = await Endpoint.findOne({ _id: eid, enterpriseId }).lean()
         if (!endpoint) throw createError({ statusCode: 404, message: 'Эндпоинт не найден' })
-
-        if (endpoint.moduleId) {
-            await stopDaemon(String(endpoint.moduleId))
-        }
 
         const mainDb = mongoose.connection.db
         if (mainDb) {

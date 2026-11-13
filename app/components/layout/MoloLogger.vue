@@ -1,25 +1,10 @@
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
 import { useLogger, type LogType } from '~/composables/useLogger'
-import { useProcessManager, type ManagedScriptItem } from '~/composables/useProcessManager'
-
-import pyIcon from '~~/app/assets/icons/py.svg'
-import tsIcon from '~~/app/assets/icons/ts.svg'
-import jsIcon from '~~/app/assets/icons/js.svg'
 
 const isOpen = ref(false)
-const activeTab = ref<'logs' | 'processes'>('logs')
 
 const { logs, clearLogs, removeLog } = useLogger()
-const {
-  processesList,
-  runningCount,
-  startProcess,
-  stopProcess,
-  restartProcess,
-  startPolling,
-  stopPolling
-} = useProcessManager()
 
 const searchQuery = ref('')
 const selectedType = ref<LogType | 'all'>('all')
@@ -49,7 +34,6 @@ const filteredLogs = computed(() => {
 watch(
     filteredLogs,
     async () => {
-      if (activeTab.value !== 'logs') return
       await nextTick()
       if (logsContainer.value) {
         logsContainer.value.scrollTop = logsContainer.value.scrollHeight
@@ -61,37 +45,6 @@ watch(
 const toggleLogger = () => {
   isOpen.value = !isOpen.value
 }
-
-function getFormatIcon(format: string) {
-  if (format === 'py') return pyIcon
-  if (format === 'ts') return tsIcon
-  return jsIcon
-}
-
-function getStatusTitle(status: string) {
-  switch (status) {
-    case 'running': return 'Работает'
-    case 'success': return 'Завершён успешно'
-    case 'error': return 'Сбой выполнения'
-    default: return 'Остановлен'
-  }
-}
-
-function formatDuration(startedAt?: number) {
-  if (!startedAt) return ''
-  const sec = Math.max(0, Math.floor((Date.now() - startedAt) / 1000))
-  if (sec < 60) return `${sec} сек`
-  const min = Math.floor(sec / 60)
-  return `${min} мин ${sec % 60} сек`
-}
-
-onMounted(() => {
-  startPolling()
-})
-
-onUnmounted(() => {
-  stopPolling()
-})
 </script>
 
 <template>
@@ -99,40 +52,15 @@ onUnmounted(() => {
     <!-- Шапка панели -->
     <div class="logger-header" @click="toggleLogger">
       <div class="logger-header-left">
-        <span class="logger-title">Терминал и Процессы</span>
-
-        <!-- Бейдж активных демонов/скриптов -->
-        <span v-if="runningCount > 0" class="process-live-badge" title="Активные процессы">
-          <span class="live-dot"></span>
-          {{ runningCount }}
-        </span>
-
+        <span class="logger-title">Журнал логов</span>
         <!-- Бейдж количества логов -->
-        <span v-if="logs.length && runningCount === 0" class="logger-badge">{{ logs.length }}</span>
+        <span v-if="logs.length" class="logger-badge">{{ logs.length }}</span>
       </div>
 
       <div class="logger-header-right" @click.stop>
-        <!-- Переключатели вкладок -->
-        <div v-if="isOpen" class="btn-group">
-          <UIMoloButton
-              class="tab-btn"
-              :class="{ confirm: activeTab === 'logs' }"
-              @click="activeTab = 'logs'"
-          >
-            <UIMoloSticker name="table" size="14px"/>
-          </UIMoloButton>
-          <UIMoloButton
-              class="tab-btn"
-              :class="{ confirm: activeTab === 'processes' }"
-              @click="activeTab = 'processes'"
-          >
-            <UIMoloSticker name="terminal" size="14px"/>
-          </UIMoloButton>
-        </div>
-
         <div class="btn-group">
           <UIMoloButton
-              v-if="isOpen && activeTab === 'logs'"
+              v-if="isOpen"
               class="small transparent"
               title="Очистить логи"
               @click="clearLogs"
@@ -146,83 +74,12 @@ onUnmounted(() => {
             <UIMoloSticker v-else name="up"/>
           </UIMoloButton>
         </div>
-        <!-- Кнопка очистки логов -->
-
       </div>
     </div>
 
     <!-- Тело панели -->
     <div v-show="isOpen" class="logger-content">
-      <!-- ВКЛАДКА 1: ПРОЦЕССЫ И СКРИПТЫ -->
-      <div v-if="activeTab === 'processes'" class="processes-view">
-        <div v-if="processesList.length === 0" class="logger-empty">
-          <p>В предприятии пока нет скриптов (.py, .ts, .js)</p>
-        </div>
-
-        <div v-else class="processes-list">
-          <div
-              v-for="item in processesList"
-              :key="item.id"
-              class="process-card"
-              :class="`proc-${item.status}`"
-          >
-            <div class="proc-left">
-              <img :src="getFormatIcon(item.format)" class="proc-icon" alt="" />
-              <div class="proc-info">
-                <div class="proc-title-row">
-                  <strong class="proc-name">{{ item.name }}</strong>
-                  <span class="status-indicator" :class="item.status" :title="getStatusTitle(item.status)">
-                    {{ getStatusTitle(item.status) }}
-                  </span>
-                </div>
-                <div class="proc-meta">
-                  <span v-if="item.pid" class="meta-tag">PID: {{ item.pid }}</span>
-                  <span v-if="item.status === 'running' && item.startedAt" class="meta-tag">
-                    <UIMoloSticker name="timer" :size="12" /> {{ formatDuration(item.startedAt) }}
-                  </span>
-                  <span v-if="item.lastMessage" class="proc-msg" :title="item.lastMessage">
-                    {{ item.lastMessage }}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div class="btn-group">
-              <!-- Запуск -->
-              <UIMoloButton
-                  v-if="item.status !== 'running'"
-                  class="small confirm"
-                  title="Запустить скрипт"
-                  @click="startProcess(item)"
-              >
-                <UIMoloSticker name="play" size="12px"/>
-              </UIMoloButton>
-
-              <!-- Остановка -->
-              <UIMoloButton
-                  v-if="item.status === 'running'"
-                  class="small close"
-                  title="Остановить"
-                  @click="stopProcess(item)"
-              >
-                <UIMoloSticker name="stop" size="12px"/>
-              </UIMoloButton>
-
-              <!-- Перезапуск -->
-              <UIMoloButton
-                  class="small"
-                  title="Перезапустить"
-                  @click="restartProcess(item)"
-              >
-                <UIMoloSticker name="refresh" size="12px"/>
-              </UIMoloButton>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- ВКЛАДКА 2: ЖУРНАЛ ЛОГОВ -->
-      <div v-else class="logs-view">
+      <div class="logs-view">
         <div v-if="filteredLogs.length" ref="logsContainer" class="logger-logs">
           <div
               v-for="log in filteredLogs"

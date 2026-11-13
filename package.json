@@ -2,7 +2,7 @@
   "name": "moloflow",
   "type": "module",
   "productName": "MoloFlow",
-  "version": "1.11.1",
+  "version": "1.11.2",
   "description": "MoloFlow desktop",
   "author": "Molodec_Official",
   "main": "electron/main.cjs",
@@ -10,7 +10,6 @@
   "scripts": {
     "build": "nuxt build",
     "dev": "nuxt dev --host 0.0.0.0 --port 3000",
-    "bot": "node scripts/run-bot.js",
     "generate": "nuxt generate",
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",

@@ -85,18 +85,3 @@ export function useModulePrefetch() {
 
     return { prefetchModules, prefetchOne }
 }
-
-const startAutoRunModules = async (modules: any[], enterpriseId: string) => {
-    for (const m of modules) {
-        if (!m.isActive) continue
-
-        // Если это Python-скрипт автозапуска/фоновый демон:
-        if (m.format === 'py') {
-            await startPythonDaemon(m._id, enterpriseId)
-        }
-        // Если это JS/TS скрипт:
-        else if (m.format === 'js' || m.format === 'ts') {
-            await restartScript(m.code, m.format, m._id, m.name)
-        }
-    }
-}

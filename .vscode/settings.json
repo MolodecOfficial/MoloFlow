@@ -1,0 +1,13 @@
+{
+  "npm.enableScriptExplorer": true,
+  "npm.scriptExplorerAction": "open",
+  // Верхняя полоса навигации и поиска (как New UI в IDEA)
+  "window.commandCenter": true,
+  // Шрифт как в IntelliJ (если установлен JetBrains Mono)
+  "editor.fontFamily": "'JetBrains Mono', 'Fira Code', Consolas, monospace",
+  "editor.fontLigatures": true,
+  // Хлебные крошки сверху редактора (структура файла)
+  "breadcrumbs.enabled": true,
+  // Вкладки редактора (перенос на новую строку при нехватке места)
+  "workbench.editor.wrapTabs": true
+}

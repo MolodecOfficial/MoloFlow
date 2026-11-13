@@ -210,16 +210,6 @@ async function startServer() {
 
     const port = await getServerPort()
 
-    const embeddedPython = path.join(
-        process.resourcesPath || '',
-        'python',
-        'python.exe'
-    )
-
-    const pythonBin = fs.existsSync(embeddedPython)
-        ? embeddedPython
-        : (process.env.PYTHON_BIN || '')
-
     const logDir = app.getPath('userData')
 
     if (!fs.existsSync(logDir)) {
@@ -240,8 +230,7 @@ async function startServer() {
             NITRO_HOST: '127.0.0.1',
             NITRO_PORT: String(port),
             HOST: '127.0.0.1',
-            PORT: String(port),
-            ...(pythonBin ? { PYTHON_BIN: pythonBin } : {})
+            PORT: String(port)
         },
         stdio: ['ignore', 'pipe', 'pipe', 'ipc']
     })

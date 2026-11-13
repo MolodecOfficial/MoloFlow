@@ -24,7 +24,7 @@ const props = withDefaults(defineProps<{
   moduleName: 'Python',
   autoRun: false,
   timeoutMs: 30000,
-  defaultEngine: 'server'
+  defaultEngine: 'client'
 })
 
 // Состояние выбранного движка

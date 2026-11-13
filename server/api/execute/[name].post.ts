@@ -18,38 +18,6 @@ export default defineEventHandler(async (event) => {
         throw createError({ statusCode: 404, message: 'Module not found' })
     }
 
-    // ── PYTHON: фоновый демон ──
-    if (mod.format === 'py') {
-        try {
-            const daemonRes = await $fetch<{ success: boolean; pid: number; message: string }>('/api/py/daemon', {
-                method: 'POST',
-                body: {
-                    action: 'restart',
-                    moduleId: mod._id.toString(),
-                    enterpriseId
-                }
-            })
-
-            return {
-                result: daemonRes,
-                logs: [`[Daemon] ${daemonRes.message}`],
-                entries: [{ level: 'info', source: 'Daemon', text: daemonRes.message, ts: Date.now() }],
-                actions: []
-            }
-        } catch (error: any) {
-            console.error('[Execute API Python Daemon Error]:', error)
-            throw createError({
-                statusCode: error.statusCode || 500,
-                message: error.message || 'Не удалось запустить фоновый Python-демон',
-                data: {
-                    logs: [error.message],
-                    entries: [{ level: 'error', source: 'Daemon', text: String(error.message), ts: Date.now() }],
-                    actions: []
-                }
-            })
-        }
-    }
-
     // ── JS / TS через VM ──
     try {
         const sandbox = await getModuleSandbox(moduleId, String(enterpriseId))

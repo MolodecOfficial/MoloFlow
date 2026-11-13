@@ -5,9 +5,7 @@ import { tenantModels } from '~~/server/utils/tenantDb'
 import { resolveActor, toHttpError } from '~~/server/utils/moloDb/access'
 import { getMoloFlowGatewayPublicUrl, isMoloFlowGatewayConfigured } from '~~/server/utils/moloFlowGateway'
 import { getModuleSandbox } from '~~/app/utils/moduleSandbox'
-import { buildPythonBundleFromMoloDb, executePythonInSandbox } from '~~/server/utils/pythonRunner'
-import { startOrRestartDaemon } from '~~/server/utils/daemonManager'
-import { stopDaemon } from '~~/server/utils/daemonManager'
+import { buildPythonBundleFromMoloDb } from '~~/server/utils/pythonRunner'
 
 function isPythonBot(code: string, files: any[] = []): boolean {
     const all = [code, ...files.map(f => f?.code || '')].join('\n')
@@ -54,8 +52,6 @@ export default defineEventHandler(async (event) => {
         // 1. Обработка Python-модуля (бота или скрипта) либо JS/TS-модуля
         if (isPy) {
             pyBundle = await buildPythonBundleFromMoloDb(enterpriseId, String(moduleDoc._id))
-            // Останавливаем локальный демон на dev-сервере, чтобы бот работал ТОЛЬКО на Gateway!
-            await stopDaemon(String(moduleDoc._id))
 
             finalData = {
                 type: 'python_bot_daemon',
