@@ -62,7 +62,8 @@ module.exports = {
             name: '@electron-forge/maker-squirrel',
             config: {
                 name: 'MoloFlow',
-                setupIcon: iconPath
+                setupIcon: iconPath,
+                loadingGif: path.resolve(__dirname, 'build/loading.gif')
             }
         },
         {
