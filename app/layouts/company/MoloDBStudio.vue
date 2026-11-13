@@ -31,7 +31,9 @@ const TYPES = [
   { v: 'boolean', t: 'Да / нет' },
   { v: 'date', t: 'Дата и время' },
   { v: 'select', t: 'Выбор из списка' },
-  { v: 'json', t: 'JSON' }
+  { v: 'json', t: 'JSON' },
+  { v: 'link', t: 'Ссылка' },
+  { v: 'file', t: 'Фотография / Файл' }
 ]
 const TYPE_TITLE = Object.fromEntries(TYPES.map((t) => [t.v, t.t]))
 const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']
@@ -260,6 +262,7 @@ function fmtCell(f, v) {
   if (f.type === 'date') return fmtDate(v)
   if (f.type === 'json') return JSON.stringify(v)
   if (f.type === 'number') return Number(v).toLocaleString('ru-RU')
+  if (f.type === 'file') return typeof v === 'object' && v?.url ? (v.name || v.url) : String(v)
   return String(v)
 }
 
@@ -447,10 +450,10 @@ function fromDraft(d, name) {
       required: f.required,
       unique: f.unique,
       default: parseDefault(f),
-      options: f.type === 'select' ? split(f.options) : undefined,
+      options: f.type === 'select' ? (split(f.options).length ? split(f.options) : (f.name === 'department' ? ['IT и разработка', 'Продажи', 'Маркетинг', 'Бухгалтерия', 'Руководство'] : ['Основной'])) : undefined,
       min: f.type === 'number' ? num(f.min) : undefined,
       max: f.type === 'number' ? num(f.max) : undefined,
-      maxLength: f.type === 'string' || f.type === 'text' ? num(f.maxLength) : undefined
+      maxLength: f.type === 'string' || f.type === 'text' || f.type === 'link' ? num(f.maxLength) : undefined
     }))
   }
 }
@@ -1387,7 +1390,10 @@ function onKey(e) {
                       <span v-if="f.type === 'select' && r[f.name]" class="pill-badge">
                         {{ r[f.name] }}
                       </span>
-                    <span v-else>{{ fmtCell(f, r[f.name]) }}</span>
+                      <a v-else-if="f.type === 'link' && r[f.name]" :href="r[f.name]" target="_blank" rel="noopener noreferrer" style="color: #4da3ff; text-decoration: underline;" @click.stop>
+                        {{ r[f.name] }}
+                      </a>
+                      <span v-else>{{ fmtCell(f, r[f.name]) }}</span>
                   </td>
 
                   <td class="cell-date">{{ fmtDate(r.createdAt) }}</td>
@@ -1469,7 +1475,6 @@ function onKey(e) {
                           <UIMoloSelect
                               v-model="f.type"
                               compact
-                              :disabled="f.saved"
                               t-label="Тип данных"
                               :parent="TYPES"
                               children="t"
@@ -1480,7 +1485,7 @@ function onKey(e) {
                         <div class="toggles-col">
                           <UIMoloToggle v-model="f.required" compact label="Обязательное" />
                           <UIMoloToggle
-                              v-if="['string', 'number', 'select', 'date'].includes(f.type)"
+                              v-if="['string', 'number', 'select', 'date', 'link'].includes(f.type)"
                               v-model="f.unique"
                               compact
                               label="Уникальное"
@@ -1530,9 +1535,17 @@ function onKey(e) {
                           <UIMoloInput
                               v-model="f.options"
                               compact
-                              placeholder="новый, в работе, завершено"
+                              :placeholder="f.name === 'department' ? 'IT, Бухгалтерия, Продажи, Руководство' : 'новый, в работе, завершено'"
                               t-label="Варианты (через запятую)"
                           />
+                        </div>
+
+                        <div v-if="f.type === 'file'" class="extra-field-item grow">
+                          <span style="font-size: 11px; color: #8c8c9e; align-self: center;">Изображение или файл (URL/base64)</span>
+                        </div>
+
+                        <div v-if="f.type === 'link'" class="extra-field-item grow">
+                          <span style="font-size: 11px; color: #8c8c9e; align-self: center;">URL-адрес (например, https://example.com)</span>
                         </div>
 
                         <template v-if="f.type === 'number'">
@@ -1545,7 +1558,7 @@ function onKey(e) {
                         </template>
 
                         <div
-                            v-if="f.type === 'string' || f.type === 'text'"
+                            v-if="f.type === 'string' || f.type === 'text' || f.type === 'link'"
                             class="extra-field-item num"
                         >
                           <UIMoloInput
@@ -1951,6 +1964,25 @@ function onKey(e) {
                 />
               </div>
             </div>
+
+            <UIMoloInput
+                v-else-if="f.type === 'link'"
+                v-model="rec.values[f.name]"
+                type="url"
+                compact
+                :t-label="f.label || f.name"
+                :l-required="f.required"
+                placeholder="https://..."
+            />
+
+            <UIMoloInput
+                v-else-if="f.type === 'file'"
+                v-model="rec.values[f.name]"
+                compact
+                :t-label="f.label || f.name"
+                :l-required="f.required"
+                placeholder="URL или путь к файлу/фото"
+            />
 
             <UIMoloInput
                 v-else

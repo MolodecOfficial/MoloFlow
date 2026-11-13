@@ -260,7 +260,7 @@ async function readSystemModules(ctx: OpContext, body: any) {
 /**
  * Виртуальная маршрутизация системных коллекций в MoloDB Studio
  */
-async function runTenantCollectionOp(ctx: OpContext, body: any): Promise<any> {
+async function runTenantCollectionOp(ctx: OpContext, body: any, deps: StoreDeps = defaultDeps): Promise<any> {
     const { WorkspaceDocument, WorkspaceFolder, WorkspaceDocumentVersion, DirectoryDefinition, DirectoryItem } = tenantModels(ctx.enterpriseId)
     let model: any = null
     let directorySlugOverride: string | null = null
@@ -369,6 +369,59 @@ async function runTenantCollectionOp(ctx: OpContext, body: any): Promise<any> {
         return typeof value.toObject === 'function' ? value.toObject() : value
     }
 
+    const assertTenantUnique = async (cleaned: Record<string, any>, excludeId?: any) => {
+        if (!directorySlugOverride) return
+
+        let coll: CollectionDef | undefined
+        try {
+            const def = await deps.loadDef(ctx.enterpriseId, ctx.db)
+            coll = def?.collections?.find((c) => c.name === ctx.col)
+        } catch {}
+
+        const uniqueChecks: Array<{ fieldName: string; label: string; queryKey: string; val: any }> = []
+
+        // Всегда проверяем code (табельный номер / код элемента), если он заполнен
+        if (cleaned.code !== undefined && cleaned.code !== null && String(cleaned.code).trim() !== '') {
+            const codeVal = String(cleaned.code).trim()
+            const codeLabel = coll?.fields?.find((f) => f.name === 'code')?.label || 'Табельный номер / ID'
+            uniqueChecks.push({ fieldName: 'code', label: codeLabel, queryKey: 'code', val: codeVal })
+        }
+
+        // Проверяем остальные поля схемы, у которых стоит unique: true
+        if (coll?.fields) {
+            for (const f of coll.fields) {
+                if (!f.unique || f.name === 'code') continue
+                let val: any
+                let queryKey = f.name
+                if (f.name === 'title' || f.name === 'description') {
+                    val = cleaned[f.name]
+                } else {
+                    val = cleaned.attributes?.[f.name] ?? cleaned[f.name]
+                    queryKey = `attributes.${f.name}`
+                }
+                if (val !== undefined && val !== null && (typeof val !== 'string' || val.trim() !== '')) {
+                    uniqueChecks.push({ fieldName: f.name, label: f.label || f.name, queryKey, val })
+                }
+            }
+        }
+
+        for (const check of uniqueChecks) {
+            const query: Record<string, any> = {
+                enterpriseId: ctx.enterpriseId,
+                directorySlug: directorySlugOverride,
+                [check.queryKey]: check.val
+            }
+            if (excludeId) {
+                query._id = { $ne: excludeId }
+            }
+
+            const exists = await model.findOne(query).select('_id').lean()
+            if (exists) {
+                throw new MoloDbError(`Значение «${check.val}» поля «${check.label}» уже используется в этом справочнике`, 409)
+            }
+        }
+    }
+
     const limit = clampInt(body.limit, 50, 1, LIMITS.queryLimit)
     const skip = clampInt(body.skip, 0, 0, 100_000)
 
@@ -397,18 +450,27 @@ async function runTenantCollectionOp(ctx: OpContext, body: any): Promise<any> {
         }
         case 'count': return { count: await model.countDocuments(filter) }
         case 'insert': {
-            const item = await model.create(cleanDoc(body.doc))
+            const cleaned = cleanDoc(body.doc)
+            await assertTenantUnique(cleaned)
+            const item = await model.create(cleaned)
             return { item: plain(item) }
         }
         case 'insertMany': {
             if (!Array.isArray(body.docs)) throw new MoloDbError('docs должен быть массивом')
             if (body.docs.length > LIMITS.batch) throw new MoloDbError(`За один раз можно добавить не больше ${LIMITS.batch} записей`)
             const items = body.docs.map(cleanDoc)
+            for (const it of items) {
+                await assertTenantUnique(it)
+            }
             return { items: (await model.insertMany(items)).map(plain) }
         }
         case 'update': {
             const targetFilter = body.id ? { _id: idFilter(body.id) } : normalizeFilter(body.filter)
             if (!Object.keys(targetFilter).length) throw new MoloDbError('Для изменения записи укажите id или filter')
+
+            const target = await model.findOne({ ...scope, ...targetFilter }).lean()
+            if (!target) return { matched: 0, modified: 0 }
+
             const patch = body.patch && typeof body.patch === 'object' && !Array.isArray(body.patch) ? { ...body.patch } : {}
             for (const protectedKey of ['_id', 'enterpriseId', 'createdBy']) delete patch[protectedKey]
 
@@ -435,13 +497,20 @@ async function runTenantCollectionOp(ctx: OpContext, body: any): Promise<any> {
                 updateSet = { ...patch, updatedAt: new Date() }
             }
 
+            const mergedDoc = {
+                ...target,
+                ...updateSet,
+                attributes: { ...(target.attributes || {}), ...(updateSet.attributes || {}) }
+            }
+            await assertTenantUnique(mergedDoc, target._id)
+
             if (body.many) {
                 const result = await model.updateMany({ ...scope, ...targetFilter }, { $set: updateSet })
                 return { matched: result.matchedCount, modified: result.modifiedCount }
             }
 
             const item = await model.findOneAndUpdate(
-                { ...scope, ...targetFilter },
+                { _id: target._id },
                 { $set: updateSet },
                 { new: true, runValidators: true }
             ).lean()
@@ -463,7 +532,7 @@ export async function runDbOp(ctx: OpContext, body: any, deps: StoreDeps = defau
     const op = body?.op
     if (!READ_OPS.has(op) && !WRITE_OPS.has(op)) throw new MoloDbError(`Неизвестная операция «${op}»`)
 
-    const tenantResult = await runTenantCollectionOp(ctx, body)
+    const tenantResult = await runTenantCollectionOp(ctx, body, deps)
     if (tenantResult !== null) return tenantResult
 
     if (ctx.db === 'company' && ctx.col === 'modules') return readSystemModules(ctx, body)

@@ -31,10 +31,29 @@ export default defineEventHandler(async (event) => {
             const body = (await readBody(event).catch(() => ({}))) || {}
             const $set: Record<string, any> = {}
 
-            for (const k of ['title', 'code', 'description'] as const) {
-                if (Object.prototype.hasOwnProperty.call(body, k)) {
-                    $set[k] = String(body[k] ?? '').trim()
+            if (Object.prototype.hasOwnProperty.call(body, 'title')) {
+                $set['title'] = String(body.title ?? '').trim()
+            }
+            if (Object.prototype.hasOwnProperty.call(body, 'description')) {
+                $set['description'] = String(body.description ?? '').trim()
+            }
+            if (Object.prototype.hasOwnProperty.call(body, 'code')) {
+                const code = String(body.code ?? '').trim()
+                if (code) {
+                    const existing = await DirectoryItem.findOne({
+                        enterpriseId,
+                        directorySlug: doc.directorySlug,
+                        code,
+                        _id: { $ne: doc._id }
+                    }).lean()
+                    if (existing) {
+                        throw createError({
+                            statusCode: 409,
+                            message: `Табельный номер / Код «${code}» уже используется в этом справочнике`
+                        })
+                    }
                 }
+                $set['code'] = code
             }
 
             // Обновление ключа отдела

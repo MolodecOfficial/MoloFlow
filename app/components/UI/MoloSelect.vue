@@ -47,9 +47,11 @@ const handleInput = (event: Event) => {
         @input="handleInput"
         @focus="$emit('focus', $event)"
         :required="iRequired"
+        :disabled="disabled === true || disabled === ''"
         class="select"
     >
-      <option value="" disabled v-if="disabled">{{ disabled }}</option>
+      <option value="" disabled v-if="typeof disabled === 'string' && disabled">{{ disabled }}</option>
+      <option value="" disabled v-else-if="placeholder">{{ placeholder }}</option>
       <option value="" v-if="all">{{ all }}</option>
       <option value="" v-if="clearable && modelValue">— Очистить —</option>
 

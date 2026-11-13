@@ -8,7 +8,7 @@ export class MoloDbError extends Error {
     }
 }
 
-export const FIELD_TYPES = ['string', 'text', 'number', 'boolean', 'date', 'select', 'json', 'file'] as const
+export const FIELD_TYPES = ['string', 'text', 'number', 'boolean', 'date', 'select', 'json', 'file', 'link'] as const
 export type FieldType = (typeof FIELD_TYPES)[number]
 
 export interface FieldDef {
@@ -63,7 +63,7 @@ export const NAME_RE = /^[a-z][a-z0-9_]{0,48}$/
 export const FIELD_NAME_RE = /^[a-zA-Z][a-zA-Z0-9_]{0,48}$/
 export const RESERVED_NAMES = new Set(['id', '_id', 'createdAt', 'updatedAt', 'data', 'enterpriseId', 'db', 'col', 'expireAt'])
 const SYSTEM_KEYS = new Set(['_id', 'id', 'createdAt', 'updatedAt'])
-const UNIQUE_TYPES = new Set<FieldType>(['string', 'number', 'select', 'date'])
+const UNIQUE_TYPES = new Set<FieldType>(['string', 'number', 'select', 'date', 'link'])
 
 export const isPlainObject = (v: any): v is Record<string, any> =>
     v !== null && typeof v === 'object' && !Array.isArray(v) && !(v instanceof Date)
@@ -142,6 +142,13 @@ export function coerceField(f: FieldDef, v: any): { value?: any; error?: string 
                     return { value: v }
                 }
                 return { error: `Поле «${name}» должно содержать файл/изображение` }
+            }
+            return { value: v }
+        }
+        case 'link': {
+            if (typeof v !== 'string') return { error: `Поле «${name}» должно быть ссылкой` }
+            if (f.maxLength && v.length > f.maxLength) {
+                return { error: `Поле «${name}» длиннее ${f.maxLength} символов` }
             }
             return { value: v }
         }
@@ -246,7 +253,13 @@ function normalizeField(raw: any, where: string, errs: string[]): FieldDef | nul
     if (type === 'select') {
         const opts = Array.isArray(raw.options) ? raw.options.map((o: any) => str(o, 100)).filter(Boolean) : []
         const uniq = [...new Set<string>(opts)].slice(0, LIMITS.options)
-        if (!uniq.length) errs.push(`${where}.${name}: укажите варианты для списка`)
+        if (!uniq.length) {
+            if (name === 'department') {
+                uniq.push('IT и разработка', 'Продажи', 'Маркетинг', 'Бухгалтерия', 'Руководство')
+            } else {
+                uniq.push('Основной')
+            }
+        }
         f.options = uniq
     }
 
@@ -260,7 +273,7 @@ function normalizeField(raw: any, where: string, errs: string[]): FieldDef | nul
         if (f.min !== undefined && f.max !== undefined && f.min > f.max) errs.push(`${where}.${name}: min больше max`)
     }
 
-    if (type === 'string' || type === 'text') {
+    if (type === 'string' || type === 'text' || type === 'link') {
         const ml = intIn(raw.maxLength, 1, LIMITS.textLen)
         if (Number.isNaN(ml)) errs.push(`${where}.${name}: недопустимая максимальная длина`)
         else if (ml !== undefined) f.maxLength = ml
