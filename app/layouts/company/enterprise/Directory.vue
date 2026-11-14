@@ -1,11 +1,11 @@
 <!-- components/directory/Directory.vue -->
 <script lang="ts" setup>
-import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
-import { useAppStore } from '~~/stores/appStore'
-import { buildAuthHeaders } from '~~/server/utils/authContext'
-import { useDirectoryInterpolator } from '~/composables/useDirectoryInterpolator'
-import { useLogger } from '~/composables/useLogger'
-import { useNotifications } from '~/composables/useNotifications'
+import {ref, computed, watch, onMounted, onBeforeUnmount} from 'vue'
+import {useAppStore} from '~~/stores/appStore'
+import {buildAuthHeaders} from '~~/server/utils/auth/authContext'
+import {useDirectoryInterpolator} from '~/composables/useDirectoryInterpolator'
+import {useLogger} from '~/composables/useLogger'
+import {useNotifications} from '~/composables/useNotifications'
 
 type FieldType = 'text' | 'number' | 'date' | 'boolean' | 'select' | 'file' | 'link'
 
@@ -62,8 +62,8 @@ const props = defineProps<{
 
 const appStore = useAppStore()
 const interpolator = useDirectoryInterpolator()
-const { addNotification } = useNotifications('Справочники')
-const { addLog } = useLogger('Справочники')
+const {addNotification} = useNotifications('Справочники')
+const {addLog} = useLogger('Справочники')
 
 /* -------------------------------------------------------------------------- */
 /* CONSTANTS                                                                  */
@@ -80,12 +80,12 @@ const BASE_CONFIG: Record<string, DirectoryMeta> = {
     titlePlaceholder: 'Иванов Иван Иванович',
     groupByKey: 'department',
     fields: [
-      { key: 'avatar', label: 'Фотография', type: 'file' },
-      { key: 'department', label: 'Отдел', type: 'select', options: [] },
-      { key: 'role', label: 'Должность', placeholder: 'Ведущий инженер' },
-      { key: 'phone', label: 'Телефон', placeholder: '+7 (999) 000-00-00' },
-      { key: 'birthDate', label: 'Дата рождения', type: 'date' },
-      { key: 'isProbation', label: 'Испытательный срок', type: 'boolean' }
+      {key: 'avatar', label: 'Фотография', type: 'file'},
+      {key: 'department', label: 'Отдел', type: 'select', options: []},
+      {key: 'role', label: 'Должность', placeholder: 'Ведущий инженер'},
+      {key: 'phone', label: 'Телефон', placeholder: '+7 (999) 000-00-00'},
+      {key: 'birthDate', label: 'Дата рождения', type: 'date'},
+      {key: 'isProbation', label: 'Испытательный срок', type: 'boolean'}
     ]
   },
   counterparties: {
@@ -97,11 +97,11 @@ const BASE_CONFIG: Record<string, DirectoryMeta> = {
     titleLabel: 'Наименование / ФИО',
     titlePlaceholder: 'ООО «Компания»',
     fields: [
-      { key: 'logo', label: 'Логотип / Документ', type: 'file' },
-      { key: 'website', label: 'Веб-сайт', type: 'link', placeholder: 'https://example.com' },
-      { key: 'kpp', label: 'КПП', placeholder: '770101001' },
-      { key: 'phone', label: 'Телефон', placeholder: '+7...' },
-      { key: 'isVerified', label: 'Проверен', type: 'boolean' }
+      {key: 'logo', label: 'Логотип / Документ', type: 'file'},
+      {key: 'website', label: 'Веб-сайт', type: 'link', placeholder: 'https://example.com'},
+      {key: 'kpp', label: 'КПП', placeholder: '770101001'},
+      {key: 'phone', label: 'Телефон', placeholder: '+7...'},
+      {key: 'isVerified', label: 'Проверен', type: 'boolean'}
     ]
   },
   bank_accounts: {
@@ -113,8 +113,8 @@ const BASE_CONFIG: Record<string, DirectoryMeta> = {
     titleLabel: 'Наименование банка',
     titlePlaceholder: 'Название банка',
     fields: [
-      { key: 'accountNumber', label: 'Расчётный счёт', required: true },
-      { key: 'isMain', label: 'Основной счёт', type: 'boolean' }
+      {key: 'accountNumber', label: 'Расчётный счёт', required: true},
+      {key: 'isMain', label: 'Основной счёт', type: 'boolean'}
     ]
   },
   nomenclature: {
@@ -126,10 +126,10 @@ const BASE_CONFIG: Record<string, DirectoryMeta> = {
     titleLabel: 'Наименование',
     titlePlaceholder: 'Товар или услуга',
     fields: [
-      { key: 'photo', label: 'Изображение товара', type: 'file' },
-      { key: 'productUrl', label: 'Ссылка на товар', type: 'link', placeholder: 'https://...' },
-      { key: 'unit', label: 'Единица измерения', placeholder: 'шт.', required: true },
-      { key: 'inStock', label: 'В наличии', type: 'boolean' }
+      {key: 'photo', label: 'Изображение товара', type: 'file'},
+      {key: 'productUrl', label: 'Ссылка на товар', type: 'link', placeholder: 'https://...'},
+      {key: 'unit', label: 'Единица измерения', placeholder: 'шт.', required: true},
+      {key: 'inStock', label: 'В наличии', type: 'boolean'}
     ]
   },
   glossary: {
@@ -141,7 +141,7 @@ const BASE_CONFIG: Record<string, DirectoryMeta> = {
     titleLabel: 'Термин',
     titlePlaceholder: 'Service Level Agreement',
     fields: [
-      { key: 'sourceUrl', label: 'Источник / Справка', type: 'link', placeholder: 'https://wiki.org/...' }
+      {key: 'sourceUrl', label: 'Источник / Справка', type: 'link', placeholder: 'https://wiki.org/...'}
     ]
   }
 }
@@ -392,7 +392,7 @@ const allConfigs = computed<Record<string, DirectoryMeta>>(() => {
   for (const [slug, baseMeta] of Object.entries(BASE_CONFIG)) {
     result[slug] = {
       ...baseMeta,
-      fields: baseMeta.fields.map(f => f.key === 'department' ? { ...f, options: departmentOptions.value } : { ...f })
+      fields: baseMeta.fields.map(f => f.key === 'department' ? {...f, options: departmentOptions.value} : {...f})
     }
   }
 
@@ -516,7 +516,7 @@ async function loadDepartments() {
   try {
     const result = await $fetch<DepartmentItem[]>('/api/directory/departments', {
       headers: getReqHeaders(),
-      query: { enterpriseId }
+      query: {enterpriseId}
     })
     departments.value = Array.isArray(result)
         ? result.filter(item => item && (item.key || item.name))
@@ -536,7 +536,7 @@ async function loadAllEmployees() {
   try {
     const result = await $fetch<DirectoryItem[]>('/api/directory/items', {
       headers: getReqHeaders(),
-      query: { enterpriseId, directorySlug: 'departments' }
+      query: {enterpriseId, directorySlug: 'departments'}
     })
     allEmployeesList.value = Array.isArray(result) ? result : []
   } catch (error: any) {
@@ -571,7 +571,7 @@ function inspectDepartmentPeople(dept: DepartmentItem) {
 }
 
 function openAddDepartmentModal() {
-  newDeptForm.value = { key: '', name: '', description: '' }
+  newDeptForm.value = {key: '', name: '', description: ''}
   isAddDeptModalOpen.value = true
 }
 
@@ -644,7 +644,7 @@ async function confirmDeleteDepartment() {
     await $fetch(`/api/directory/departments/${encodeURIComponent(dept.key)}`, {
       method: 'DELETE',
       headers: getReqHeaders(),
-      query: { enterpriseId }
+      query: {enterpriseId}
     })
 
     departments.value = departments.value.filter(item => item.key !== dept.key)
@@ -678,7 +678,7 @@ async function loadDefinitions() {
   try {
     const res = await $fetch<any[]>('/api/directory/definitions', {
       headers: getReqHeaders(),
-      query: { enterpriseId }
+      query: {enterpriseId}
     })
     loadedDefinitions.value = Array.isArray(res) ? res : []
   } catch (error: any) {
@@ -695,9 +695,9 @@ function openCreateDirectoryModal() {
     codeLabel: 'Код / ID',
     titleLabel: 'Наименование',
     fields: [
-      { key: 'phone', label: 'Телефон', type: 'text', span: 1 },
-      { key: 'website', label: 'Ссылка на ресурс', type: 'link', span: 1 },
-      { key: 'photo', label: 'Фотография', type: 'file', span: 1 }
+      {key: 'phone', label: 'Телефон', type: 'text', span: 1},
+      {key: 'website', label: 'Ссылка на ресурс', type: 'link', span: 1},
+      {key: 'photo', label: 'Фотография', type: 'file', span: 1}
     ]
   }
   createDirModalOpen.value = true
@@ -817,7 +817,7 @@ async function saveNewDirectory() {
     await $fetch('/api/directory/definitions', {
       method: 'POST',
       headers: getReqHeaders(),
-      query: { enterpriseId },
+      query: {enterpriseId},
       body: {
         enterpriseId,
         slug,
@@ -957,7 +957,7 @@ async function saveItem() {
     return
   }
 
-  const attributes = { ...itemForm.value.attributes }
+  const attributes = {...itemForm.value.attributes}
   let targetDeptKey = itemForm.value.departmentKey || attributes.departmentKey || ''
 
   if (isEmployeeDirectory.value) {
@@ -994,14 +994,14 @@ async function saveItem() {
       await $fetch(`/api/directory/items/${encodeURIComponent(editingId.value)}`, {
         method: 'PATCH',
         headers: getReqHeaders(),
-        query: { enterpriseId },
+        query: {enterpriseId},
         body: payload
       })
     } else {
       await $fetch('/api/directory/items', {
         method: 'POST',
         headers: getReqHeaders(),
-        query: { enterpriseId },
+        query: {enterpriseId},
         body: payload
       })
     }
@@ -1038,7 +1038,7 @@ async function confirmDelete() {
     await $fetch(`/api/directory/items/${encodeURIComponent(item._id)}`, {
       method: 'DELETE',
       headers: getReqHeaders(),
-      query: { enterpriseId, directorySlug: currentType.value }
+      query: {enterpriseId, directorySlug: currentType.value}
     })
 
     if (selectedItem.value?._id === item._id) {
@@ -1134,7 +1134,7 @@ onBeforeUnmount(() => {
     <header class="directory-header">
       <div class="header-main">
         <div class="header-icon">
-          <UIMoloSticker name="folder" :size="19" glow />
+          <UIMoloSticker name="folder" :size="19" glow/>
         </div>
 
         <div class="header-heading">
@@ -1148,12 +1148,12 @@ onBeforeUnmount(() => {
             class="action small"
             @click="openEditDefinition"
         >
-          <UIMoloSticker name="settings" :size="14" />
+          <UIMoloSticker name="settings" :size="14"/>
           Настроить
         </UIMoloButton>
 
         <UIMoloButton class="action small" @click="openCreateDirectoryModal">
-          <UIMoloSticker name="file-plus" :size="15" />
+          <UIMoloSticker name="file-plus" :size="15"/>
           Новый справочник
         </UIMoloButton>
 
@@ -1162,12 +1162,12 @@ onBeforeUnmount(() => {
             class="action small"
             @click="openAddDepartmentModal"
         >
-          <UIMoloSticker name="plus" :size="15" />
+          <UIMoloSticker name="plus" :size="15"/>
           Отдел
         </UIMoloButton>
 
         <UIMoloButton class="confirm small" @click="openCreateModal()">
-          <UIMoloSticker name="plus" :size="15" />
+          <UIMoloSticker name="plus" :size="15"/>
           Добавить запись
         </UIMoloButton>
       </div>
@@ -1187,10 +1187,10 @@ onBeforeUnmount(() => {
                 @click="currentType = config.value"
             >
               <span class="nav-icon">
-                <UIMoloSticker :name="config.sticker" :size="15" />
+                <UIMoloSticker :name="config.sticker" :size="15"/>
               </span>
               <span class="nav-label">{{ config.label }}</span>
-              <span v-if="currentType === config.value" class="nav-active-indicator" />
+              <span v-if="currentType === config.value" class="nav-active-indicator"/>
             </UIMoloButton>
           </div>
         </div>
@@ -1208,7 +1208,9 @@ onBeforeUnmount(() => {
         <!-- STATISTICS -->
         <section class="stats-row">
           <div class="stat-card">
-            <div class="stat-icon"><UIMoloSticker name="database" :size="17" /></div>
+            <div class="stat-icon">
+              <UIMoloSticker name="database" :size="17"/>
+            </div>
             <div class="stat-content">
               <span>Всего записей</span>
               <strong>{{ directoryCounts.total }}</strong>
@@ -1216,7 +1218,9 @@ onBeforeUnmount(() => {
           </div>
 
           <div class="stat-card">
-            <div class="stat-icon"><UIMoloSticker name="filter" :size="17" /></div>
+            <div class="stat-icon">
+              <UIMoloSticker name="filter" :size="17"/>
+            </div>
             <div class="stat-content">
               <span>Отображается</span>
               <strong>{{ directoryCounts.filtered }}</strong>
@@ -1224,7 +1228,9 @@ onBeforeUnmount(() => {
           </div>
 
           <div v-if="isEmployeeDirectory" class="stat-card">
-            <div class="stat-icon"><UIMoloSticker name="users" :size="17" /></div>
+            <div class="stat-icon">
+              <UIMoloSticker name="users" :size="17"/>
+            </div>
             <div class="stat-content">
               <span>Сотрудников</span>
               <strong>{{ totalEmployees }}</strong>
@@ -1232,7 +1238,9 @@ onBeforeUnmount(() => {
           </div>
 
           <div v-if="isEmployeeDirectory" class="stat-card">
-            <div class="stat-icon"><UIMoloSticker name="layers" :size="17" /></div>
+            <div class="stat-icon">
+              <UIMoloSticker name="layers" :size="17"/>
+            </div>
             <div class="stat-content">
               <span>Отделов</span>
               <strong>{{ departments.length }}</strong>
@@ -1241,44 +1249,47 @@ onBeforeUnmount(() => {
         </section>
 
         <!-- DEPARTMENTS -->
-        <section v-if="isEmployeeDirectory" class="departments-panel">
-          <div class="panel-heading">
-            <div>
-              <strong>Структура предприятия</strong>
-              <span>Отделы и распределение сотрудников</span>
+        <UIMoloSection v-if="isEmployeeDirectory">
+          <template #header>
+            <div class="panel-heading">
+              <div>
+                <strong>Структура предприятия</strong>
+                <span>Отделы и распределение сотрудников</span>
+              </div>
             </div>
 
             <UIMoloButton class="transparent small" @click="openAddDepartmentModal">
-              <UIMoloSticker name="plus" :size="13" />
+              <UIMoloSticker name="plus" :size="13"/>
               Создать отдел
             </UIMoloButton>
-          </div>
+          </template>
+          <template #main>
+            <div v-if="departmentsLoading" class="department-loading">
+              <UIMoloLoaders btnLoader/>
+              <span>Загрузка отделов...</span>
+            </div>
 
-          <div v-if="departmentsLoading" class="department-loading">
-            <UIMoloLoaders btnLoader />
-            <span>Загрузка отделов...</span>
-          </div>
+            <div v-else-if="departments.length" class="department-chips">
+              <UIMoloButton
+                  v-for="dept in departments"
+                  :key="dept.key"
+                  class="action small"
+                  @click="inspectDepartmentPeople(dept)"
+              >
+                <UIMoloSticker name="users" :size="13"/>
+                <span class="department-chip-name">{{ dept.name }}</span>
+                <span class="department-chip-count">{{ getDepartmentHeadcount(dept) }}</span>
+              </UIMoloButton>
+            </div>
 
-          <div v-else-if="departments.length" class="department-chips">
-            <UIMoloButton
-                v-for="dept in departments"
-                :key="dept.key"
-                class="action small"
-                @click="inspectDepartmentPeople(dept)"
-            >
-              <UIMoloSticker name="users" :size="13" />
-              <span class="department-chip-name">{{ dept.name }}</span>
-              <span class="department-chip-count">{{ getDepartmentHeadcount(dept) }}</span>
-            </UIMoloButton>
-          </div>
-
-          <div v-else class="departments-empty">
-            <span>Отделы пока не созданы.</span>
-            <UIMoloButton class="transparent small" @click="openAddDepartmentModal">
-              Создать первый отдел
-            </UIMoloButton>
-          </div>
-        </section>
+            <div v-else class="departments-empty">
+              <span>Отделы пока не созданы.</span>
+              <UIMoloButton class="transparent small" @click="openAddDepartmentModal">
+                Создать первый отдел
+              </UIMoloButton>
+            </div>
+          </template>
+        </UIMoloSection>
 
         <!-- TOOLBAR -->
         <section class="table-toolbar">
@@ -1295,7 +1306,7 @@ onBeforeUnmount(() => {
                   title="Очистить поиск"
                   @click="searchQuery = ''"
               >
-                <UIMoloSticker name="x" :size="13" />
+                <UIMoloSticker name="x" :size="13"/>
               </UIMoloButton>
             </div>
           </div>
@@ -1319,7 +1330,7 @@ onBeforeUnmount(() => {
                 :disabled="loading"
                 @click="loadItems"
             >
-              <UIMoloSticker name="refresh" :size="14" />
+              <UIMoloSticker name="refresh" :size="14"/>
             </UIMoloButton>
           </div>
         </section>
@@ -1348,18 +1359,20 @@ onBeforeUnmount(() => {
         <!-- TABLE -->
         <section class="table-container">
           <div v-if="loading" class="table-state">
-            <UIMoloLoaders wndLoader />
+            <UIMoloLoaders wndLoader/>
             <span>Загружаем записи...</span>
           </div>
 
           <div v-else-if="!filteredItems.length" class="table-state empty-state">
             <div class="empty-icon">
-              <UIMoloSticker :name="currentMeta.sticker" :size="30" glow />
+              <UIMoloSticker :name="currentMeta.sticker" :size="30" glow/>
             </div>
             <strong>{{ searchQuery ? 'Ничего не найдено' : 'Справочник пока пуст' }}</strong>
-            <span>{{ searchQuery ? 'Попробуйте изменить поисковый запрос' : 'Добавьте первую запись, чтобы начать работу' }}</span>
+            <span>{{
+                searchQuery ? 'Попробуйте изменить поисковый запрос' : 'Добавьте первую запись, чтобы начать работу'
+              }}</span>
             <UIMoloButton v-if="!searchQuery" class="confirm small" @click="openCreateModal()">
-              <UIMoloSticker name="plus" :size="14" />
+              <UIMoloSticker name="plus" :size="14"/>
               Создать запись
             </UIMoloButton>
           </div>
@@ -1393,7 +1406,7 @@ onBeforeUnmount(() => {
                         v-if="getItemImage(item)"
                         class="table-avatar-img"
                     >
-                      <img :src="getItemImage(item)!" alt="" />
+                      <img :src="getItemImage(item)!" alt=""/>
                     </div>
                     <div v-else class="table-avatar">
                       {{ getInitials(item.title) }}
@@ -1421,7 +1434,7 @@ onBeforeUnmount(() => {
                         class="table-link-btn"
                         @click.stop
                     >
-                      <UIMoloSticker name="external-link" :size="12" />
+                      <UIMoloSticker name="external-link" :size="12"/>
                       <span>{{ item.attributes?.[field.key] }}</span>
                     </a>
                     <span v-else class="cell-empty">—</span>
@@ -1443,7 +1456,8 @@ onBeforeUnmount(() => {
                           class="file-dl-link"
                           @click.stop
                       >
-                        <UIMoloSticker name="download" :size="12" /> Скачать
+                        <UIMoloSticker name="download" :size="12"/>
+                        Скачать
                       </a>
                     </template>
                     <span v-else class="cell-empty">—</span>
@@ -1465,10 +1479,10 @@ onBeforeUnmount(() => {
                 <td class="actions-column">
                   <div class="btn-group row-actions" @click.stop>
                     <UIMoloButton class="action small" title="Редактировать" @click="openEditModal(item)">
-                      <UIMoloSticker name="pen" :size="13" />
+                      <UIMoloSticker name="pen" :size="13"/>
                     </UIMoloButton>
                     <UIMoloButton class="close small" title="Удалить" @click="requestDelete(item)">
-                      <UIMoloSticker name="trash" :size="13" />
+                      <UIMoloSticker name="trash" :size="13"/>
                     </UIMoloButton>
                   </div>
                 </td>
@@ -1489,7 +1503,7 @@ onBeforeUnmount(() => {
             </div>
 
             <UIMoloButton class="transparent small" title="Закрыть карточку" @click="selectedItem = null">
-              <UIMoloSticker name="x" :size="15" />
+              <UIMoloSticker name="x" :size="15"/>
             </UIMoloButton>
           </div>
 
@@ -1498,7 +1512,7 @@ onBeforeUnmount(() => {
                 v-if="getItemImage(selectedItem)"
                 class="detail-avatar-img"
             >
-              <img :src="getItemImage(selectedItem)!" alt="" />
+              <img :src="getItemImage(selectedItem)!" alt=""/>
             </div>
             <div v-else class="detail-avatar">
               {{ getInitials(selectedItem.title) }}
@@ -1507,7 +1521,7 @@ onBeforeUnmount(() => {
             <strong>{{ selectedItem.title }}</strong>
             <span>{{ selectedItem.code || 'Без кода' }}</span>
           </div>
-          <hr />
+          <hr/>
 
           <div class="detail-fields">
             <div class="detail-field">
@@ -1532,7 +1546,7 @@ onBeforeUnmount(() => {
                     rel="noopener noreferrer"
                     class="detail-url-link"
                 >
-                  <UIMoloSticker name="link" :size="13" />
+                  <UIMoloSticker name="link" :size="13"/>
                   <span>{{ selectedItem.attributes?.[field.key] }}</span>
                 </a>
                 <span v-else class="cell-empty">—</span>
@@ -1553,7 +1567,7 @@ onBeforeUnmount(() => {
                         download="file"
                         class="download-btn-link"
                     >
-                      <UIMoloSticker name="download" :size="13" />
+                      <UIMoloSticker name="download" :size="13"/>
                       <span>Скачать файл</span>
                     </a>
                   </div>
@@ -1587,15 +1601,15 @@ onBeforeUnmount(() => {
               <strong>{{ formatDate(selectedItem.createdAt) }}</strong>
             </div>
           </div>
-          <hr />
+          <hr/>
           <div class="btn-group column">
             <UIMoloButton class="confirm full" @click="openEditModal(selectedItem)">
-              <UIMoloSticker name="pen" :size="14" />
+              <UIMoloSticker name="pen" :size="14"/>
               Редактировать
             </UIMoloButton>
 
             <UIMoloButton class="close full" @click="requestDelete(selectedItem)">
-              <UIMoloSticker name="trash" :size="14" />
+              <UIMoloSticker name="trash" :size="14"/>
               Удалить запись
             </UIMoloButton>
           </div>
@@ -1603,7 +1617,7 @@ onBeforeUnmount(() => {
 
         <div v-else class="detail-empty">
           <div class="detail-empty-icon">
-            <UIMoloSticker name="sidebar" :size="25" />
+            <UIMoloSticker name="sidebar" :size="25"/>
           </div>
           <strong>Карточка записи</strong>
           <span>Выберите строку в таблице, чтобы посмотреть подробную информацию</span>
@@ -1660,7 +1674,7 @@ onBeforeUnmount(() => {
                 />
 
                 <UIMoloButton class="action small dept-add-btn" @click="openAddDepartmentModal">
-                  <UIMoloSticker name="plus" :size="13" />
+                  <UIMoloSticker name="plus" :size="13"/>
                   Отдел
                 </UIMoloButton>
               </div>
@@ -1692,7 +1706,8 @@ onBeforeUnmount(() => {
 
                 <!-- Загрузка Файла / Фото -->
                 <div v-else-if="field.type === 'file'" class="file-uploader-box">
-                  <label class="field-label-text">{{ field.label }} <span v-if="field.required" class="required">*</span></label>
+                  <label class="field-label-text">{{ field.label }} <span v-if="field.required"
+                                                                          class="required">*</span></label>
 
                   <div v-if="itemForm.attributes[field.key]" class="file-preview-card">
                     <img
@@ -1702,12 +1717,13 @@ onBeforeUnmount(() => {
                         alt="Превью"
                     />
                     <div v-else class="file-badge-preview">
-                      <UIMoloSticker name="file" :size="20" />
+                      <UIMoloSticker name="file" :size="20"/>
                       <span>Файл прикреплен</span>
                     </div>
 
                     <UIMoloButton class="close small" @click="removeFile(field.key)">
-                      <UIMoloSticker name="x" :size="12" /> Удалить файл
+                      <UIMoloSticker name="x" :size="12"/>
+                      Удалить файл
                     </UIMoloButton>
                   </div>
 
@@ -1718,7 +1734,7 @@ onBeforeUnmount(() => {
                         @change="handleFileUpload($event, field.key)"
                     />
                     <div class="upload-dummy">
-                      <UIMoloSticker name="upload" :size="16" />
+                      <UIMoloSticker name="upload" :size="16"/>
                       <span>Выберите или перетащите фото / файл</span>
                     </div>
                   </div>
@@ -1813,9 +1829,11 @@ onBeforeUnmount(() => {
     >
       <template #body>
         <div class="editor-form">
-          <UIMoloInput v-model="newDeptForm.name" compact lRequired tLabel="Название отдела" placeholder="IT и разработка" />
-          <UIMoloInput v-model="newDeptForm.key" compact tLabel="Системный ключ" placeholder="it_development" />
-          <UIMoloInput v-model="newDeptForm.description" compact tLabel="Описание" placeholder="Описание подразделения..." />
+          <UIMoloInput v-model="newDeptForm.name" compact lRequired tLabel="Название отдела"
+                       placeholder="IT и разработка"/>
+          <UIMoloInput v-model="newDeptForm.key" compact tLabel="Системный ключ" placeholder="it_development"/>
+          <UIMoloInput v-model="newDeptForm.description" compact tLabel="Описание"
+                       placeholder="Описание подразделения..."/>
         </div>
       </template>
     </UIMoloModal>
@@ -1828,36 +1846,38 @@ onBeforeUnmount(() => {
         width="600px"
     >
       <template #body>
-        <div class="department-detail">
-          <div class="department-detail-summary">
+        <UIMoloSection>
+          <template #header>
             <div>
-              <span>Системный ключ</span>
+              <span>Системный ключ: </span>
               <code>{{ viewingDept?.key }}</code>
             </div>
             <div>
-              <span>Сотрудников</span>
+              <span>Сотрудников: </span>
               <strong>{{ selectedDepartmentCount }}</strong>
             </div>
-          </div>
+          </template>
+          <template #main>
+            <div v-if="!deptEmployees.length" class="department-no-people">
+              В этом отделе пока нет сотрудников
+            </div>
 
-          <div v-if="!deptEmployees.length" class="department-no-people">
-            В этом отделе пока нет сотрудников
-          </div>
-
-          <div v-else class="department-people-list">
-            <div v-for="employee in deptEmployees" :key="employee._id" class="department-person">
-              <div class="table-avatar">{{ getInitials(employee.title) }}</div>
-              <div class="person-info">
-                <strong>{{ employee.title }}</strong>
-                <span>{{ employee.attributes?.role || 'Должность не указана' }}</span>
+            <div v-else class="department-people-list">
+              <div v-for="employee in deptEmployees" :key="employee._id" class="department-person">
+                <img v-if="employee.attributes?.avatar" :src="employee.attributes?.avatar" alt="" class="table-avatar">
+                <div class="table-avatar" v-else>{{ getInitials(employee.title) }}</div>
+                <div class="person-info">
+                  <strong>{{ employee.title }}</strong>
+                  <span style="color: white">{{ employee.attributes?.role || 'Должность не указана' }}</span>
+                </div>
               </div>
             </div>
-          </div>
-        </div>
+          </template>
+        </UIMoloSection>
       </template>
       <template #footer>
         <UIMoloButton class="close small" @click="requestDeleteDepartment(viewingDept!)">
-          <UIMoloSticker name="trash" :size="14" />
+          <UIMoloSticker name="trash" :size="14"/>
           Удалить отдел
         </UIMoloButton>
       </template>
@@ -1881,26 +1901,30 @@ onBeforeUnmount(() => {
 
           <div class="editor-grid">
             <div class="editor-field full">
-              <UIMoloInput v-model="newDirForm.title" compact lRequired tLabel="Название" placeholder="Например, Проекты" />
+              <UIMoloInput v-model="newDirForm.title" compact lRequired tLabel="Название"
+                           placeholder="Например, Проекты"/>
             </div>
             <div class="editor-field">
-              <UIMoloInput v-model="newDirForm.slug" compact tLabel="Системный ключ" placeholder="projects" />
+              <UIMoloInput v-model="newDirForm.slug" compact tLabel="Системный ключ" placeholder="projects"/>
             </div>
             <div class="editor-field">
-              <UIMoloInput v-model="newDirForm.aliases" compact tLabel="Синонимы через запятую" placeholder="Проекты, Projects" />
+              <UIMoloInput v-model="newDirForm.aliases" compact tLabel="Синонимы через запятую"
+                           placeholder="Проекты, Projects"/>
             </div>
             <div class="editor-field">
-              <UIMoloInput v-model="newDirForm.codeLabel" compact tLabel="Название поля кода" placeholder="Код / ID" />
+              <UIMoloInput v-model="newDirForm.codeLabel" compact tLabel="Название поля кода" placeholder="Код / ID"/>
             </div>
             <div class="editor-field">
-              <UIMoloInput v-model="newDirForm.titleLabel" compact tLabel="Название основного поля" placeholder="Наименование" />
+              <UIMoloInput v-model="newDirForm.titleLabel" compact tLabel="Название основного поля"
+                           placeholder="Наименование"/>
             </div>
           </div>
 
           <div class="editor-section">
             <div class="builder-heading">
               <UIMoloButton class="action small" @click="addCustomField">
-                <UIMoloSticker name="plus" :size="13" /> Добавить поле
+                <UIMoloSticker name="plus" :size="13"/>
+                Добавить поле
               </UIMoloButton>
             </div>
 
@@ -1912,8 +1936,8 @@ onBeforeUnmount(() => {
               <div class="builder-index">{{ String(index + 1).padStart(2, '0') }}</div>
 
               <div class="builder-inputs">
-                <UIMoloInput v-model="field.label" compact placeholder="Название поля" />
-                <UIMoloInput v-model="field.key" compact placeholder="field_key" />
+                <UIMoloInput v-model="field.label" compact placeholder="Название поля"/>
+                <UIMoloInput v-model="field.key" compact placeholder="field_key"/>
 
                 <!-- Выбор типа поля включая Ссылку и Файл / Фото -->
                 <UIMoloSelect v-model="field.type" compact>
@@ -1933,7 +1957,7 @@ onBeforeUnmount(() => {
               </div>
 
               <UIMoloButton class="close small" title="Удалить поле" @click="removeCustomField(index)">
-                <UIMoloSticker name="trash" :size="14" />
+                <UIMoloSticker name="trash" :size="14"/>
               </UIMoloButton>
 
               <!-- Настройка вариантов для типа select -->
@@ -1941,7 +1965,7 @@ onBeforeUnmount(() => {
                 <div class="options-heading">
                   <span>Варианты списка</span>
                   <UIMoloButton class="transparent small" @click="addSelectOption(field)">
-                    <UIMoloSticker name="plus" :size="12" />
+                    <UIMoloSticker name="plus" :size="12"/>
                     Вариант
                   </UIMoloButton>
                 </div>
@@ -1965,7 +1989,7 @@ onBeforeUnmount(() => {
                       class="close small"
                       @click="removeSelectOption(field, optionIndex)"
                   >
-                    <UIMoloSticker name="x" :size="13" />
+                    <UIMoloSticker name="x" :size="13"/>
                   </UIMoloButton>
                 </div>
               </div>
@@ -2009,6 +2033,8 @@ onBeforeUnmount(() => {
   --dir-muted: #8491a5;
   --dir-blue: #60a5fa;
 
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   min-height: 0;
@@ -2072,12 +2098,12 @@ onBeforeUnmount(() => {
   color: var(--dir-muted);
 }
 
-/* LAYOUT */
 .directory-layout {
   flex: 1;
   min-height: 0;
   display: grid;
   grid-template-columns: 215px minmax(0, 1fr) 290px;
+  grid-template-rows: minmax(0, 1fr);
   overflow: hidden;
 }
 
@@ -2142,11 +2168,12 @@ onBeforeUnmount(() => {
 .directory-content {
   min-width: 0;
   min-height: 0;
+  height: 100%;
   display: flex;
   flex-direction: column;
   padding: 14px;
   gap: 12px;
-  overflow: auto;
+  overflow: hidden; /* Окно больше не растягивается */
 }
 
 .stats-row {
@@ -2163,9 +2190,9 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 10px;
   padding: 10px 12px;
-  border: 1px solid var(--dir-border);
+  border: 1px solid var(--half_opacity_border);
   border-radius: 9px;
-  background: var(--dir-panel);
+  background: var(--half_opacity_bg);
 }
 
 .stat-icon {
@@ -2198,21 +2225,11 @@ onBeforeUnmount(() => {
   font-variant-numeric: tabular-nums;
 }
 
-/* DEPARTMENTS */
-.departments-panel {
-  flex-shrink: 0;
-  padding: 12px;
-  border: 1px solid var(--dir-border);
-  border-radius: 9px;
-  background: var(--dir-panel);
-}
-
 .panel-heading {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  margin-bottom: 10px;
 }
 
 .panel-heading > div {
@@ -2309,16 +2326,22 @@ onBeforeUnmount(() => {
 /* TABLE */
 .table-container {
   flex: 1;
-  min-height: 170px;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   border: 1px solid var(--dir-border);
   border-radius: 9px;
   background: rgba(0, 0, 0, 0.09);
-  overflow: auto;
+  overflow: hidden; /* Убрали height: 100% */
 }
 
 .directory-table-wrap {
+  flex: 1;
   min-width: 0;
+  min-height: 0;
   overflow-x: auto;
+  overflow-y: auto; /* ВКЛЮЧАЕМ СКРОЛЛ */
+  box-sizing: border-box;
 }
 
 .directory-table {
@@ -2328,11 +2351,15 @@ onBeforeUnmount(() => {
 }
 
 .directory-table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
   height: 38px;
   padding: 0 12px;
   border-bottom: 1px solid var(--dir-border);
   color: #75839a;
-  background: rgba(255, 255, 255, 0.02);
+  background: #000000;
+  filter: opacity(1);
   font-size: 9.5px;
   font-weight: 700;
   text-transform: uppercase;
@@ -2365,9 +2392,18 @@ onBeforeUnmount(() => {
   box-shadow: inset 3px 0 0 #38bdf8;
 }
 
-.main-column { min-width: 185px; }
-.code-column { min-width: 100px; }
-.actions-column { width: 115px; text-align: right !important; }
+.main-column {
+  min-width: 185px;
+}
+
+.code-column {
+  min-width: 100px;
+}
+
+.actions-column {
+  width: 115px;
+  text-align: right !important;
+}
 
 .table-title-cell {
   display: flex;
@@ -2928,6 +2964,7 @@ onBeforeUnmount(() => {
 
 .person-info strong {
   font-size: 11px;
+  color: whitesmoke;
 }
 
 .person-info span {
@@ -2945,6 +2982,7 @@ onBeforeUnmount(() => {
   .directory-layout {
     grid-template-columns: 160px minmax(0, 1fr);
   }
+
   .detail-panel {
     display: none;
   }

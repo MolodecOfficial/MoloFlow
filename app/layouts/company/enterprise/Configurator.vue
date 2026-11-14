@@ -1,7 +1,7 @@
 <script lang="ts" setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import { useAppStore } from '~~/stores/appStore'
-import { buildAuthHeaders } from '~~/server/utils/authContext'
+import { buildAuthHeaders } from '~~/server/utils/auth/authContext'
 
 const props = defineProps<{
   enterpriseId?: string

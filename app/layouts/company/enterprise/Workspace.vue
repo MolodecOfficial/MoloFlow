@@ -2111,7 +2111,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 12px;
   padding: 10px 14px;
-  border: 1px solid var(--ws-border);
+  border: 1px solid var(--half_opacity_bg);
   border-radius: 9px;
   background: var(--ws-panel);
 }

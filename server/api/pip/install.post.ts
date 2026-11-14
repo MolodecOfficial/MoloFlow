@@ -1,7 +1,7 @@
 // server/api/pip/install.post.ts
 import { defineEventHandler, readBody, createError } from 'h3'
-import { loadModule } from '~~/server/utils/moduleLookup'
-import { validateDependencies, toPipSpec } from '~~/server/utils/pythonEnv'
+import { loadModule } from '~~/server/utils/modules/moduleLookup'
+import { validateDependencies, toPipSpec } from '~~/server/utils/python/pythonEnv'
 
 export default defineEventHandler(async (event) => {
     const body = (await readBody(event)) || {}

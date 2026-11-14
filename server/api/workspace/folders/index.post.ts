@@ -1,7 +1,7 @@
 import { defineEventHandler, setResponseStatus } from 'h3'
-import { tenantModels } from '~~/server/utils/tenantDb'
+import { tenantModels } from '~~/server/utils/tenant/tenantDb'
 import { resolveActor } from '~~/server/utils/moloDb/access'
-import { getEnterpriseId, parseName, resolveFolderId, serializeFolder, readJsonBody } from '~~/server/utils/workspace'
+import { getEnterpriseId, parseName, resolveFolderId, serializeFolder, readJsonBody } from '~~/server/utils/workspace/workspace'
 
 // POST /api/workspace/folders?enterpriseId=   body: { name, parentId? }
 export default defineEventHandler(async (event) => {

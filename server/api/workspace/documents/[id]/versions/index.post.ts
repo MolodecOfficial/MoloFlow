@@ -1,7 +1,7 @@
 import { defineEventHandler, setResponseStatus } from 'h3'
-import { tenantModels } from '~~/server/utils/tenantDb'
+import { tenantModels } from '~~/server/utils/tenant/tenantDb'
 import { resolveActor } from '~~/server/utils/moloDb/access'
-import { createSnapshot, getEnterpriseId, getRouteId, httpError, serializeVersion, readJsonBody } from '~~/server/utils/workspace'
+import { createSnapshot, getEnterpriseId, getRouteId, httpError, serializeVersion, readJsonBody } from '~~/server/utils/workspace/workspace'
 
 // POST /api/workspace/documents/:id/versions?enterpriseId=   body: { comment? }
 export default defineEventHandler(async (event) => {

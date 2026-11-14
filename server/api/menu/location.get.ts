@@ -1,7 +1,7 @@
 import { defineEventHandler, getQuery, createError } from 'h3'
 import { Types } from 'mongoose'
 import { Menu } from '~~/server/models/menu.model'
-import { checkEnterpriseAccess } from '~~/server/utils/enterpriseAuth'
+import { checkEnterpriseAccess } from '~~/server/utils/auth/enterpriseAuth'
 import { PERMISSIONS } from '~/types/permissions'
 
 export default defineEventHandler(async (event) => {

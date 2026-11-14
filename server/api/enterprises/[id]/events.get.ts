@@ -1,6 +1,6 @@
 import { defineEventHandler, getRouterParam, setResponseHeaders } from 'h3'
-import { checkEnterpriseAccess } from '~~/server/utils/enterpriseAuth'
-import { onAccessChange } from '~~/server/utils/accessEvents'
+import { checkEnterpriseAccess } from '~~/server/utils/auth/enterpriseAuth'
+import { onAccessChange } from '~~/server/utils/auth/accessEvents'
 
 const WATCHDOG_MS = 1500    // как часто сервер сам сверяет роль (страховка, если publishAccessChange не вызвали)
 const HEARTBEAT_MS = 15000  // чтобы соединение не считалось «мёртвым»

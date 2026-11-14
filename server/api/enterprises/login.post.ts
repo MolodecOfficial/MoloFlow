@@ -3,7 +3,7 @@
 import Enterprise from '~~/server/models/enterprise.model'
 import bcrypt from 'bcrypt'
 import jwt from 'jsonwebtoken'
-import { getJwtSecret } from '~~/server/utils/sessionToken'
+import { getJwtSecret } from '~~/server/utils/auth/sessionToken'
 
 export default defineEventHandler(async (event) => {
     try {

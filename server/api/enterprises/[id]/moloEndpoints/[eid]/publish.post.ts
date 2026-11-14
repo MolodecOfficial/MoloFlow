@@ -1,11 +1,11 @@
 // server/api/enterprises/[id]/moloEndpoints/[eid]/publish.post.ts
 import { defineEventHandler, getRouterParam, createError } from 'h3'
 import mongoose from 'mongoose'
-import { tenantModels } from '~~/server/utils/tenantDb'
+import { tenantModels } from '~~/server/utils/tenant/tenantDb'
 import { resolveActor, toHttpError } from '~~/server/utils/moloDb/access'
-import { getMoloFlowGatewayPublicUrl, isMoloFlowGatewayConfigured } from '~~/server/utils/moloFlowGateway'
+import { getMoloFlowGatewayPublicUrl, isMoloFlowGatewayConfigured } from '~~/server/utils/integrations/moloFlowGateway'
 import { getModuleSandbox } from '~~/app/utils/moduleSandbox'
-import { buildPythonBundleFromMoloDb } from '~~/server/utils/pythonRunner'
+import { buildPythonBundleFromMoloDb } from '~~/server/utils/python/pythonRunner'
 
 function isPythonBot(code: string, files: any[] = []): boolean {
     const all = [code, ...files.map(f => f?.code || '')].join('\n')

@@ -1,7 +1,7 @@
 import { defineEventHandler, getQuery } from 'h3'
-import { tenantModels } from '~~/server/utils/tenantDb'
+import { tenantModels } from '~~/server/utils/tenant/tenantDb'
 import { resolveActor } from '~~/server/utils/moloDb/access'
-import { escapeRegex, getEnterpriseId, serializeDocument } from '~~/server/utils/workspace'
+import { escapeRegex, getEnterpriseId, serializeDocument } from '~~/server/utils/workspace/workspace'
 
 // GET /api/workspace/documents?enterpriseId=[&q=текст]
 // Список БЕЗ содержимого. Содержимое — GET /documents/:id.

@@ -1,6 +1,6 @@
 // app/composables/useMoloDb.ts
 import { useAppStore } from '~~/stores/appStore'
-import { buildAuthHeaders } from '~~/server/utils/authContext'
+import { buildAuthHeaders } from '~~/server/utils/auth/authContext'
 
 export class MoloDbClientError extends Error {
     status?: number

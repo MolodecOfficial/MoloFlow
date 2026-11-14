@@ -1,6 +1,6 @@
 import { defineEventHandler, getRouterParam, readBody, createError } from 'h3'
 import { resolveActor, toHttpError } from '~~/server/utils/moloDb/access'
-import { findModule, updateModule } from '~~/server/utils/modules'
+import { findModule, updateModule } from '~~/server/utils/modules/modules'
 
 // body: { action: 'add' | 'update' | 'delete', file, oldPath? }
 export default defineEventHandler(async (event) => {

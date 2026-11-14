@@ -337,9 +337,7 @@ function deleteUser() {
         />
       </div>
 
-      <div class="logger-wrapper">
-        <LayoutMoloLogger />
-      </div>
+      <LayoutMoloLogger />
 
       <div v-if="isLoading" class="loading-state">
         <div class="loading-card">
@@ -497,7 +495,6 @@ function deleteUser() {
   position: fixed; right: 16px; bottom: 16px; display: flex; flex-direction: column-reverse; gap: 8px; z-index: 1000; pointer-events: none;
 }
 .notifications-wrapper > * { pointer-events: auto; }
-.logger-wrapper { position: fixed; left: 20px; bottom: 20px; z-index: 1000; }
 .loading-state { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 24px; }
 .loading-card {
   display: flex; flex-direction: column; align-items: center; gap: 18px; padding: 32px 36px; border-radius: 24px;

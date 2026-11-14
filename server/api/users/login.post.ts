@@ -1,6 +1,6 @@
 import User from "~~/server/models/user.model";
 import bcrypt from "bcrypt";
-import { authenticator } from "~~/server/utils/totp";
+import { authenticator } from "~~/server/utils/auth/totp";
 
 export default defineEventHandler(async (event) => {
     const body = await readBody(event);

@@ -1,7 +1,7 @@
 import { defineEventHandler, getRouterParam, createError } from 'h3'
 import { ModuleCatalog } from '~~/server/models/moduleCatalog.model'
-import { tenantModels } from '~~/server/utils/tenantDb'
-import { isOid, refreshModuleCatalog } from '~~/server/utils/modules'
+import { tenantModels } from '~~/server/utils/tenant/tenantDb'
+import { isOid, refreshModuleCatalog } from '~~/server/utils/modules/modules'
 
 export default defineEventHandler(async (event) => {
     const id = getRouterParam(event, 'id')

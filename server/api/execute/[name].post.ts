@@ -1,7 +1,7 @@
 // server/api/execute/[name].post.ts
 import { defineEventHandler, getRouterParam, readBody, createError } from 'h3'
 import { getModuleSandbox } from '~~/app/utils/moduleSandbox'
-import { enterpriseOfModule, loadModule } from '~~/server/utils/moduleLookup'
+import { enterpriseOfModule, loadModule } from '~~/server/utils/modules/moduleLookup'
 
 export default defineEventHandler(async (event) => {
     const moduleId = getRouterParam(event, 'name')

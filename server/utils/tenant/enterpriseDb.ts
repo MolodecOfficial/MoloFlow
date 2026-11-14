@@ -1,5 +1,5 @@
 import {tenantModels} from './tenantDb'
-import {invalidateDefCache, runDbOp} from './moloDb/store'
+import {invalidateDefCache, runDbOp} from '~~/server/utils/moloDb/store'
 
 export const COMPANY_DB = 'company'
 export const PROFILE_COL = 'profile'

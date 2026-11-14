@@ -1,7 +1,7 @@
 import { defineEventHandler } from 'h3'
-import { tenantModels } from '~~/server/utils/tenantDb'
+import { tenantModels } from '~~/server/utils/tenant/tenantDb'
 import { resolveActor } from '~~/server/utils/moloDb/access'
-import { getEnterpriseId, serializeFolder } from '~~/server/utils/workspace'
+import { getEnterpriseId, serializeFolder } from '~~/server/utils/workspace/workspace'
 
 // GET /api/workspace/folders?enterpriseId=
 export default defineEventHandler(async (event) => {

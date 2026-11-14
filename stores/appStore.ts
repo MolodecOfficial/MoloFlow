@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { UserRole, PermissionKey } from '~/types/permissions'
 import { ROLE_DEFAULT_PERMISSIONS } from '~/types/permissions'
-import { buildAuthHeaders } from '~~/server/utils/authContext'
+import { buildAuthHeaders } from '~~/server/utils/auth/authContext'
 
 export interface UserSessionData {
     _id: string

@@ -1,8 +1,8 @@
 import { versionModel } from './workspaceCollections'
 import { createError, getRouterParam, readBody, type H3Event } from 'h3'
 import type { Types } from 'mongoose'
-import { tenantModels } from './tenantDb'
-import { requireTenantId } from './tenantContext'
+import { tenantModels } from '~~/server/utils/tenant/tenantDb'
+import { requireTenantId } from '~~/server/utils/tenant/tenantContext'
 
 export const DOC_TYPES = ['excel', 'word', 'pdf', 'primary', 'image'] as const
 export type DocType = typeof DOC_TYPES[number]

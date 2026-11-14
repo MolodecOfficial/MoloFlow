@@ -1,7 +1,7 @@
 import { defineEventHandler, getQuery } from 'h3'
-import { tenantModels } from '~~/server/utils/tenantDb'
+import { tenantModels } from '~~/server/utils/tenant/tenantDb'
 import { resolveActor } from '~~/server/utils/moloDb/access'
-import { getEnterpriseId, getRouteId, httpError } from '~~/server/utils/workspace'
+import { getEnterpriseId, getRouteId, httpError } from '~~/server/utils/workspace/workspace'
 
 // DELETE /api/workspace/folders/:id?enterpriseId=[&cascade=true]
 // По умолчанию файлы не удаляются: подпапки и документы переезжают в родителя.

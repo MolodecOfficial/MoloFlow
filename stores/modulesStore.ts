@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { useAppStore } from '~~/stores/appStore'
 import { useModulePrefetch } from '~/composables/compiler/useModulePrefetch'
-import { buildAuthHeaders, resolveUserId } from '~~/server/utils/authContext'
+import { buildAuthHeaders, resolveUserId } from '~~/server/utils/auth/authContext'
 
 export interface BrowserModule {
     _id: string

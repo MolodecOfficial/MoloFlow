@@ -3,7 +3,7 @@
 import { TENANT_MODELS, type TenantModelName } from '~~/server/models/tenantSchemas'
 import { tenantModels, getTenantConnection } from './tenantDb'
 import { ensureCompanyDb, removeLegacyBankCollection } from './enterpriseDb'
-import { ensureAllDirectoryCollections } from './directoryCollections'
+import { ensureAllDirectoryCollections } from '~~/server/utils/directory/directoryCollections'
 
 export interface CollectionStatus {
     collection: string

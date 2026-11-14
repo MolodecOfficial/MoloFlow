@@ -1,7 +1,7 @@
 // server/api/enterprises/[id]/moloEndpoints/[eid]/unpublish.post.ts
 import { createError, defineEventHandler, getRouterParam } from 'h3'
 import mongoose from 'mongoose'
-import { tenantModels } from '~~/server/utils/tenantDb'
+import { tenantModels } from '~~/server/utils/tenant/tenantDb'
 import { resolveActor, toHttpError } from '~~/server/utils/moloDb/access'
 
 export default defineEventHandler(async (event) => {

@@ -3,8 +3,8 @@
 // Чтение, редактирование и удаление идут через функции редактора модулей,
 // поэтому права проверяются там же: администратор, управляющий и автор.
 import { createError, type H3Event } from 'h3'
-import { tenantModels } from '~~/server/utils/tenantDb'
-import { toClientModule, updateModule, removeModule, isOid } from '~~/server/utils/modules'
+import { tenantModels } from '~~/server/utils/tenant/tenantDb'
+import { toClientModule, updateModule, removeModule, isOid } from '~~/server/utils/modules/modules'
 
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 const clamp = (v: any, def: number, min: number, max: number) => {

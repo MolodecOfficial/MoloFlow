@@ -1,7 +1,7 @@
 // server/api/menu/index.get.ts
 import { defineEventHandler } from 'h3'
 import { Menu } from '~~/server/models/menu.model'
-import { seedDefaultMenu } from '~~/server/utils/defaultMenuSeed'
+import { seedDefaultMenu } from '~~/server/utils/seeds/defaultMenuSeed'
 
 export default defineEventHandler(async () => {
     let groups = await Menu.find({ isActive: { $ne: false } })

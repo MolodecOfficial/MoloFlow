@@ -4,8 +4,8 @@
 import { defineEventHandler, getRouterParam, readBody, createError } from 'h3'
 import { ModuleCatalog } from '~~/server/models/moduleCatalog.model'
 import { resolveActor, toHttpError } from '~~/server/utils/moloDb/access'
-import { tenantModels } from '~~/server/utils/tenantDb'
-import { createModule, isOid, toClientModule, refreshModuleCatalog } from '~~/server/utils/modules'
+import { tenantModels } from '~~/server/utils/tenant/tenantDb'
+import { createModule, isOid, toClientModule, refreshModuleCatalog } from '~~/server/utils/modules/modules'
 
 export default defineEventHandler(async (event) => {
     try {

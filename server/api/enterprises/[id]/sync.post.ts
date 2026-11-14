@@ -3,11 +3,11 @@
 // переносит старые данные, пересобирает системные записи.
 import { defineEventHandler, getRouterParam, createError } from 'h3'
 import { resolveActor, toHttpError } from '~~/server/utils/moloDb/access'
-import { migrateLegacyData } from '~~/server/utils/legacyMigration'
-import { ensureTenantStructure } from '~~/server/utils/tenantSetup'
-import { rebuildSystemDirectories } from '~~/server/utils/enterpriseRegistry'
-import { ensureAllDirectoryCollections, migrateDirectoryItems } from '~~/server/utils/directoryCollections'
-import { migrateDocumentVersions } from '~~/server/utils/workspaceCollections'
+import { migrateLegacyData } from '~~/server/utils/tenant/legacyMigration'
+import { ensureTenantStructure } from '~~/server/utils/tenant/tenantSetup'
+import { rebuildSystemDirectories } from '~~/server/utils/tenant/enterpriseRegistry'
+import { ensureAllDirectoryCollections, migrateDirectoryItems } from '~~/server/utils/directory/directoryCollections'
+import { migrateDocumentVersions } from '~~/server/utils/workspace/workspaceCollections'
 import { invalidateDefCache } from '~~/server/utils/moloDb/store'
 
 export default defineEventHandler(async (event) => {

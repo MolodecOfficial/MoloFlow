@@ -2,7 +2,7 @@
 // Создание базы (нужно право MODULES_DEV).
 import { defineEventHandler, getRouterParam, readBody, createError } from 'h3'
 import { resolveActor, toHttpError } from '~~/server/utils/moloDb/access'
-import { tenantModels } from '~~/server/utils/tenantDb'
+import { tenantModels } from '~~/server/utils/tenant/tenantDb'
 import { LIMITS, normalizeDatabaseDef } from '~~/server/utils/moloDb/schema'
 import { invalidateDefCache } from '~~/server/utils/moloDb/store'
 

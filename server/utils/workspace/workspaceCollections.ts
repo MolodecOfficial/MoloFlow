@@ -1,4 +1,4 @@
-import { tenantModels, getTenantConnection } from './tenantDb'
+import { tenantModels, getTenantConnection } from '~~/server/utils/tenant/tenantDb'
 
 export function versionModel(enterpriseId: string, _docId?: unknown): any {
     return tenantModels(enterpriseId).WorkspaceDocumentVersion

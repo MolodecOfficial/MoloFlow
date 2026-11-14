@@ -1,7 +1,7 @@
 import { defineEventHandler, getRouterParam, getQuery, readBody, createError } from 'h3'
 import { getModuleSandbox } from '~~/app/utils/moduleSandbox'
 import { toHttpError } from '~~/server/utils/moloDb/access'
-import { resolvePublicModule } from '~~/server/utils/modules'
+import { resolvePublicModule } from '~~/server/utils/modules/modules'
 
 const PATH_RE = /^[A-Za-z0-9_\-/]{1,100}$/
 

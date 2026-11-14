@@ -1,8 +1,8 @@
 import { defineEventHandler, getQuery, createError } from 'h3'
 import { resolveActor } from '~~/server/utils/moloDb/access'
-import { getEnterpriseId } from '~~/server/utils/workspace'
-import { assertSheetTitle, assertSpreadsheetId } from '~~/server/utils/googleSheets'
-import { callGsheetsBridge } from '~~/server/utils/gsheetsBridge'
+import { getEnterpriseId } from '~~/server/utils/workspace/workspace'
+import { assertSheetTitle, assertSpreadsheetId } from '~~/server/utils/integrations/googleSheets'
+import { callGsheetsBridge } from '~~/server/utils/integrations/gsheetsBridge'
 
 export default defineEventHandler(async (event) => {
   const enterpriseId = getEnterpriseId(event)

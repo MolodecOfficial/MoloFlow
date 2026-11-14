@@ -1,5 +1,5 @@
 import { defineEventHandler, getRouterParam, setResponseHeader } from 'h3'
-import { checkEnterpriseAccess } from '~~/server/utils/enterpriseAuth'
+import { checkEnterpriseAccess } from '~~/server/utils/auth/enterpriseAuth'
 import { User } from '~~/server/models/user.model'
 import { ROLE_DEFAULT_PERMISSIONS } from '~/types/permissions'
 

@@ -1,6 +1,6 @@
 // server/api/menu/init.post.ts
 import { Menu } from '~~/server/models/menu.model'
-import { seedDefaultMenu } from '~~/server/utils/defaultMenuSeed'
+import { seedDefaultMenu } from '~~/server/utils/seeds/defaultMenuSeed'
 
 export default defineEventHandler(async () => {
     try {

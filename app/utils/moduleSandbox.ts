@@ -1,6 +1,6 @@
 import vm from 'node:vm'
 import { createError } from 'h3'
-import { tenantModels } from '~~/server/utils/tenantDb'
+import { tenantModels } from '~~/server/utils/tenant/tenantDb'
 import { createSandboxDb } from '~~/server/utils/moloDb/sandboxApi'
 
 export type LogLevel = 'info' | 'success' | 'warning' | 'error'

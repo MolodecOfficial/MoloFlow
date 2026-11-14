@@ -4,7 +4,7 @@ import { useWindowManager } from '~/composables/window/useWindowManager'
 import { useNotifications } from '~/composables/useNotifications'
 import { useLogger } from '~/composables/useLogger'
 import { useAppStore } from '~~/stores/appStore'
-import { buildAuthHeaders } from '~~/server/utils/authContext'
+import { buildAuthHeaders } from '~~/server/utils/auth/authContext'
 
 const { openWindow } = useWindowManager()
 const { addNotification } = useNotifications('Создание предприятия')

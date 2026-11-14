@@ -8,7 +8,7 @@ import jsIcon from '~~/app/assets/icons/js.svg'
 import pyIcon from '~~/app/assets/icons/py.svg'
 import vueIcon from '~~/app/assets/icons/vue.svg'
 import { useAppStore } from '~~/stores/appStore'
-import { buildAuthHeaders } from '~~/server/utils/authContext'
+import { buildAuthHeaders } from '~~/server/utils/auth/authContext'
 import { useMenuStore } from '~~/stores/menuStore'
 import { useModulesStore } from '~~/stores/modulesStore'
 import { useWindowManager } from '~~/app/composables/window/useWindowManager'
@@ -167,7 +167,7 @@ watch(
     async (newRole, oldRole) => {
       if (!newRole || !oldRole || newRole === oldRole) return
       menuStore.invalidate()
-      await loadAll(true, false)
+      await loadAll(true)
     }
 )
 
@@ -438,11 +438,11 @@ onUnmounted(() => {
               </div>
 
               <div v-else class="deck-body">
-                <aside class="rail">
-                  <button
+                <aside class="btn-group column">
+                  <UIMoloButton
                       v-for="group in allGroups"
                       :key="group.id"
-                      class="rail-item"
+                      class="transparent menu-btn"
                       :class="{ active: group.id === activeGroupId }"
                       @click="selectCategory(group)"
                   >
@@ -454,7 +454,7 @@ onUnmounted(() => {
                     </span>
                     <span class="rail-label">{{ cleanTitle(group.title) }}</span>
                     <span class="rail-count">{{ itemCount(group) }}</span>
-                  </button>
+                  </UIMoloButton>
                 </aside>
 
                 <main class="deck-main">
@@ -832,6 +832,11 @@ onUnmounted(() => {
 
 .bc-item:last-child {
   color: white;
+}
+
+.menu-btn {
+  display: flex;
+  justify-content: start;
 }
 
 .items-grid {

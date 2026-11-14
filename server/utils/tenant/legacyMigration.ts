@@ -4,7 +4,7 @@
 // Существующие записи не перезаписываются, можно запускать повторно. Общие коллекции не удаляются.
 import mongoose from 'mongoose'
 import { getTenantConnection } from './tenantDb'
-import { syncCatalog } from './modules'
+import { syncCatalog } from '~~/server/utils/modules/modules'
 import { ensureCompanyDb } from './enterpriseDb'
 
 // [старое имя в общей базе, новое имя в базе предприятия]

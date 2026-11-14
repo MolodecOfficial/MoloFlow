@@ -3,10 +3,10 @@ import { spawn, spawnSync } from 'node:child_process'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import os from 'node:os'
-import { loadModule } from '~~/server/utils/moduleLookup'
+import { loadModule } from '~~/server/utils/modules/moduleLookup'
 import { issueModuleToken } from '~~/server/utils/moloDb/access'
 import { PY_CLIENT_SOURCE } from '~~/server/utils/moloDb/pythonClient'
-import { buildVendorZipBase64 } from '~~/server/utils/pythonVendorBundler'
+import { buildVendorZipBase64 } from '~~/server/utils/python/pythonVendorBundler'
 
 export interface CloudModuleBundle {
     moduleId: string

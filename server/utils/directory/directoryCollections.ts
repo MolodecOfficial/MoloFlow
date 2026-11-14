@@ -1,4 +1,4 @@
-import { tenantModels, getTenantConnection } from './tenantDb'
+import { tenantModels, getTenantConnection } from '~~/server/utils/tenant/tenantDb'
 
 export const SYSTEM_SLUGS = ['departments', 'counterparties', 'bank_accounts', 'nomenclature', 'glossary']
 

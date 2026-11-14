@@ -1,7 +1,7 @@
 // app/composables/compiler/usePythonRuntime.ts
 import { ref } from 'vue'
 import { useAppStore } from '~~/stores/appStore'
-import { buildAuthHeaders } from '~~/server/utils/authContext'
+import { buildAuthHeaders } from '~~/server/utils/auth/authContext'
 
 export type PyStage = 'idle' | 'runtime' | 'packages' | 'running'
 export type PyLogLevel = 'info' | 'error' | 'system'

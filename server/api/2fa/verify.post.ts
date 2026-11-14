@@ -1,5 +1,5 @@
 import User from "~~/server/models/user.model";
-import { verifyTotp } from "~~/server/utils/totp";
+import { verifyTotp } from "~~/server/utils/auth/totp";
 
 export default defineEventHandler(async (event) => {
     const body = await readBody(event);

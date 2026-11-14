@@ -1,4 +1,4 @@
-import { getTenantConnection, tenantModels } from '~~/server/utils/tenantDb'
+import { getTenantConnection, tenantModels } from '~~/server/utils/tenant/tenantDb'
 import { Types } from 'mongoose'
 import {
     LIMITS,

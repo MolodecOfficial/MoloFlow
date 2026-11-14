@@ -1,9 +1,9 @@
 import { defineEventHandler, getRouterParam, readBody, createError } from 'h3'
 import { Types } from 'mongoose'
 import { resolveActor, toHttpError } from '~~/server/utils/moloDb/access'
-import { tenantModels } from '~~/server/utils/tenantDb'
-import { isOid } from '~~/server/utils/modules'
-import { requireTenantId } from '~~/server/utils/tenantContext'
+import { tenantModels } from '~~/server/utils/tenant/tenantDb'
+import { isOid } from '~~/server/utils/modules/modules'
+import { requireTenantId } from '~~/server/utils/tenant/tenantContext'
 
 const SAFE_KEY = /^[A-Za-z0-9_-]{1,64}$/
 

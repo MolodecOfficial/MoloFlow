@@ -1,7 +1,7 @@
 import { defineEventHandler, getRouterParam, readBody, createError } from 'h3'
 import { resolveActor, toHttpError } from '~~/server/utils/moloDb/access'
-import { findModule, updateModule } from '~~/server/utils/modules'
-import { validateDependencies } from '~~/server/utils/pythonEnv'
+import { findModule, updateModule } from '~~/server/utils/modules/modules'
+import { validateDependencies } from '~~/server/utils/python/pythonEnv'
 
 // body: { action: 'add' | 'remove', packageName, version?, packageType?: 'dependencies' | 'devDependencies' }
 export default defineEventHandler(async (event) => {

@@ -51,7 +51,14 @@ const props = withDefaults(
     }
 )
 
-const resolvedSize = computed(() => (typeof props.size === 'number' ? `${props.size}px` : props.size))
+const resolvedSize = computed(() => {
+  if (typeof props.size === 'number') return `${props.size}px`
+  if (typeof props.size === 'string') {
+    const trimmed = props.size.trim()
+    return /^\d+(\.\d+)?$/.test(trimmed) ? `${trimmed}px` : trimmed
+  }
+  return '16px'
+})
 
 const ALIASES: Record<string, string> = {
   bank_accounts: 'bank',

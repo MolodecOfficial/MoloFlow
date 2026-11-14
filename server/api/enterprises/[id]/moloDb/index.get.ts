@@ -2,7 +2,7 @@
 // Список баз предприятия со схемами коллекций (доступно любому участнику).
 import { defineEventHandler, getRouterParam, createError } from 'h3'
 import { resolveActor, toHttpError } from '~~/server/utils/moloDb/access'
-import { tenantModels } from '~~/server/utils/tenantDb'
+import { tenantModels } from '~~/server/utils/tenant/tenantDb'
 import { LIMITS } from '~~/server/utils/moloDb/schema'
 
 export default defineEventHandler(async (event) => {

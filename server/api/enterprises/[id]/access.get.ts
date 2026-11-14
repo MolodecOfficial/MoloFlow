@@ -4,7 +4,7 @@
 import { defineEventHandler, getRouterParam, createError } from 'h3'
 import { Types } from 'mongoose'
 import Enterprise from '~~/server/models/enterprise.model'
-import { checkEnterpriseAccess } from '~~/server/utils/enterpriseAuth'
+import { checkEnterpriseAccess } from '~~/server/utils/auth/enterpriseAuth'
 
 export default defineEventHandler(async (event) => {
     const enterpriseId = getRouterParam(event, 'id')

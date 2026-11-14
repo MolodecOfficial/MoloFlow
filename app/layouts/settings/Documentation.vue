@@ -679,7 +679,7 @@ const scrollToSection = (id: string) => {
                   </div>
                 </div>
                 <div style="margin-top:16px; overflow:hidden; border-radius:8px;">
-                  <LayoutMoloLogger />
+                  <LayoutMoloLogger embedded />
                 </div>
               </div>
             </div>

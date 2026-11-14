@@ -1,6 +1,6 @@
 import { defineEventHandler, getRouterParam, createError } from 'h3'
 import { resolveActor, toHttpError } from '~~/server/utils/moloDb/access'
-import { findModule, toClientModule } from '~~/server/utils/modules'
+import { findModule, toClientModule } from '~~/server/utils/modules/modules'
 
 export default defineEventHandler(async (event) => {
     try {

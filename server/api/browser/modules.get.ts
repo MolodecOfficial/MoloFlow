@@ -1,6 +1,6 @@
 import { defineEventHandler, getQuery } from 'h3'
 import { ModuleCatalog } from '~~/server/models/moduleCatalog.model'
-import { refreshModuleCatalog } from '~~/server/utils/modules'
+import { refreshModuleCatalog } from '~~/server/utils/modules/modules'
 
 export default defineEventHandler(async (event) => {
     const query = getQuery(event)

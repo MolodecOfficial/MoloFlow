@@ -1,7 +1,7 @@
 // server/api/enterprises/index.post.ts
 import { defineEventHandler, readBody, createError } from 'h3'
-import { createEnterprise } from '~~/server/utils/enterpriseRegistry'
-import { resolveSessionIdentity } from '~~/server/utils/authIdentity'
+import { createEnterprise } from '~~/server/utils/tenant/enterpriseRegistry'
+import { resolveSessionIdentity } from '~~/server/utils/auth/authIdentity'
 
 export default defineEventHandler(async (event) => {
     const identity = resolveSessionIdentity(event)

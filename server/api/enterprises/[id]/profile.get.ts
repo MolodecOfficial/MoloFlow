@@ -1,7 +1,7 @@
 import { defineEventHandler, getRouterParam, createError } from 'h3'
-import { checkEnterpriseAccess } from '~~/server/utils/enterpriseAuth'
+import { checkEnterpriseAccess } from '~~/server/utils/auth/enterpriseAuth'
 import { Enterprise } from '~~/server/models/enterprise.model'
-import { getSelfProfile } from '~~/server/utils/enterpriseDb'
+import { getSelfProfile } from '~~/server/utils/tenant/enterpriseDb'
 
 export default defineEventHandler(async (event) => {
     const enterpriseId = getRouterParam(event, 'id')

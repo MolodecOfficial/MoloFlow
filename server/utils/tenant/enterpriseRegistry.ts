@@ -6,7 +6,7 @@ import { ModuleCatalog } from '~~/server/models/moduleCatalog.model'
 import { dropTenantDb } from './tenantDb'
 import { writeSelfProfile, getSelfProfile } from './enterpriseDb'
 import { ensureTenantStructure } from './tenantSetup'
-import { allDirectoryModels, directoryModel, ensureAllDirectoryCollections } from './directoryCollections'
+import { allDirectoryModels, directoryModel, ensureAllDirectoryCollections } from '~~/server/utils/directory/directoryCollections'
 
 const str = (v: unknown) => String(v ?? '').trim()
 

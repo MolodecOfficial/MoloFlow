@@ -1,9 +1,9 @@
 import { defineEventHandler } from 'h3'
-import { tenantModels } from '~~/server/utils/tenantDb'
+import { tenantModels } from '~~/server/utils/tenant/tenantDb'
 import { resolveActor } from '~~/server/utils/moloDb/access'
 import {
     getEnterpriseId, getRouteId, httpError, parseName, resolveFolderId, serializeFolder, readJsonBody
-} from '~~/server/utils/workspace'
+} from '~~/server/utils/workspace/workspace'
 
 // PATCH /api/workspace/folders/:id?enterpriseId=   body: { name?, parentId? }
 export default defineEventHandler(async (event) => {

@@ -2,7 +2,7 @@ import { H3Event, createError } from 'h3'
 import { Types } from 'mongoose'
 import { Enterprise, type IEnterpriseMember } from '~~/server/models/enterprise.model'
 import { User } from '~~/server/models/user.model'
-import { resolveSessionIdentity } from '~~/server/utils/authIdentity'
+import { resolveSessionIdentity } from '~~/server/utils/auth/authIdentity'
 import { ROLE_DEFAULT_PERMISSIONS, type PermissionKey, type UserRole } from '~/types/permissions'
 
 export interface AccessCheckOptions {

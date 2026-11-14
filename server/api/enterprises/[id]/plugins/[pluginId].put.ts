@@ -1,5 +1,5 @@
 import { Plugin } from '~~/server/models/plugin.model'
-import { tenantModels } from '~~/server/utils/tenantDb'
+import { tenantModels } from '~~/server/utils/tenant/tenantDb'
 
 export default defineEventHandler(async (event) => {
     const enterpriseId = getRouterParam(event, 'enterpriseId')

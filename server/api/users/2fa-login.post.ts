@@ -1,8 +1,8 @@
 // server/api/users/2fa-login.post.ts
 // Второй шаг входа: проверка кода Google Authenticator. При успехе выдаёт токен пользователя.
 import User from '~~/server/models/user.model'
-import { verifyTotp } from '~~/server/utils/totp'
-import { issueUserToken, setSessionCookie } from '~~/server/utils/sessionToken'
+import { verifyTotp } from '~~/server/utils/auth/totp'
+import { issueUserToken, setSessionCookie } from '~~/server/utils/auth/sessionToken'
 
 export default defineEventHandler(async (event) => {
     const body = (await readBody(event)) || {}

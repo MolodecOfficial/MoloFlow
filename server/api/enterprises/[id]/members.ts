@@ -2,7 +2,7 @@ import { defineEventHandler, getRouterParam, readBody, getQuery, createError } f
 import mongoose from 'mongoose'
 import { Enterprise } from '~~/server/models/enterprise.model'
 import { User } from '~~/server/models/user.model'
-import { publishAccessChange } from '~~/server/utils/accessEvents'
+import { publishAccessChange } from '~~/server/utils/auth/accessEvents'
 
 function buildEnterpriseQuery(id: string) {
     const orList: any[] = [{ _id: id }]

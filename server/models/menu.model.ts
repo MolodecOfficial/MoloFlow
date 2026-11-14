@@ -68,4 +68,6 @@ const menuSchema = new Schema({
     timestamps: true
 });
 
-export const Menu = mongoose.models.Menu || mongoose.model('Menu', menuSchema);
+export const Menu: mongoose.Model<IMenuGroup> =
+    (mongoose.models.Menu as mongoose.Model<IMenuGroup>) || mongoose.model<IMenuGroup>('Menu', menuSchema);
+export default Menu;

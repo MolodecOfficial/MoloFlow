@@ -1,5 +1,5 @@
 import { defineEventHandler, getRouterParam, getQuery, getHeader, createError } from 'h3'
-import { tenantModels } from '~~/server/utils/tenantDb'
+import { tenantModels } from '~~/server/utils/tenant/tenantDb'
 import Enterprise from '~~/server/models/enterprise.model'
 
 export default defineEventHandler(async (event) => {

@@ -3,9 +3,9 @@ import { randomBytes, createHash } from 'node:crypto'
 import { defineEventHandler, getRouterParam, readBody, createError } from 'h3'
 import mongoose from 'mongoose'
 
-import { tenantModels } from '~~/server/utils/tenantDb'
+import { tenantModels } from '~~/server/utils/tenant/tenantDb'
 import { resolveActor, toHttpError } from '~~/server/utils/moloDb/access'
-import { getMoloFlowGatewayPublicUrl, isMoloFlowGatewayConfigured } from '~~/server/utils/moloFlowGateway'
+import { getMoloFlowGatewayPublicUrl, isMoloFlowGatewayConfigured } from '~~/server/utils/integrations/moloFlowGateway'
 
 const SLUG_RE = /^[a-z0-9][a-z0-9_/-]{0,63}$/
 const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']

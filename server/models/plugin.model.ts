@@ -168,5 +168,5 @@ pluginSchema.methods.getDependenciesObject = function () {
     return deps;
 };
 
-export const Plugin = mongoose.models.Plugin || mongoose.model('Plugin', pluginSchema);
+export const Plugin: mongoose.Model<any> = (mongoose.models.Plugin as mongoose.Model<any>) || mongoose.model('Plugin', pluginSchema);
 export default Plugin;

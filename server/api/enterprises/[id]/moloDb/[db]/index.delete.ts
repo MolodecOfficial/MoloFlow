@@ -2,8 +2,8 @@
 // Удаление базы вместе со всеми записями (нужно право MODULES_DEV, ?confirm=true обязателен).
 import { defineEventHandler, getRouterParam, getQuery, createError } from 'h3'
 import { resolveActor, toHttpError } from '~~/server/utils/moloDb/access'
-import { tenantModels } from '~~/server/utils/tenantDb'
-import { COMPANY_DB } from '~~/server/utils/enterpriseDb'
+import { tenantModels } from '~~/server/utils/tenant/tenantDb'
+import { COMPANY_DB } from '~~/server/utils/tenant/enterpriseDb'
 import { invalidateDefCache, purgeRecords } from '~~/server/utils/moloDb/store'
 
 export default defineEventHandler(async (event) => {

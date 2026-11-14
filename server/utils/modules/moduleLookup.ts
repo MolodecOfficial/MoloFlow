@@ -2,7 +2,7 @@
 // Модули предприятия живут в БД предприятия (molo_ent_<id>, коллекция modules),
 // а НЕ в глобальной коллекции. Всегда ищем через tenantModels(enterpriseId).
 import { ModuleCatalog } from '~~/server/models/moduleCatalog.model'
-import { tenantModels } from '~~/server/utils/tenantDb'
+import { tenantModels } from '~~/server/utils/tenant/tenantDb'
 
 const OID_RE = /^[a-f0-9]{24}$/i
 

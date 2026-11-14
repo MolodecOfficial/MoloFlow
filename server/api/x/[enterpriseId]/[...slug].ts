@@ -14,8 +14,8 @@ import {
     setResponseStatus
 } from 'h3'
 import { getModuleSandbox } from '~~/app/utils/moduleSandbox'
-import { tenantModels } from '~~/server/utils/tenantDb'
-import { executePythonInSandbox } from '~~/server/utils/pythonRunner'
+import { tenantModels } from '~~/server/utils/tenant/tenantDb'
+import { executePythonInSandbox } from '~~/server/utils/python/pythonRunner'
 
 const TIMEOUT_MS = 25000
 const MAX_BODY = 10 * 1024 * 1024

@@ -5,7 +5,7 @@ import { defineEventHandler, getRouterParam, readBody, createError } from 'h3'
 import { resolveActor, toHttpError } from '~~/server/utils/moloDb/access'
 import { runDbOp } from '~~/server/utils/moloDb/store'
 import { runModulesOp } from '~~/server/utils/moloDb/systemModules'
-import { tenantModels } from '~~/server/utils/tenantDb'
+import { tenantModels } from '~~/server/utils/tenant/tenantDb'
 
 export default defineEventHandler(async (event) => {
     try {

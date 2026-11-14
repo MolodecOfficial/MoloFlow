@@ -1,6 +1,6 @@
 import { H3Event, createError, getHeader, getQuery, getRouterParam, readBody } from 'h3'
 import jwt from 'jsonwebtoken'
-import { getJwtSecret } from './sessionToken'
+import { getJwtSecret } from '~~/server/utils/auth/sessionToken'
 
 const OID_RE = /^[a-f0-9]{24}$/i
 

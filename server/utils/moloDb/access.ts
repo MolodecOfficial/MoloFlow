@@ -6,10 +6,10 @@
 //   • модуль / Python-бот                       — по токену x-molo-db-token, только данные своего предприятия.
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
 import { createError, getHeader, type H3Event } from 'h3'
-import { checkEnterpriseAccess } from '~~/server/utils/enterpriseAuth'
+import { checkEnterpriseAccess } from '~~/server/utils/auth/enterpriseAuth'
 import { PERMISSIONS, ROLE_DEFAULT_PERMISSIONS } from '~/types/permissions'
 import type { DbActor } from './store'
-import { tenantModels } from '~~/server/utils/tenantDb'
+import { tenantModels } from '~~/server/utils/tenant/tenantDb'
 
 const TOKEN_ID_RE = /^[a-f0-9]{24}$/i
 

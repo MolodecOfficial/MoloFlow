@@ -1,8 +1,8 @@
 import { createError, defineEventHandler, readBody } from 'h3'
 import { resolveActor, toHttpError } from '~~/server/utils/moloDb/access'
-import { tenantModels } from '~~/server/utils/tenantDb'
-import { ensureDirectoryStudioCollection } from '~~/server/utils/enterpriseDb'
-import { requireTenantId } from '~~/server/utils/tenantContext'
+import { tenantModels } from '~~/server/utils/tenant/tenantDb'
+import { ensureDirectoryStudioCollection } from '~~/server/utils/tenant/enterpriseDb'
+import { requireTenantId } from '~~/server/utils/tenant/tenantContext'
 
 const SLUG_RE = /^[a-z][a-z0-9_]{0,48}$/
 const FIELD_RE = /^[A-Za-z][A-Za-z0-9_]{0,48}$/

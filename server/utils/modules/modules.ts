@@ -1,10 +1,10 @@
 // server/utils/modules.ts
 // Модули предприятия живут в его БД. Глобальный ModuleCatalog — только метаданные.
 import { createError, type H3Event } from 'h3'
-import { tenantModels } from './tenantDb'
+import { tenantModels } from '~~/server/utils/tenant/tenantDb'
 import { ModuleCatalog } from '~~/server/models/moduleCatalog.model'
 import { Enterprise } from '~~/server/models/enterprise.model'
-import { checkEnterpriseAccess } from '~~/server/utils/enterpriseAuth'
+import { checkEnterpriseAccess } from '~~/server/utils/auth/enterpriseAuth'
 import { PERMISSIONS, ROLE_DEFAULT_PERMISSIONS } from '~/types/permissions'
 
 export const MODULE_FORMATS = ['vue', 'js', 'ts', 'py'] as const

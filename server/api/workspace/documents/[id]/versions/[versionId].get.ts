@@ -1,7 +1,7 @@
 import { defineEventHandler } from 'h3'
-import { tenantModels } from '~~/server/utils/tenantDb'
+import { tenantModels } from '~~/server/utils/tenant/tenantDb'
 import { resolveActor } from '~~/server/utils/moloDb/access'
-import { decodeData, getEnterpriseId, getRouteId, httpError, serializeVersion } from '~~/server/utils/workspace'
+import { decodeData, getEnterpriseId, getRouteId, httpError, serializeVersion } from '~~/server/utils/workspace/workspace'
 
 export default defineEventHandler(async (event) => {
     const enterpriseId = getEnterpriseId(event)

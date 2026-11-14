@@ -5,8 +5,8 @@ import { defineEventHandler, getRouterParam, readBody, createError } from 'h3'
 import { Types } from 'mongoose'
 import { Enterprise } from '~~/server/models/enterprise.model'
 import { User } from '~~/server/models/user.model'
-import { publishAccessChange } from '~~/server/utils/accessEvents'
-import { resolveSessionIdentity } from '~~/server/utils/authIdentity'
+import { publishAccessChange } from '~~/server/utils/auth/accessEvents'
+import { resolveSessionIdentity } from '~~/server/utils/auth/authIdentity'
 import { ROLE_DEFAULT_PERMISSIONS, PERMISSIONS, type UserRole } from '~/types/permissions'
 
 const VALID_ROLES = Object.keys(ROLE_DEFAULT_PERMISSIONS) as UserRole[]

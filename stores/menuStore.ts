@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { useAppStore } from './appStore'
-import { buildAuthHeaders, resolveUserId } from '~~/server/utils/authContext'
+import { buildAuthHeaders, resolveUserId } from '~~/server/utils/auth/authContext'
 
 export const useMenuStore = defineStore('menu', () => {
     const appStore = useAppStore()

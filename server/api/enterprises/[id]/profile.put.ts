@@ -1,7 +1,7 @@
 import { defineEventHandler, getRouterParam, readBody, createError } from 'h3'
 import { Enterprise } from '~~/server/models/enterprise.model'
-import { checkEnterpriseAccess } from '~~/server/utils/enterpriseAuth'
-import { getSelfProfile, writeSelfProfile } from '~~/server/utils/enterpriseDb'
+import { checkEnterpriseAccess } from '~~/server/utils/auth/enterpriseAuth'
+import { getSelfProfile, writeSelfProfile } from '~~/server/utils/tenant/enterpriseDb'
 
 const text = (value: unknown, max = 500) => String(value ?? '').trim().slice(0, max)
 const ALLOWED = ['enterpriseName', 'ownershipForm', 'inn', 'kpp', 'ogrn', 'legalAddress', 'actualAddress', 'phone', 'email', 'director', 'okved'] as const

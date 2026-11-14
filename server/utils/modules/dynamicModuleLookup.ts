@@ -1,5 +1,5 @@
 import { isOid } from './modules'
-import { tenantModels } from './tenantDb'
+import { tenantModels } from '~~/server/utils/tenant/tenantDb'
 
 /** Модуль предприятия по fileName или _id из БД предприятия. Возвращает документ Mongoose (с save). */
 export async function findDynamicModuleByKey(enterpriseId: string, key: string) {
